@@ -1,0 +1,43 @@
+---
+- name: Ensure Kubernetes is installed
+  ansible.builtin.dnf:
+    name: kubelet
+    state: latest
+    disable_excludes: kubernetes
+    nobest: true
+
+- name: CRI-O Repo
+  ansible.builtin.copy:
+    src: cri-o.repo
+    dest: /etc/yum.repos.d/devel_cri_1.24.repo
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Kubernetes Repo
+  ansible.builtin.copy:
+    src: kubernetes.repo
+    dest: /etc/yum.repos.d/kubernetes.repo
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Ensure K8s packages installed
+  ansible.builtin.dnf:
+    name: "{{ item }}"
+    state: latest
+    disable_excludes: kubernetes
+  with_items:
+    - kubeadm
+    - kubectl
+    - cri-o
+
+- name: Ensure K8s services are started
+  ansible.builtin.service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  with_items:
+    - kubelet
+    - crio
+    - cri-o

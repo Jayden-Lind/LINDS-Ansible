@@ -1,0 +1,11 @@
+---
+kubernetes:
+  hosts:
+    #localhost:
+  children:
+    linds-kube:
+      hosts:
+        #linds-kube-[01:02].linds.com.au
+    jd-kube-01:
+      hosts:
+        jd-kube-[01:03].linds.com.au

@@ -1,0 +1,6 @@
+---
+- name: Install Kubernetes
+  hosts: kubernetes
+  remote_user: root
+  roles: 
+  - kubernetes
