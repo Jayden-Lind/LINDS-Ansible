@@ -1,0 +1,12 @@
+---
+- name: Install Kubernetes
+  hosts: kubernetes
+  remote_user: root
+  roles: 
+#  - kubernetes
+  - common
+
+# - hosts: all
+#   tasks:
+#   - debug:
+#       var: ansible_facts

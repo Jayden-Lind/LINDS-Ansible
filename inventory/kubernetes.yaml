@@ -3,9 +3,10 @@ kubernetes:
   hosts:
     #localhost:
   children:
-    linds-kube:
+    nodes:
       hosts:
+        jd-kube-03.linds.com.au
         #linds-kube-[01:02].linds.com.au
-    jd-kube-01:
+    master:
       hosts:
-        jd-kube-[01:03].linds.com.au
+        jd-kube-01.linds.com.au

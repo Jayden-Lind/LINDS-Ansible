@@ -1,4 +1,9 @@
 ---
+- name: Include kubernetes vars
+  ansible.builtin.include_vars:
+    file: vars.yml
+    name: vars
+
 - name: Ensure Kubernetes is installed
   ansible.builtin.dnf:
     name: kubelet
@@ -23,6 +28,8 @@
     mode: '0644'
 
 - name: Ensure K8s packages installed
+  async: 5
+  poll: 0
   ansible.builtin.dnf:
     name: "{{ item }}"
     state: latest
@@ -33,6 +40,8 @@
     - cri-o
 
 - name: Ensure K8s services are started
+  async: 5
+  poll: 0
   ansible.builtin.service:
     name: "{{ item }}"
     enabled: true
@@ -41,3 +50,78 @@
     - kubelet
     - crio
     - cri-o
+
+- name: Containers Policy for RHEL 9
+  ansible.builtin.copy:
+    src: policy.json
+    dest: /etc/containers/policy.json
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Check if swap enabled
+  changed_when: false
+  ansible.builtin.command: "awk '{ if (NR > 1) exit 1}' /proc/swaps"
+  register: swap_enabled
+
+- name: Disable swap if not disabled
+  ansible.builtin.command: swapoff -a
+  when: swap_enabled.rc != 0
+
+- name: Remove swap from fstab
+  ansible.builtin.lineinfile:
+    path: "/etc/fstab"
+    state: absent
+    regexp: '\sswap\s'
+
+- name: Check if ip_forward enabled
+  changed_when: false
+  ansible.builtin.command: "grep 1 /proc/sys/net/ipv4/ip_forward"
+  register: ip_forward_enabled
+
+- name: Enable ip_forward
+  ansible.builtin.command: "echo 1 > /proc/sys/net/ipv4/ip_forward"
+  when: ip_forward_enabled.rc != 0
+
+- name: Check if br_filter enabled
+  changed_when: false
+  ansible.builtin.command: "grep 1 /proc/sys/net/bridge/bridge-nf-call-iptables"
+  register: br_filter_enabled
+
+- name: Enable br_filter
+  ansible.builtin.command: "modprobe br_netfilter"
+  when: br_filter_enabled.rc != 0
+
+- name: Check if kubectl autocomple
+  changed_when: false
+  ansible.builtin.command: "test -f /etc/bash_completion.d/kubectl"
+  register: kubectl_autocomplete_enabled
+
+- name: Enable kubectl autocomplete
+  ansible.builtin.command: "kubectl completion bash | sudo tee /etc/bash_completion.d/kubectl > /dev/null"
+  when: kubectl_autocomplete_enabled.rc != 0
+
+- name: Test if joined to kubernetes cluster
+  changed_when: false
+  ansible.builtin.command: "test -f /etc/kubernetes/kubelet.conf"
+  register: kubernetes_joined
+
+- name: Add KUBECONFIG to env
+  ansible.builtin.lineinfile:
+    path: "/root/.bashrc"
+    regexp: '^export KUBECONFIG'
+    line: "export KUBECONFIG=/etc/kubernetes/admin.conf"
+
+- name: Include kubernetes token vars
+  ansible.builtin.include_vars:
+    file: password.yml
+    name: token
+
+- name: Test if joined to cluster already
+  ansible.builtin.command: "test -f /etc/kubernetes/kubelet.conf"
+  changed_when: false
+  register: kubernetes_registered
+
+- name: Join Kubernetes cluster
+  ansible.builtin.command: "kubeadm join {{ token.master_node }} --token {{ token.token }} --discovery-token-ca-cert-hash sha256:{{ token.ca_cert_hash }}"
+  when: kubernetes_registered.rc != 0 and inventory_hostname in groups['nodes']

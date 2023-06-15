@@ -1,0 +1,5 @@
+---
+- hosts: plex
+  tasks:
+  - debug:
+      var: ansible_facts

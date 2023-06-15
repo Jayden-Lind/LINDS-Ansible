@@ -1,0 +1,8 @@
+---
+
+- name: Print return information from the previous task
+  ansible.builtin.debug:
+    var: ansible_facts['distribution_major_version']
+
+- include: dnf_update_centos_9.yml
+  when: ansible_facts['distribution_major_version'] == "9"

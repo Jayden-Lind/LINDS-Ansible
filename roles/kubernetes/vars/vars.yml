@@ -1,0 +1,15 @@
+---
+user: root
+check_conditions:
+  - check:
+    execute:
+  - check:
+    execute:
+  - check:
+    execute:
+  - check:
+    execute:
+  - check:
+    execute:
+  - check:
+    execute:

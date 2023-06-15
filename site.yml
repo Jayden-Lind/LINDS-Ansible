@@ -1,6 +1,3 @@
 ---
-- name: Install Kubernetes
-  hosts: kubernetes
-  remote_user: root
-  roles: 
-  - kubernetes
+#import_playbook: playoboks/plex.yml
+import_playbook: playbooks/kubernetes.yml
