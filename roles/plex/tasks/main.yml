@@ -1,0 +1,16 @@
+- name: Mount NFS NAS
+  ansible.builtin.include_role:
+    name: robertdebock.autofs
+  vars:
+    autofs_maps:
+      - name: JD-TrueNAS
+        mountpoint: /mnt/nas
+        options:
+          - "--timeout 60"
+          - "vers=4.2"
+          - ""
+        directories:
+          - path: mount
+            server: "jd-truenas-01.linds.com.au:/mnt/NAS/NAS"
+            options:
+              - "fstype=nfs"

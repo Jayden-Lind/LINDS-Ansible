@@ -1,15 +1,4 @@
 ---
 user: root
-check_conditions:
-  - check:
-    execute:
-  - check:
-    execute:
-  - check:
-    execute:
-  - check:
-    execute:
-  - check:
-    execute:
-  - check:
-    execute:
+arr_host: linds-kube-02.linds.com.au
+truenas_host: jd-truenas-01.linds.com.au

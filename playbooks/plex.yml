@@ -1,5 +1,8 @@
 ---
 - hosts: plex
+  roles:
+  - common
+  - plex
   tasks:
   - debug:
       var: ansible_facts

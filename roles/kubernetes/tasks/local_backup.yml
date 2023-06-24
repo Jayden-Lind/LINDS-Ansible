@@ -1,0 +1,16 @@
+---
+- name: Mount NFS NAS
+  ansible.posix.mount:
+    path: /mnt/nas
+    src: "{{ k8s_var['truenas_host'] }}:/mnt/NAS/NAS"
+    fstype: nfs4
+    opts: vers=4.2
+    state: mounted
+    boot: true
+
+- name: Create local K8s folder
+  ansible.builtin.file:
+    path: /mnt/data
+    owner: root
+    group: root
+    mode: '0555'

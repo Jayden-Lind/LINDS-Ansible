@@ -1,0 +1,4 @@
+- name: restart updates
+  service:
+    name: "{{ rhbase_updates_service }}"
+    state: restarted

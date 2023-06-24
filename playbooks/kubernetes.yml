@@ -2,10 +2,12 @@
 - name: Install Kubernetes
   hosts: kubernetes
   remote_user: root
-  roles: 
-#  - kubernetes
+  roles:
+  - kubernetes
   - common
-
+  - role: robertdebock.autofs
+    vars:
+      bootstrap_user: root
 # - hosts: all
 #   tasks:
 #   - debug:

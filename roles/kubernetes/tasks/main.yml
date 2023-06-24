@@ -2,7 +2,16 @@
 - name: Include kubernetes vars
   ansible.builtin.include_vars:
     file: vars.yml
-    name: vars
+    name: k8s_var
+
+- name: Print return information from the previous task
+  ansible.builtin.debug:
+    var: k8s_var
+
+- name: Local data for Sonaar & Radaar
+  ansible.builtin.include_tasks:
+    file: local_backup.yml
+  when: inventory_hostname == k8s_var['arr_host']
 
 - name: Ensure Kubernetes is installed
   ansible.builtin.dnf:
@@ -125,3 +134,11 @@
 - name: Join Kubernetes cluster
   ansible.builtin.command: "kubeadm join {{ token.master_node }} --token {{ token.token }} --discovery-token-ca-cert-hash sha256:{{ token.ca_cert_hash }}"
   when: kubernetes_registered.rc != 0 and inventory_hostname in groups['nodes']
+
+- name: Git checkout
+  ansible.builtin.git:
+    repo: 'https://github.com/Jayden-Lind/LINDS-Kubernetes.git'
+    dest: /root/k8s/
+    force: true
+  when: inventory_hostname in groups['master']
+

@@ -1,0 +1,6 @@
+---
+roles:
+- name: robertdebock.autofs
+
+collections:
+- name: ansible.posix
