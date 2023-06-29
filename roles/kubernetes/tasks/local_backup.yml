@@ -1,8 +1,8 @@
 ---
 - name: Mount NFS NAS
   ansible.posix.mount:
-    path: /mnt/nas
-    src: "{{ k8s_var['truenas_host'] }}:/mnt/NAS/NAS"
+    path: "{{ k8s_var['arr_local_dir_host'] }}"
+    src: "{{ k8s_var['truenas_host'] }}:{{ k8s_var['arr_remote_dir'] }}"
     fstype: nfs4
     opts: vers=4.2
     state: mounted
@@ -10,7 +10,37 @@
 
 - name: Create local K8s folder
   ansible.builtin.file:
-    path: /mnt/data
+    path: "{{ k8s_var['arr_local_dir'] }}"
     owner: root
     group: root
     mode: '0555'
+
+- name: Copy files periodically to TrueNAS {{ k8s_var['truenas_host'] }}
+  ansible.builtin.cron:
+    name: "Copy local arr data to TrueNAS"
+    minute: "0"
+    hour: "2"
+    job: "cp -r {{ k8s_var['arr_local_dir'] }} {{ k8s_var['arr_remote_dir'] }}"
+
+- name: Check if files need to be copied across
+  ansible.builtin.stat:
+    path: "{{ k8s_var['arr_local_dir'] }}/present"
+  register: st
+
+- name: Copy files from NAS if they don't exist locally
+  ansible.builtin.copy:
+    src: "{{ k8s_var['arr_local_dir_host'] }}/{{ item }}"
+    dest: "{{ k8s_var['arr_local_dir'] }}{{ item }}"
+    remote_src: true
+  with_items: "{{ k8s_var['arr_dir'] }}"
+  when: st['stat']['exists'] == false
+
+- name: Create file indicate copy done
+  ansible.builtin.file:
+    path: "{{ k8s_var['arr_local_dir'] }}/present"
+    state: touch
+  when: st['stat']['exists'] == false
+
+- name: Print return information from the previous task
+  ansible.builtin.debug:
+    var: st

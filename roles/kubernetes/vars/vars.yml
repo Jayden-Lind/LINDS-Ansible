@@ -2,3 +2,10 @@
 user: root
 arr_host: linds-kube-02.linds.com.au
 truenas_host: jd-truenas-01.linds.com.au
+arr_local_dir: "/mnt/data/"
+arr_remote_dir: "/mnt/NAS/NAS"
+arr_local_dir_host: "/mnt/nas"
+arr_dir:
+ - radarr
+ - sonarr
+ - jackett

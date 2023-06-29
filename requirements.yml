@@ -1,6 +1,13 @@
 ---
 roles:
 - name: robertdebock.autofs
-
+- name: robertdebock.auto_update
+- name: robertdebock.epel
+- name: robertdebock.ntp
+- name: robertdebock.logrotate
+- name: claranet.motd
 collections:
 - name: ansible.posix
+- name: ansibleguy.opnsense
+- name: community.general
+- name: devsec.hardening

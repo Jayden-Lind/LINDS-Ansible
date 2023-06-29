@@ -3,11 +3,8 @@
   hosts: kubernetes
   remote_user: root
   roles:
-  - kubernetes
-  - common
-  - role: robertdebock.autofs
-    vars:
-      bootstrap_user: root
+    - kubernetes
+    #- common
 # - hosts: all
 #   tasks:
 #   - debug:
