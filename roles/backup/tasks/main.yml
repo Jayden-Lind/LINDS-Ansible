@@ -1,0 +1,15 @@
+---
+- name: Install Git
+  ansible.builtin.package:
+    name: git
+    state: latest
+
+- name: Include vars
+  ansible.builtin.include_vars:
+    file: backup.yml
+    name: backup_var
+
+
+- name: Local data for Sonaar & Radaar
+  ansible.builtin.include_tasks:
+    file: repos.yml
