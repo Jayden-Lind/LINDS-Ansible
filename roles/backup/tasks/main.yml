@@ -9,7 +9,13 @@
     file: backup.yml
     name: backup_var
 
+- name: Cron job to grab backups
+  ansible.builtin.include_tasks:
+    file: cron.yml
+  loop: "{{ lookup('ansible.builtin.dict', backup_var.backups) }}"
+  loop_control:
+    loop_var: outer_item
 
-- name: Local data for Sonaar & Radaar
+- name: Clone repos required
   ansible.builtin.include_tasks:
     file: repos.yml
