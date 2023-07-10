@@ -19,3 +19,25 @@
 - name: Clone repos required
   ansible.builtin.include_tasks:
     file: repos.yml
+
+- name: Mount SMB NAS
+  ansible.builtin.include_role:
+    name: robertdebock.autofs
+  vars:
+    autofs_maps:
+      - name: server-backup-nas 
+        mountpoint: /mnt/
+        options:
+          - "--timeout 60"
+          - "--ghost"
+        directories:
+          - server: "://jd-dc-01/nas/server/backup"
+            options:
+              - "fstype=cifs"
+              - "username={{ backup_var.smb_username }}"
+              - "password={{ backup_var.smb_password }}"
+              - "domain={{ backup_var.smb_domain }}"
+              - "vers=3.1.1"
+              - "dir_mode=0777"
+              - "file_mode=0777"
+            path: "nas"
