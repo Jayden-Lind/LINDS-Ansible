@@ -7,3 +7,12 @@
     weekday: "1"
     job: "cd {{ backup_var.root_path }}{{ backup_var.backups[outer_item.key]['dest_folder'] }} && python3 {{ backup_var.backups[outer_item.key]['file'] }} {{ item.key }} {{ item.value.username }} {{ item.value.password }}"
   loop: "{{ backup_var.backups[outer_item.key]['hosts'] | dict2items }}"
+
+
+- name: Cronjob for SCP
+  ansible.builtin.cron:
+    name: "Copy {{ outer_item.key }} to NAS"
+    minute: "0"
+    hour: "2"
+    weekday: "1"
+    job: "/bin/bash -c 'cp {{ backup_var.root_path }}{{ backup_var.backups[outer_item.key]['dest_folder'] }}*{{ backup_var.backups[outer_item.key]['backup_file_extenion'] }} /mnt/nas'"

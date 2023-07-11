@@ -67,6 +67,7 @@ backups:
           6463
     dest_folder: OPNSense-backup/
     file: backup.py
+    backup_file_extenion: .xml
   truenas:
     path: https://github.com/Jayden-Lind/TrueNAS-backup-API.git
     hosts:
@@ -102,6 +103,7 @@ backups:
           3635
     dest_folder: TrueNAS-backup-API/
     file: api.py
+    backup_file_extenion: .db
   hpe_switch:
     path: https://github.com/Jayden-Lind/HPE-OfficeConnect-Backup.git
     hosts:
@@ -122,3 +124,4 @@ backups:
           3635
     dest_folder: HPE-switch-backup/
     file: backup.py
+    backup_file_extenion: .stk
