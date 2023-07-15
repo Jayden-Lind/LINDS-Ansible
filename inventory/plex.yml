@@ -1,5 +1,17 @@
 ---
 plex:
-  hosts:
-    jd-plex-01.linds.com.au
-    linds-plex-01.linds.com.au
+  children:
+    jd:
+      hosts:
+        jd-plex-01.linds.com.au
+      vars:
+        server: jd-dc-01.linds.com.au
+        path: /nas
+    linds:
+      hosts:
+        linds-plex-01.linds.com.au
+      vars:
+        server: linds-truenas-01.linds.com.au
+        path: /mnt/ZFS_NAS
+        smb_server: linds-dc.linds.com.au
+        smb_path: /nas/holiday videos

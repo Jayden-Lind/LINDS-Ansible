@@ -1,16 +1,75 @@
-- name: Mount NFS NAS
+---
+
+- name: Print return information from the previous task
+  ansible.builtin.debug:
+    var: group_names
+
+- name: Print return information from the previous task
+  ansible.builtin.debug:
+    var: role_name
+
+- name: Include vars
+  ansible.builtin.include_vars:
+    file: plex.yml
+    name: plex
+
+- name: Include Plex
+  ansible.builtin.include_tasks:
+    file: plex.yml
+
+- name: Mount SMB NAS
   ansible.builtin.include_role:
     name: robertdebock.autofs
   vars:
     autofs_maps:
-      - name: JD-TrueNAS
-        mountpoint: /mnt/nas
+      - name: "jd_plex_mount_{{ server }}"
+        mountpoint: /mnt/
         options:
           - "--timeout 60"
-          - "vers=4.2"
-          - ""
+          - "--ghost"
         directories:
-          - path: mount
-            server: "jd-truenas-01.linds.com.au:/mnt/NAS/NAS"
+          - server: "://{{ server }}{{ path }}/"
             options:
-              - "fstype=nfs"
+              - "fstype=cifs"
+              - "username={{ plex.smb_username }}"
+              - "password={{ plex.smb_password }}"
+              - "domain={{ plex.smb_domain }}"
+              - "vers=3.1.1"
+              - "dir_mode=0777"
+              - "file_mode=0777"
+            path: "nas"
+  when: inventory_hostname in groups['jd']
+
+
+- name: Mount NFS Truenas
+  ansible.builtin.include_role:
+    name: robertdebock.autofs
+  vars:
+    autofs_maps:
+      - name: linds_plex_mount_{{ server }}
+        mountpoint: /mnt/
+        options:
+          - "--timeout 60"
+          - "--ghost"
+        directories:
+          - server: "{{ server }}:{{ path }}"
+            options:
+              - "fstype=nfs4"
+              - "dir_mode=0777"
+              - "file_mode=0777"
+              - "vers=4.2"
+              - "soft"
+            path: "nas"
+          - server: "://{{ smb_server }}{{ smb_path }}/"
+            options:
+              - "fstype=cifs"
+              - "username={{ plex.smb_username }}"
+              - "password={{ plex.smb_password }}"
+              - "domain={{ plex.smb_domain }}"
+              - "vers=3.1.1"
+              - "dir_mode=0777"
+              - "file_mode=0777"
+            path: "cifs"
+  when: inventory_hostname in groups['linds']
+
+

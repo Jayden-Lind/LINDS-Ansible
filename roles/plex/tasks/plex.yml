@@ -1,0 +1,21 @@
+---
+- name: Add Plex Repo
+  ansible.builtin.yum_repository:
+    name: Plex
+    description: Plex repository
+    baseurl: https://downloads.plex.tv/repo/rpm/$basearch/
+    gpgkey: https://downloads.plex.tv/plex-keys/PlexSign.key
+    gpgcheck: true
+
+- name: Install Plex Media Server
+  ansible.builtin.yum:
+    name: plexmediaserver
+    state: present
+
+- name: Plex enabled and started
+  async: 5
+  poll: 0
+  ansible.builtin.service:
+    name: plexmediaserver
+    enabled: true
+    state: started
