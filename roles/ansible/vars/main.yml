@@ -1,0 +1,5 @@
+---
+packages:
+  - ansible
+  - podman
+root_dir: /root/

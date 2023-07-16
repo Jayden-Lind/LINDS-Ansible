@@ -1,0 +1,5 @@
+---
+packages:
+  - packer
+  - terraform
+root_dir: /root/

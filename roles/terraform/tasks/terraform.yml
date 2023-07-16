@@ -1,0 +1,29 @@
+---
+- name: Include terraform vars
+  ansible.builtin.include_vars:
+    file: main.yml
+    name: vars
+
+- name: Add Hashicorp Repo
+  ansible.builtin.yum_repository:
+    name: Hashicorp
+    description: Hashicorp
+    baseurl: "https://rpm.releases.hashicorp.com/RHEL/$releasever/$basearch/stable"
+    gpgkey: "https://rpm.releases.hashicorp.com/gpg"
+    gpgcheck: true
+
+# - name: Ensure Podman is installed
+#   ansible.builtin.dnf:
+#     name: podman
+#     state: latest
+
+- name: Ensure packages is installed
+  ansible.builtin.dnf:
+    name: "{{ item }}"
+    state: latest
+  with_list: " {{ vars.packages }}"
+
+- name: Clone GitHub repo
+  ansible.builtin.git:
+    repo: https://github.com/Jayden-Lind/LINDS-Terraform.git
+    dest: "{{ vars.root_dir }}LINDS-Terraform"

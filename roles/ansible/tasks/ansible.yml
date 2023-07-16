@@ -1,0 +1,17 @@
+---
+- name: Install required packages
+  ansible.builtin.dnf:
+    name: "{{ item }}"
+    state: latest
+  with_list: "{{ansible_vars.packages}}"
+
+- name: Install bottle python package
+  ansible.builtin.pip:
+    name: argcomplete
+    state: present
+    extra_args: --user
+
+- name: Clone LINDS Ansible
+  ansible.builtin.git:
+    repo: https://github.com/Jayden-Lind/LINDS-Ansible.git
+    dest: "{{ vars.root_dir }}LINDS-Ansible"
