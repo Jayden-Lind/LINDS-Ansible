@@ -1,0 +1,43 @@
+---
+- name: Include EPEL Repo
+  ansible.builtin.include_role:
+    name: robertdebock.epel
+
+- name: Enable Auto Update
+  ansible.builtin.include_role:
+    name: robertdebock.auto_update
+  vars:
+    auto_update_apply_updates: yes
+    auto_update_message: yes
+
+- name: Enable NTP
+  ansible.builtin.include_role:
+    name: robertdebock.ntp
+  vars:
+   ntp_pool:
+    - name: "0.au.pool.ntp.org iburst"
+    - name: "1.au.pool.ntp.org iburst"
+    - name: "2.au.pool.ntp.org iburst"
+    - name: "3.au.pool.ntp.org iburst"
+   ntp_timezone: "Australia/Melbourne"
+
+- name: MOTD
+  ansible.builtin.include_role:
+    name: claranet.motd
+  vars:
+    motd_template: "{{ ansible_parent_role_paths[0] }}/template/motd"
+
+- name: Logrotate
+  ansible.builtin.include_role:
+    name: robertdebock.logrotate
+  vars:
+    logrotate_compress: yes
+    logrotate_keep: 7
+    logrotate_frequency: daily
+    logrotate_dateext: yes
+
+- name: Include authorized_keys
+  ansible.posix.authorized_key:
+    user: root
+    state: present
+    key: "{{ lookup('file', 'authorized_keys') }}"

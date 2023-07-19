@@ -15,3 +15,14 @@
   ansible.builtin.git:
     repo: https://github.com/Jayden-Lind/LINDS-Ansible.git
     dest: "{{ vars.root_dir }}LINDS-Ansible"
+  ignore_errors: true
+
+
+- name: Copy private key
+  ansible.builtin.copy:
+    dest: /root/.ssh/id_rsa
+    content: "{{ ansible_vars.ssh_private_key }}"
+    owner: root
+    group: root
+    mode: '0600'
+

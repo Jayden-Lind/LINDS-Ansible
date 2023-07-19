@@ -27,3 +27,4 @@
   ansible.builtin.git:
     repo: https://github.com/Jayden-Lind/LINDS-Terraform.git
     dest: "{{ vars.root_dir }}LINDS-Terraform"
+  ignore_errors: true
