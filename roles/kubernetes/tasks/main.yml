@@ -4,11 +4,6 @@
 #     var: hostvars
 #   when: inventory_hostname in groups['master']
 
-- name: Print return information from the previous task
-  ansible.builtin.debug:
-    var: hostvars[groups['master'][0]]
-  when: inventory_hostname in groups['master']
-
 - name: Include kubernetes vars
   ansible.builtin.include_vars:
     file: vars.yml
@@ -140,11 +135,6 @@
     regexp: '^export KUBECONFIG'
     line: "export KUBECONFIG=/etc/kubernetes/admin.conf"
 
-- name: Include kubernetes token vars
-  ansible.builtin.include_vars:
-    file: password.yml
-    name: token
-
 - name: Create kubernetes cluster check
   ansible.builtin.shell: "kubectl get nodes | grep -i {{ ansible_facts['nodename'] }}"  
   register: create_cluster
@@ -152,13 +142,14 @@
   ignore_errors: true
 
 - name: Create kubernetes cluster
-  ansible.builtin.command: "kubeadm init --pod-network-cidr 10.244.0.0/16 --token {{ token.token }} --token-ttl 0"
+  ansible.builtin.command: "kubeadm init --pod-network-cidr 10.244.0.0/16 --token-ttl 0"
   when: inventory_hostname in groups['master'] and create_cluster.rc!=0
+  register: kube_create_cluster_output
 
-
-- name: Join Kubernetes cluster
-  ansible.builtin.command: "kubeadm join {{ hostvars[groups['master'][0]]['ansible_default_ipv4']['address'] }}:6443 --token {{ token.token }} --discovery-token-ca-cert-hash sha256:{{ token.ca_cert_hash }}"
-  when: kubernetes_joined.rc != 0 and inventory_hostname in groups['nodes']
+- name: Create kubernetes join command
+  ansible.builtin.command: "kubeadm token create --print-join-command"
+  register: kubernetes_join_command
+  when: inventory_hostname in groups['master']
 
 - name: Install git
   ansible.builtin.dnf:
@@ -166,18 +157,26 @@
     name: git
   when: inventory_hostname in groups['master']
 
+- name: Print return information from the previous task
+  ansible.builtin.debug:
+    var: hostvars[groups['master'][0]]['kubernetes_join_command']
+  when: inventory_hostname in groups['master']
+
+- name: Join Kubernetes cluster
+  ansible.builtin.command: "{{ hostvars[groups['master'][0]]['kubernetes_join_command']['stdout'] }}"
+  when: kubernetes_joined.rc != 0 and inventory_hostname in groups['nodes']
 
 - name: Git checkout
   ansible.builtin.git:
     repo: 'https://github.com/Jayden-Lind/LINDS-Kubernetes.git'
-    dest: /root/k8s/
+    dest: "{{ k8s_var.local_k8s_dir }}"
   when: inventory_hostname in groups['master']
   ignore_errors: true
 
 - name: Copy LINDS secret
   ansible.builtin.copy:
     src: linds-secret.yml
-    dest: /root/k8s/linds-secret.yml
+    dest: "{{ k8s_var.local_k8s_dir }}linds-secret.yml"
     owner: root
     group: root
     mode: '0600'
@@ -197,3 +196,8 @@
     scope: global
     value: Jayden Lind
   when: inventory_hostname in groups['master']
+
+- name: Check if need to deploy manifests
+  ansible.builtin.command: "cd {{ k8s_var.local_k8s_dir }} && ./app-deployment.sh"
+  when: inventory_hostname in groups['master']
+  ignore_errors: true

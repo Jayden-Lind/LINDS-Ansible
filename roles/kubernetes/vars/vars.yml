@@ -1,5 +1,6 @@
 ---
 user: root
+local_k8s_dir: /root/k8s/
 arr_host: linds-kube-02.linds.com.au
 truenas_host: jd-truenas-01.linds.com.au
 arr_local_dir: "/mnt/data/"
