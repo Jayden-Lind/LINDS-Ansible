@@ -14,15 +14,6 @@
     file: vars.yml
     name: k8s_var
 
-# - name: Print return information from the previous task
-#   ansible.builtin.debug:
-#     var: k8s_var
-
-- name: Local data for Sonaar & Radaar
-  ansible.builtin.include_tasks:
-    file: local_backup.yml
-  when: inventory_hostname == k8s_var['arr_host']
-
 - name: CRI-O Repo
   ansible.builtin.copy:
     src: cri-o.repo
@@ -47,8 +38,6 @@
     nobest: true
 
 - name: Ensure K8s packages installed
-  async: 5
-  poll: 0
   ansible.builtin.dnf:
     name: "{{ item }}"
     state: latest
@@ -60,8 +49,6 @@
     - nfs-utils
 
 - name: Ensure K8s services are started
-  async: 5
-  poll: 0
   ansible.builtin.service:
     name: "{{ item }}"
     enabled: true
@@ -70,6 +57,11 @@
     - kubelet
     - crio
     - cri-o
+
+- name: Local data for Sonaar & Radaar
+  ansible.builtin.include_tasks:
+    file: local_backup.yml
+  when: inventory_hostname == k8s_var['arr_host']
 
 - name: Create containers folder
   ansible.builtin.file:

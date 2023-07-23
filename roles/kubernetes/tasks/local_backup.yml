@@ -11,6 +11,7 @@
 - name: Create local K8s folder
   ansible.builtin.file:
     path: "{{ k8s_var['arr_local_dir'] }}"
+    state: directory
     owner: root
     group: root
     mode: '0555'
@@ -20,7 +21,7 @@
     name: "Copy local arr data to TrueNAS"
     minute: "0"
     hour: "2"
-    job: "cp -r {{ k8s_var['arr_local_dir'] }} {{ k8s_var['arr_remote_dir'] }}"
+    job: "cp -rp {{ k8s_var['arr_local_dir'] }} {{ k8s_var['arr_local_dir_host'] }}"
 
 - name: Check if files need to be copied across
   ansible.builtin.stat:
@@ -32,6 +33,7 @@
     src: "{{ k8s_var['arr_local_dir_host'] }}/{{ item }}"
     dest: "{{ k8s_var['arr_local_dir'] }}{{ item }}"
     remote_src: true
+    mode: preserve
   with_items: "{{ k8s_var['arr_dir'] }}"
   when: st['stat']['exists'] == false
 

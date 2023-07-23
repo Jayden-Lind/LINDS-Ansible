@@ -15,4 +15,4 @@
     minute: "0"
     hour: "2"
     weekday: "1"
-    job: "/bin/bash -c 'cp {{ backup_var.root_path }}{{ backup_var.backups[outer_item.key]['dest_folder'] }}*{{ backup_var.backups[outer_item.key]['backup_file_extenion'] }} /mnt/nas'"
+    job: "/bin/bash -c 'cp -p {{ backup_var.root_path }}{{ backup_var.backups[outer_item.key]['dest_folder'] }}*{{ backup_var.backups[outer_item.key]['backup_file_extenion'] }} /mnt/nas'"
