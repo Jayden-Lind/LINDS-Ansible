@@ -1,4 +1,4 @@
 ---
 backup:
   hosts:
-    jd-backup-01.linds.com.au
+    jd-backup-01.linds.com.au:

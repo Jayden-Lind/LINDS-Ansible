@@ -1,7 +1,15 @@
 ---
+# - name: Trust LINDS-CA
+
 - name: Include EPEL Repo
   ansible.builtin.include_role:
     name: robertdebock.epel
+
+- name: Install bash_completeion
+  ansible.builtin.dnf:
+    name: bash-completion
+    state: latest
+  ignore_errors: true
 
 - name: Enable Auto Update
   ansible.builtin.include_role:

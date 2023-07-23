@@ -1,24 +1,27 @@
 ---
+# - name: Print return information from the previous task
+#   ansible.builtin.debug:
+#     var: hostvars
+#   when: inventory_hostname in groups['master']
+
+- name: Print return information from the previous task
+  ansible.builtin.debug:
+    var: hostvars[groups['master'][0]]
+  when: inventory_hostname in groups['master']
+
 - name: Include kubernetes vars
   ansible.builtin.include_vars:
     file: vars.yml
     name: k8s_var
 
-- name: Print return information from the previous task
-  ansible.builtin.debug:
-    var: k8s_var
+# - name: Print return information from the previous task
+#   ansible.builtin.debug:
+#     var: k8s_var
 
 - name: Local data for Sonaar & Radaar
   ansible.builtin.include_tasks:
     file: local_backup.yml
   when: inventory_hostname == k8s_var['arr_host']
-
-- name: Ensure Kubernetes is installed
-  ansible.builtin.dnf:
-    name: kubelet
-    state: latest
-    disable_excludes: kubernetes
-    nobest: true
 
 - name: CRI-O Repo
   ansible.builtin.copy:
@@ -36,6 +39,13 @@
     group: root
     mode: '0644'
 
+- name: Ensure Kubernetes is installed
+  ansible.builtin.dnf:
+    name: kubelet
+    state: latest
+    disable_excludes: kubernetes
+    nobest: true
+
 - name: Ensure K8s packages installed
   async: 5
   poll: 0
@@ -47,6 +57,7 @@
     - kubeadm
     - kubectl
     - cri-o
+    - nfs-utils
 
 - name: Ensure K8s services are started
   async: 5
@@ -60,6 +71,11 @@
     - crio
     - cri-o
 
+- name: Create containers folder
+  ansible.builtin.file:
+    path: /etc/containers/
+    state: directory
+
 - name: Containers Policy for RHEL 9
   ansible.builtin.copy:
     src: policy.json
@@ -72,6 +88,7 @@
   changed_when: false
   ansible.builtin.command: "awk '{ if (NR > 1) exit 1}' /proc/swaps"
   register: swap_enabled
+  ignore_errors: true
 
 - name: Disable swap if not disabled
   ansible.builtin.command: swapoff -a
@@ -87,15 +104,17 @@
   changed_when: false
   ansible.builtin.command: "grep 1 /proc/sys/net/ipv4/ip_forward"
   register: ip_forward_enabled
+  failed_when: ip_forward_enabled.rc >=2
 
 - name: Enable ip_forward
-  ansible.builtin.command: "echo 1 > /proc/sys/net/ipv4/ip_forward"
-  when: ip_forward_enabled.rc != 0
+  ansible.builtin.shell: "echo 1 > /proc/sys/net/ipv4/ip_forward"
+  when: ip_forward_enabled.rc == 1
 
 - name: Check if br_filter enabled
   changed_when: false
   ansible.builtin.command: "grep 1 /proc/sys/net/bridge/bridge-nf-call-iptables"
   register: br_filter_enabled
+  failed_when: br_filter_enabled.rc > 2
 
 - name: Enable br_filter
   ansible.builtin.command: "modprobe br_netfilter"
@@ -105,15 +124,23 @@
   changed_when: false
   ansible.builtin.command: "test -f /etc/bash_completion.d/kubectl"
   register: kubectl_autocomplete_enabled
+  failed_when: kubectl_autocomplete_enabled.rc >=2
 
 - name: Enable kubectl autocomplete
-  ansible.builtin.command: "kubectl completion bash | sudo tee /etc/bash_completion.d/kubectl > /dev/null"
-  when: kubectl_autocomplete_enabled.rc != 0
+  ansible.builtin.shell: "kubectl completion bash | sudo tee /etc/bash_completion.d/kubectl > /dev/null"
+  when: kubectl_autocomplete_enabled.rc == 1
+  failed_when: kubectl_autocomplete_enabled.rc >=2
+
+- name: Enable kubectl in user bashrc
+  ansible.builtin.shell: |
+    echo "source <(kubectl completion bash)" >> ~/.bashrc
+  when: kubectl_autocomplete_enabled.rc == 1
 
 - name: Test if joined to kubernetes cluster
   changed_when: false
   ansible.builtin.command: "test -f /etc/kubernetes/kubelet.conf"
   register: kubernetes_joined
+  failed_when: kubernetes_joined.rc >=2
 
 - name: Add KUBECONFIG to env
   ansible.builtin.lineinfile:
@@ -126,19 +153,55 @@
     file: password.yml
     name: token
 
-- name: Test if joined to cluster already
-  ansible.builtin.command: "test -f /etc/kubernetes/kubelet.conf"
-  changed_when: false
-  register: kubernetes_registered
+- name: Create kubernetes cluster check
+  ansible.builtin.shell: "kubectl get nodes | grep -i {{ ansible_facts['nodename'] }}"  
+  register: create_cluster
+  when: inventory_hostname in groups['master']
+  ignore_errors: true
+
+- name: Create kubernetes cluster
+  ansible.builtin.command: "kubeadm init --pod-network-cidr 10.244.0.0/16 --token {{ token.token }} --token-ttl 0"
+  when: inventory_hostname in groups['master'] and create_cluster.rc!=0
+
 
 - name: Join Kubernetes cluster
-  ansible.builtin.command: "kubeadm join {{ token.master_node }} --token {{ token.token }} --discovery-token-ca-cert-hash sha256:{{ token.ca_cert_hash }}"
-  when: kubernetes_registered.rc != 0 and inventory_hostname in groups['nodes']
+  ansible.builtin.command: "kubeadm join {{ hostvars[groups['master'][0]]['ansible_default_ipv4']['address'] }}:6443 --token {{ token.token }} --discovery-token-ca-cert-hash sha256:{{ token.ca_cert_hash }}"
+  when: kubernetes_joined.rc != 0 and inventory_hostname in groups['nodes']
+
+- name: Install git
+  ansible.builtin.dnf:
+    state: latest
+    name: git
+  when: inventory_hostname in groups['master']
+
 
 - name: Git checkout
   ansible.builtin.git:
     repo: 'https://github.com/Jayden-Lind/LINDS-Kubernetes.git'
     dest: /root/k8s/
-    force: true
+  when: inventory_hostname in groups['master']
+  ignore_errors: true
+
+- name: Copy LINDS secret
+  ansible.builtin.copy:
+    src: linds-secret.yml
+    dest: /root/k8s/linds-secret.yml
+    owner: root
+    group: root
+    mode: '0600'
+    decrypt: yes
   when: inventory_hostname in groups['master']
 
+- name: Configure git
+  community.general.git_config:
+    name: user.email
+    scope: global
+    value: jaydenlind@gmail.com
+  when: inventory_hostname in groups['master']
+
+- name: Configure git
+  community.general.git_config:
+    name: user.name
+    scope: global
+    value: Jayden Lind
+  when: inventory_hostname in groups['master']

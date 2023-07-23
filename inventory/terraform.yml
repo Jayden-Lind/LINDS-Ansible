@@ -1,7 +1,7 @@
 ---
 terraform:
   hosts:
-    "jd-terraform-01.linds.com.au"
+    "jd-terraform-01.linds.com.au":
   vars:
     server: jd-truenas-01.linds.com.au
     path: /mnt/NAS/NAS

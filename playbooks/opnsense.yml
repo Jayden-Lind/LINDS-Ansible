@@ -1,0 +1,17 @@
+- hosts: opnsense
+  gather_facts: no
+  connection: local
+  module_defaults:
+    group/ansibleguy.opnsense.all:
+      firewall: "{{ ansible_host }}"
+      api_key: "{{ username }}"
+      api_secret: "{{ password }}"
+  roles:
+  - opnsense
+
+  # tasks:
+  # - name: unbound
+  #   ansibleguy.opnsense.unbound_forward:
+  #     domain: 'linds.com.au'
+  #     target: '10.0.50.200'
+

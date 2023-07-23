@@ -2,9 +2,10 @@
 - name: Install Kubernetes
   hosts: kubernetes
   remote_user: root
+
   roles:
+    - common
     - kubernetes
-    #- common
 # - hosts: all
 #   tasks:
 #   - debug:

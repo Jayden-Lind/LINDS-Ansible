@@ -11,3 +11,5 @@ collections:
 - name: ansibleguy.opnsense
 - name: community.general
 - name: devsec.hardening
+- name: ansibleguy.opnsense
+- name: kubernetes.core
