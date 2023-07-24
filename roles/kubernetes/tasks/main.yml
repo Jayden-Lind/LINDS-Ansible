@@ -198,6 +198,6 @@
   when: inventory_hostname in groups['master']
 
 - name: Check if need to deploy manifests
-  ansible.builtin.command: "cd {{ k8s_var.local_k8s_dir }} && ./app-deployment.sh"
+  ansible.builtin.shell: "cd {{ k8s_var.local_k8s_dir }} && ./app-deployment.sh"
   when: inventory_hostname in groups['master']
   ignore_errors: true
