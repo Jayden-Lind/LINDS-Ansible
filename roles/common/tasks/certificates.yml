@@ -1,0 +1,12 @@
+---
+- name: update-ca-trust
+  ansible.builtin.shell: "update-ca-trust enable"
+
+- name: Copy LINDS-CA
+  ansible.builtin.copy:
+    src: LINDS-CA.enc
+    dest: /etc/pki/ca-trust/source/anchors/LINDS-CA.cer
+    decrypt: true
+
+- name: Trust LINDS-CA
+  ansible.builtin.shell: "update-ca-trust extract"

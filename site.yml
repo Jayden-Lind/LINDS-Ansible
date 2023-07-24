@@ -1,3 +1,0 @@
----
-#import_playbook: playoboks/plex.yml
-import_playbook: playbooks/kubernetes.yml

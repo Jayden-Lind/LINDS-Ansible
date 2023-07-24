@@ -1,6 +1,4 @@
 ---
-# - name: Trust LINDS-CA
-
 - name: Include EPEL Repo
   ansible.builtin.include_role:
     name: robertdebock.epel
@@ -49,3 +47,7 @@
     user: root
     state: present
     key: "{{ lookup('file', 'authorized_keys') }}"
+
+- name: Include updating trust
+  ansible.builtin.include_tasks:
+    file: certificates.yml
