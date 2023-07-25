@@ -1,0 +1,10 @@
+---
+- hosts: truenas
+  collections: arensb.truenas
+  environment:
+    middleware_method: client
+  roles:
+  - truenas
+  tasks:
+  # - debug:
+  #     var: ansible_facts

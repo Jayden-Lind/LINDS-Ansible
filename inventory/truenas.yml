@@ -1,0 +1,13 @@
+---
+truenas:
+  children:
+    jd_truenas:
+      hosts:
+        "10.0.53.3":
+      vars:
+        hostname: jd-truenas-02.linds.com.au
+    linds_truenas:
+      hosts:
+        "linds-truenas-01.linds.com.au":
+      vars:
+        hostname: linds-truenas-01.linds.com.au

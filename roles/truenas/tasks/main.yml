@@ -1,0 +1,46 @@
+---
+- name: Create a filesystem
+  arensb.truenas.filesystem:
+    name: NAS
+
+- name: Update hostname
+  arensb.truenas.hostname:
+    name: "{{ hostname }}"
+
+- name: Enable NFSv4
+  arensb.truenas.nfs:
+    nfsv4: true
+
+- name: Share out NAS
+  arensb.truenas.sharing_nfs:
+    name: NFS_NAS_Kubernetes
+    path: /mnt/NAS
+    networks: 
+      - 10.0.50.0/24
+      - 10.0.53.0/24
+      - 10.3.1.0/24
+    mapall_user: root
+
+- name: Create snapshos
+  arensb.truenas.pool_snapshot_task:
+    dataset: NAS
+    lifetime_value: 2
+    lifetime_unit: weeks
+    minute: "0"
+    hour: "0"
+    day: "*"
+    month: "*"
+    name_format: "hourly-%Y-%m-%d_%H:%M"
+    match:
+      dataset: NAS
+      name_format: "hourly-"
+    recursive: true
+
+- name: Enable Services
+  arensb.truenas.service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  with_items: 
+  - ssh
+  - nfs
