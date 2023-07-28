@@ -20,6 +20,7 @@
       - 10.0.53.0/24
       - 10.3.1.0/24
     mapall_user: root
+  when: inventory_hostname in groups['jd_truenas']
 
 - name: Create snapshos
   arensb.truenas.pool_snapshot_task:
@@ -35,6 +36,7 @@
       dataset: NAS
       name_format: "hourly-"
     recursive: true
+  when: inventory_hostname in groups['jd_truenas']
 
 - name: Enable Services
   arensb.truenas.service:
