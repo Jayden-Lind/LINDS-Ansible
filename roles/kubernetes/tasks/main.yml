@@ -180,7 +180,7 @@
     owner: root
     group: root
     mode: '0600'
-    decrypt: yes
+    decrypt: true
   when: inventory_hostname in groups['master']
 
 - name: Configure git

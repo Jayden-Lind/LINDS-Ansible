@@ -1,0 +1,9 @@
+---
+torrent:
+  children:
+    jd_torrent:
+      hosts:
+        "10.0.51.3":
+      vars:
+        smb_server: 10.0.50.200
+        smb_path: nas

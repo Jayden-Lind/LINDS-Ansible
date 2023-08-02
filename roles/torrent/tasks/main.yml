@@ -1,0 +1,50 @@
+---
+- name: Install transmission + required
+  ansible.builtin.yum:
+    name: "{{ item }}"
+    state: latest
+  with_items: 
+    - transmission
+    - transmission-cli
+    - transmission-qt
+    - transmission-daemon
+    - cifs-utils
+
+- name: Start transmission
+  ansible.builtin.service:
+    name: transmission-daemon
+    state: started
+    enabled: true
+
+- name: Include vars
+  ansible.builtin.include_vars:
+    file: torrent.yml
+    name: torrent
+
+- name: Create nas directory
+  ansible.builtin.file:
+    path: /mnt/nas
+    state: directory
+    mode: '0755'
+
+- name: Mount SMB NAS
+  ansible.posix.mount:
+    src: "//{{ smb_server }}/{{ smb_path }}"
+    path: /mnt/nas
+    fstype: cifs
+    opts: "username={{ torrent.smb_username }},password={{ torrent.smb_password }},domain=linds.com.au,dir_mode=0777,file_mode=0777,nounix"
+    state: present
+  register: mount
+
+- name: Mount NAS if changed
+  ansible.builtin.shell: "mount -a"
+  when: mount.changed
+
+- name: Copy Transmission settings
+  ansible.builtin.copy:
+    src: settings.json
+    dest: /var/lib/transmission/.config/transmission-daemon/settings.json
+    owner: transmission
+    group: transmission
+    mode: '600'
+    decrypt: true
