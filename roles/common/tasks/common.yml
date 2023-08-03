@@ -51,3 +51,13 @@
 - name: Include updating trust
   ansible.builtin.include_tasks:
     file: certificates.yml
+
+- name: Copy UseDNS SSHD
+  ansible.builtin.copy:
+    src: 02-disabledns.conf
+    dest: /etc/ssh/sshd_config.d
+  register: sshd
+
+- name: Restart SSHD
+  ansible.builtin.shell: "systemctl restart sshd"
+  when: sshd.changed

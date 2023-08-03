@@ -14,3 +14,4 @@ collections:
 - name: ansibleguy.opnsense
 - name: kubernetes.core
 - name: arensb.truenas
+- name: vyos.vyos

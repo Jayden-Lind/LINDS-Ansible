@@ -1,15 +1,19 @@
 ---
 - name: Include plex
-  import_playbook: plex.yml
+  ansible.builtin.import_playbook:: plex.yml
 
 - name: Include k8s
-  import_playbook: kubernetes.yml
+  ansible.builtin.import_playbook:: kubernetes.yml
 
 - name: Include backup
-  import_playbook: backup.yml
+  ansible.builtin.import_playbook:: backup.yml
 
 - name: Include terraform
-  import_playbook: terraform.yml
+  ansible.builtin.import_playbook:: terraform.yml
 
 - name: Include ansible
-  import_playbook: ansible.yml
+  ansible.builtin.import_playbook:: ansible.yml
+
+- name: Include torrent
+  ansible.builtin.import_playbook: torrent.yml
+    
