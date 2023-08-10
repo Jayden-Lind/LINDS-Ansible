@@ -1,0 +1,237 @@
+---
+- name: Add LINDS-CA
+  vyos.vyos.vyos_config:
+    lines:
+       - "set pki ca LINDS certificate {{ item }}"
+  with_file: linds-ca.cer
+
+- name: Create firewall group
+  vyos.vyos.vyos_firewall_global:
+    config:
+      group:
+        network_group:
+        - name: LAN-Addresses
+          description: LAN Networks
+          members:
+          - address: 192.168.0.0/16
+          - address: 10.0.0.0/8
+          - address: 172.16.0.0/12
+    state: merged
+
+- name: Firewall IPv6 rules
+  vyos.vyos.vyos_firewall_rules:
+    config:
+    - afi: ipv6
+      rule_sets:
+      - name: IPv6_WAN
+        description: This is ipv6 specific rule-set
+        default_action: drop
+        rules:
+        - number: 1
+          action: accept
+          description: Fwipv6-Rule 1 is configured by Ansible
+          protocol: ipv6-icmp
+        - number: 2
+          action: accept
+          description: Fwipv6-Rule 2 is configured by Ansible
+          ipsec: match-ipsec
+    state: merged
+
+- name: Apply IPv6 Firewall rules
+  vyos.vyos.vyos_config:
+    lines:
+      - set firewall interface eth0 in ipv6-name IPv6_WAN
+      - set firewall interface eth0 out ipv6-name IPv6_WAN
+      - set firewall interface eth0 local ipv6-name IPv6_WAN
+    save: true
+
+- name: Firewall IPv4 rules
+  vyos.vyos.vyos_firewall_rules:
+    config:
+    - afi: ipv4
+      rule_sets:
+      - name: IPv4_WAN_IN
+        description: IPv4 rules
+        default_action: drop
+        rules:
+        - number: 1
+          action: accept
+          description: Allow ICMP
+          protocol: icmp
+        - number: 2
+          action: accept
+          description: Allow IPSEC
+          ipsec: match-ipsec
+        - number: 9999
+          description: Allow normal
+          action: accept
+          state: 
+            established: true
+            related: true
+      - name: IPv4_WAN_LOCAL
+        description: IPv4 rules
+        default_action: drop
+        rules:
+        - number: 1
+          action: accept
+          description: Fwipv6-Rule 1 is configured by Ansible
+          protocol: icmp
+        - number: 2
+          action: accept
+          description: Fwipv6-Rule 2 is configured by Ansible
+          ipsec: match-ipsec
+        - number: 9999
+          action: accept
+          state: 
+            established: true
+            related: true
+    state: merged
+
+- name: Apply IPv4 WAN Firewall rules
+  vyos.vyos.vyos_config:
+    lines:
+      - set firewall interface eth0 in name IPv4_WAN_IN
+      - set firewall interface eth0 local name IPv4_WAN_LOCAL
+    save: true
+
+- name: configure hostname and domain-name
+  vyos.vyos.vyos_system:
+    host_name: jd-vyos-01
+    domain_name: linds.com.au
+
+- name: configure name servers
+  vyos.vyos.vyos_system: 
+    name_servers:
+     - 1.1.1.1
+     - 1.0.0.1
+
+- name: Configure WAN interfaces
+  vyos.vyos.vyos_interfaces:
+    config:
+    - name: eth0
+      description: WAN
+      enabled: yes
+
+- name: DHCP on WAN
+  vyos.vyos.vyos_l3_interfaces:
+    config:
+    - name: eth0
+      ipv4:
+      - address: dhcp
+      ipv6:
+      - address: dhcpv6
+
+- name: Set IP on LAN
+  vyos.vyos.vyos_l3_interfaces:
+    config:
+    - name: eth1
+      ipv4:
+      - address: 10.0.50.1/24
+
+- name: Create DHCP for LAN
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 
+      - set service dhcp-server shared-network-name JD-LAN domain-search linds.com.au
+      - set service dhcp-server shared-network-name JD-LAN name-server 10.0.50.1
+      - set service dhcp-server shared-network-name JD-LAN name-server 10.0.50.200
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 range 0 start 10.0.50.2
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 range 0 stop 10.0.50.199
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 default-router 10.0.50.1
+      - set service dhcp-server shared-network-name JD-LAN domain-name linds.com.au
+      - set service dhcp-server shared-network-name JD-LAN domain-search linds.com.au
+      - set service dhcp-server host-decl-name
+      - set service dhcp-server hostfile-update
+      - set service dns forwarding listen-address 10.0.50.1
+      - set service dns forwarding dhcp eth1
+      - set nat source rule 10 outbound-interface eth0
+      - set nat source rule 10 source address '10.0.50.0/24'
+      - set nat source rule 10 translation address 'masquerade'
+      - set nat source rule 10 destination group network-group !LAN-Addresses
+    save: true
+
+- name: Set up SNMP
+  vyos.vyos.vyos_snmp_server:
+    config:
+      listen_addresses:
+        - address: "10.0.50.1"
+
+- name: Enable LLDP
+  vyos.vyos.vyos_lldp_global:
+    config:
+      legacy_protocols:
+      - fdp
+      - cdp
+      - edp
+      - sonmp
+      snmp: enable
+
+- name: Set DNS for global
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dns forwarding system
+      - set service dns forwarding cache-size 1000000
+      - set service dns forwarding domain linds.com.au name-server 10.0.50.200
+      - set service dns forwarding domain linds.com.au addnta
+      - set service dns forwarding allow-from 10.0.0.0/8
+      - set service dns forwarding allow-from 172.16.0.0/12
+      - set service dns forwarding allow-from 192.168.0.0/16
+    save: true
+
+- name: Set Dynamic DNS
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dns dynamic address eth0 service DuckDNS host-name "{{ dyn_host }}"
+      - set service dns dynamic address eth0 service DuckDNS username nouser
+      - set service dns dynamic address eth0 service DuckDNS password "{{ dyn_dns }}"
+      - set service dns dynamic address eth0 service DuckDNS protocol dyndns2
+      - set service dns dynamic address eth0 service DuckDNS server www.duckdns.org
+    save: true
+
+
+- name: Set UPnP
+  vyos.vyos.vyos_config:
+    lines:
+      - set service upnp wan-interface eth0
+      - set service upnp listen eth1
+      - set service upnp nat-pmp
+    save: true
+
+
+- name: Set up firewall
+  vyos.vyos.vyos_firewall_global:
+    config:
+      validation: disable
+      log_martians: true
+      syn_cookies: true
+      twa_hazards_protection: true
+      ping:
+        all: true
+        broadcast: true
+      state_policy:
+      - connection_type: established
+        action: accept
+        log: true
+      - connection_type: invalid
+        action: accept
+        log: true
+
+- name: Include WireGuard
+  ansible.builtin.include_tasks:
+    file: wireguard.yml
+
+- name: Include VLANS
+  ansible.builtin.include_tasks:
+    file: vlan.yml
+
+- name: Include Port Forward
+  ansible.builtin.include_tasks:
+    file: port_forward.yml
+
+- name: Include Site to Site
+  ansible.builtin.include_tasks:
+    file: site_to_site.yml
+
+- name: Include BGP
+  ansible.builtin.include_tasks:
+    file: bgp.yml
