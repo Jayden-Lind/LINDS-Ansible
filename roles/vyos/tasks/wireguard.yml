@@ -1,0 +1,23 @@
+---
+- name: Wireguard
+  vyos.vyos.vyos_config:
+    lines:
+      - set interfaces wireguard wg101 address 10.5.0.2/32
+      - set interfaces wireguard wg101 peer nordvpn address "{{ wg_host }}"
+      - set interfaces wireguard wg101 peer nordvpn allowed-ips '0.0.0.0/0'
+      - set interfaces wireguard wg101 peer nordvpn port '51820'
+      - set interfaces wireguard wg101 peer nordvpn public-key "{{ wg_pub_key }}"
+      - set interfaces wireguard wg101 private-key "{{ wg_priv_key }}"
+      - set interfaces wireguard wg101 peer nordvpn persistent-keepalive 25
+      - set protocols static table 100 route 0.0.0.0/0 interface wg101
+      - set policy route NordVPN rule 100 set table 100
+      - set policy route NordVPN rule 100 destination address 0.0.0.0/0
+      - set policy route NordVPN interface eth1.51
+      - set policy route VPN rule 1 description 'Local destinations'
+      - set policy route VPN rule 1 destination group network-group LAN-Addresses
+      - set policy route VPN rule 1 set table 'main'
+      - set policy route VPN interface eth1.51
+      - set nat source rule 9999 outbound-interface wg101
+      - set nat source rule 9999 source address '10.0.51.0/24'
+      - set nat source rule 9999 translation address 'masquerade'
+    save: true

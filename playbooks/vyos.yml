@@ -1,0 +1,7 @@
+---
+- hosts: vyos
+  collections: vyos.vyos
+  roles:
+  - vyos
+
+  tasks:

@@ -1,0 +1,63 @@
+---
+- name: Create VLAN torrent
+  vyos.vyos.vyos_vlan:
+    vlan_id: 51
+    name: vlan-51-torrent
+    interfaces: eth1
+    state: present
+    address: 10.0.51.1/24
+
+- name: Set IP on VLAN torrent
+  vyos.vyos.vyos_l3_interfaces:
+    config:
+    - name: eth1
+      vifs:
+      - vlan_id: 51
+        ipv4:
+        - address: 10.0.51.1/24
+- name: Create DHCP for VLAN
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dhcp-server shared-network-name torrent-lan subnet 10.0.51.0/24 
+      - set service dhcp-server shared-network-name torrent-lan name-server 1.1.1.1
+      - set service dhcp-server shared-network-name torrent-lan subnet 10.0.51.0/24 range 0 start 10.0.51.2
+      - set service dhcp-server shared-network-name torrent-lan subnet 10.0.51.0/24 range 0 stop 10.0.51.199
+      - set service dhcp-server shared-network-name torrent-lan subnet 10.0.51.0/24 default-router 10.0.51.1
+    save: true
+
+- name: Create VLAN Dev
+  vyos.vyos.vyos_vlan:
+    vlan_id: 53
+    name: vlan-53-dev
+    interfaces: eth1
+    state: present
+    address: 10.0.53.1/24
+
+- name: Set IP on VLAN Dev
+  vyos.vyos.vyos_l3_interfaces:
+    config:
+    - name: eth1
+      vifs:
+      - vlan_id: 53
+        ipv4:
+        - address: 10.0.53.1/24
+
+
+- name: Create DHCP for VLAN
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dhcp-server shared-network-name VLAN_DEV subnet 10.0.53.0/24 
+      - set service dhcp-server shared-network-name VLAN_DEV domain-search linds.com.au
+      - set service dhcp-server shared-network-name VLAN_DEV name-server 10.0.53.1
+      - set service dhcp-server shared-network-name VLAN_DEV subnet 10.0.53.0/24 range 0 start 10.0.53.2
+      - set service dhcp-server shared-network-name VLAN_DEV subnet 10.0.53.0/24 range 0 stop 10.0.53.20
+      - set service dhcp-server shared-network-name VLAN_DEV subnet 10.0.53.0/24 default-router 10.0.53.1
+      - set service dhcp-server shared-network-name VLAN_DEV domain-name linds.com.au
+      - set service dhcp-server shared-network-name VLAN_DEV domain-search linds.com.au
+      - set service dns forwarding dhcp eth1
+      - set service dns forwarding listen-address 10.0.53.1
+      - set nat source rule 12 outbound-interface eth0
+      - set nat source rule 12 source address '10.0.53.0/24'
+      - set nat source rule 12 translation address 'masquerade'
+      - set nat source rule 12 destination group network-group !LAN-Addresses
+    save: true
