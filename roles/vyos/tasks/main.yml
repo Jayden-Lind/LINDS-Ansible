@@ -3,7 +3,20 @@
   vyos.vyos.vyos_config:
     lines:
        - "set pki ca LINDS certificate {{ item }}"
+    save: true
   with_file: linds-ca.cer
+
+- name: Set tz
+  vyos.vyos.vyos_config:
+    lines:
+       - "set system time-zone Australia/Melbourne"
+    save: true
+
+- name: Enable latency optimisation
+  vyos.vyos.vyos_config:
+    lines:
+       - "set system option performance throughput"
+    save: true
 
 - name: Create firewall group
   vyos.vyos.vyos_firewall_global:
@@ -74,11 +87,11 @@
         rules:
         - number: 1
           action: accept
-          description: Fwipv6-Rule 1 is configured by Ansible
+          description: IPv4 ICMP ALLOW
           protocol: icmp
         - number: 2
           action: accept
-          description: Fwipv6-Rule 2 is configured by Ansible
+          description: IPSEC ALLOW
           ipsec: match-ipsec
         - number: 9999
           action: accept
@@ -211,10 +224,10 @@
       state_policy:
       - connection_type: established
         action: accept
-        log: true
+        log: false
       - connection_type: invalid
         action: accept
-        log: true
+        log: false
 
 - name: Include WireGuard
   ansible.builtin.include_tasks:

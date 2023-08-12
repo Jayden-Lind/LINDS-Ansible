@@ -51,6 +51,7 @@
        - set vpn ipsec site-to-site peer LINDS tunnel 0 remote prefix 10.3.1.0/24
        - set vpn ipsec site-to-site peer LINDS tunnel 0 remote prefix 10.0.36.0/24
        - set vpn ipsec site-to-site peer LINDS tunnel 0 remote prefix 10.0.80.0/24
+       - set vpn ipsec site-to-site peer LINDS tunnel 0 remote prefix 10.0.10.0/24
        - set vpn ipsec site-to-site peer LINDS connection-type initiate
     save: true
 
@@ -73,6 +74,10 @@
           protocol: tcp_udp 
           destination:
             port: 4500
+        - number: 104
+          action: accept
+          description: Wifi calling
+          protocol: esp
       - name: IPv4_WAN_LOCAL
         rules:
         - number: 102
