@@ -42,7 +42,6 @@
         ipv4:
         - address: 10.0.53.1/24
 
-
 - name: Create DHCP for VLAN
   vyos.vyos.vyos_config:
     lines:

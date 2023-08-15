@@ -1,0 +1,109 @@
+---
+- name: Create VLAN server
+  vyos.vyos.vyos_vlan:
+    vlan_id: 300
+    name: vlan-300-server
+    interfaces: "{{ main_lan_interface }}"
+    state: present
+    address: 10.3.1.1/24
+
+- name: Set IP on VLAN Server
+  vyos.vyos.vyos_l3_interfaces:
+    config:
+    - name: "{{ main_lan_interface }}"
+      vifs:
+      - vlan_id: 300
+        ipv4:
+        - address: 10.3.1.1/24
+
+- name: Create DHCP for VLAN
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dhcp-server shared-network-name LINDS-SERVER subnet 10.3.1.0/24 
+      - set service dhcp-server shared-network-name LINDS-SERVER domain-search linds.com.au
+      - set service dhcp-server shared-network-name LINDS-SERVER name-server 10.3.1.1
+      - set service dhcp-server shared-network-name LINDS-SERVER name-server 10.3.1.200
+      - set service dhcp-server shared-network-name LINDS-SERVER subnet 10.3.1.0/24 range 0 start 10.3.1.2
+      - set service dhcp-server shared-network-name LINDS-SERVER subnet 10.3.1.0/24 range 0 stop 10.3.1.199
+      - set service dhcp-server shared-network-name LINDS-SERVER subnet 10.3.1.0/24 default-router 10.3.1.1
+      - set service dhcp-server shared-network-name LINDS-SERVER domain-name linds.com.au
+      - set service dhcp-server shared-network-name LINDS-SERVER domain-search linds.com.au
+      - set service dns forwarding dhcp "{{ main_lan_interface }}"
+      - set service dns forwarding listen-address 10.3.1.1
+      - set nat source rule 21 outbound-interface "{{ wan_interface }}"
+      - set nat source rule 21 source address '10.3.1.0/24'
+      - set nat source rule 21 translation address 'masquerade'
+      - set nat source rule 21 destination group network-group !LAN-Addresses
+    save: true
+
+- name: Create VLAN Management
+  vyos.vyos.vyos_vlan:
+    vlan_id: 80
+    name: vlan-80-management
+    interfaces: "{{ main_lan_interface }}"
+    state: present
+    address: 10.0.80.1/24
+
+- name: Set IP on VLAN Management
+  vyos.vyos.vyos_l3_interfaces:
+    config:
+    - name: "{{ main_lan_interface }}"
+      vifs:
+      - vlan_id: 80
+        ipv4:
+        - address: 10.0.80.1/24
+
+- name: Create DHCP for VLAN
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dhcp-server shared-network-name LINDS_MANAGEMENT subnet 10.0.80.0/24 
+      - set service dhcp-server shared-network-name LINDS_MANAGEMENT domain-search linds.com.au
+      - set service dhcp-server shared-network-name LINDS_MANAGEMENT name-server 10.0.80.1
+      - set service dhcp-server shared-network-name LINDS_MANAGEMENT subnet 10.0.80.0/24 range 0 start 10.0.80.2
+      - set service dhcp-server shared-network-name LINDS_MANAGEMENT subnet 10.0.80.0/24 range 0 stop 10.0.80.199
+      - set service dhcp-server shared-network-name LINDS_MANAGEMENT subnet 10.0.80.0/24 default-router 10.0.80.1
+      - set service dhcp-server shared-network-name LINDS_MANAGEMENT domain-name linds.com.au
+      - set service dhcp-server shared-network-name LINDS_MANAGEMENT domain-search linds.com.au
+      - set service dns forwarding dhcp "{{ main_lan_interface }}"
+      - set service dns forwarding listen-address 10.0.80.1
+      - set nat source rule 22 outbound-interface "{{ wan_interface }}"
+      - set nat source rule 22 source address '10.0.80.0/24'
+      - set nat source rule 22 translation address 'masquerade'
+      - set nat source rule 22 destination group network-group !LAN-Addresses
+    save: true
+
+- name: Create VLAN VPN
+  vyos.vyos.vyos_vlan:
+    vlan_id: 36
+    name: vlan-36-management
+    interfaces: "{{ main_lan_interface }}"
+    state: present
+    address: 10.0.36.1/24
+
+- name: Set IP on VLAN VPN
+  vyos.vyos.vyos_l3_interfaces:
+    config:
+    - name: "{{ main_lan_interface }}"
+      vifs:
+      - vlan_id: 36
+        ipv4:
+        - address: 10.0.36.1/24
+
+- name: Create DHCP for VLAN
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dhcp-server shared-network-name LINDS_VPN subnet 10.0.36.0/24 
+      - set service dhcp-server shared-network-name LINDS_VPN domain-search linds.com.au
+      - set service dhcp-server shared-network-name LINDS_VPN name-server 10.0.36.1
+      - set service dhcp-server shared-network-name LINDS_VPN subnet 10.0.36.0/24 range 0 start 10.0.36.2
+      - set service dhcp-server shared-network-name LINDS_VPN subnet 10.0.36.0/24 range 0 stop 10.0.36.199
+      - set service dhcp-server shared-network-name LINDS_VPN subnet 10.0.36.0/24 default-router 10.0.36.1
+      - set service dhcp-server shared-network-name LINDS_VPN domain-name linds.com.au
+      - set service dhcp-server shared-network-name LINDS_VPN domain-search linds.com.au
+      - set service dns forwarding dhcp "{{ main_lan_interface }}"
+      - set service dns forwarding listen-address 10.0.36.1
+      # - set nat source rule 22 outbound-interface "{{ wan_interface }}"
+      # - set nat source rule 22 source address '10.0.36.0/24'
+      # - set nat source rule 22 translation address 'masquerade'
+      # - set nat source rule 22 destination group network-group !LAN-Addresses
+    save: true

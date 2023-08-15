@@ -1,0 +1,14 @@
+- name: Create BGP Peering for K8s cluster
+  vyos.vyos.vyos_config:
+    lines: 
+      - set protocols bgp system-as 64551
+      - set protocols bgp neighbor 10.0.53.16 remote-as 64500
+      - set protocols bgp neighbor 10.0.53.16 update-source 10.3.1.1
+      - set protocols bgp neighbor 10.0.53.16 ebgp-multihop '3'
+      - set protocols bgp neighbor 10.0.53.16 address-family ipv4-unicast
+      - set protocols bgp neighbor 10.0.53.7 address-family ipv4-unicast
+      - set protocols bgp neighbor 10.0.53.7 remote-as 64500
+      - set protocols bgp neighbor 10.0.53.7 update-source 10.3.1.1
+      - set protocols bgp neighbor 10.0.53.7 ebgp-multihop '3'
+      - set protocols bgp parameters router-id '10.3.1.1'
+    save: true
