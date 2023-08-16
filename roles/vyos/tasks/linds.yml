@@ -71,3 +71,7 @@
 - name: Include Port Forward
   ansible.builtin.include_tasks:
     file: linds_port_forward.yml
+
+- name: Include Wireguard
+  ansible.builtin.include_tasks:
+    file: linds_wireguard.yml

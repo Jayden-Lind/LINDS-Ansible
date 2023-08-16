@@ -1,11 +1,3 @@
-- name: Print return information from the previous task
-  ansible.builtin.debug:
-    var: pub_key
-
-- name: Print return information from the previous task
-  ansible.builtin.debug:
-    var: priv_key
-
 - name: IPSEC Site to Site auth
   vyos.vyos.vyos_config:
     lines:
