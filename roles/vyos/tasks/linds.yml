@@ -56,6 +56,12 @@
       - set service dns forwarding domain linds.com.au addnta
     save: true
 
+- name: Set up NTP Listen
+  vyos.vyos.vyos_config:
+    lines:
+      - set service ntp listen-address 10.0.110.1
+    save: true
+
 - name: Include LINDS BGP
   ansible.builtin.include_tasks:
     file: linds_bgp.yml

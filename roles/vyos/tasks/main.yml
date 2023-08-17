@@ -119,6 +119,12 @@
         action: accept
         log: false
 
+- name: Point to NTP
+  vyos.vyos.vyos_config:
+    lines:
+      - set service ntp server 0.au.pool.ntp.org
+    save: true
+
 - name: Run JD VyOS
   ansible.builtin.include_tasks:
     file: jd.yml

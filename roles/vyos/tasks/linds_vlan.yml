@@ -102,8 +102,40 @@
       - set service dhcp-server shared-network-name LINDS_VPN domain-search linds.com.au
       - set service dns forwarding dhcp "{{ main_lan_interface }}"
       - set service dns forwarding listen-address 10.0.36.1
-      # - set nat source rule 22 outbound-interface "{{ wan_interface }}"
-      # - set nat source rule 22 source address '10.0.36.0/24'
-      # - set nat source rule 22 translation address 'masquerade'
-      # - set nat source rule 22 destination group network-group !LAN-Addresses
+      - set nat source rule 22 outbound-interface "{{ wan_interface }}"
+      - set nat source rule 22 source address '10.0.36.0/24'
+      - set nat source rule 22 translation address 'masquerade'
+      - set nat source rule 22 destination group network-group !LAN-Addresses
+    save: true
+
+- name: Create VLAN cameras
+  vyos.vyos.vyos_vlan:
+    vlan_id: 110
+    name: vlan-110-cameras
+    interfaces: "{{ main_lan_interface }}"
+    state: present
+    address: 10.0.110.1/24
+
+- name: Set IP on VLAN cameras
+  vyos.vyos.vyos_l3_interfaces:
+    config:
+    - name: "{{ main_lan_interface }}"
+      vifs:
+      - vlan_id: 110
+        ipv4:
+        - address: 10.0.110.1/24
+
+- name: Create DHCP for VLAN
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dhcp-server shared-network-name LINDS_CAMERAS subnet 10.0.110.0/24 
+      - set service dhcp-server shared-network-name LINDS_CAMERAS domain-search linds.com.au
+      - set service dhcp-server shared-network-name LINDS_CAMERAS name-server 10.0.110.1
+      - set service dhcp-server shared-network-name LINDS_CAMERAS subnet 10.0.110.0/24 range 0 start 10.0.110.2
+      - set service dhcp-server shared-network-name LINDS_CAMERAS subnet 10.0.110.0/24 range 0 stop 10.0.110.199
+      - set service dhcp-server shared-network-name LINDS_CAMERAS subnet 10.0.110.0/24 default-router 10.0.110.1
+      - set service dhcp-server shared-network-name LINDS_CAMERAS domain-name linds.com.au
+      - set service dhcp-server shared-network-name LINDS_CAMERAS domain-search linds.com.au
+      - set service dns forwarding dhcp "{{ main_lan_interface }}"
+      - set service dns forwarding listen-address 10.0.110.1
     save: true

@@ -17,7 +17,7 @@
         rules:
         - number: 101
           action: accept
-          description: Minecraft inbound
+          description: Plex inbound
           protocol: tcp_udp 
           destination:
             port: 32400
