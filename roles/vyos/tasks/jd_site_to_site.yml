@@ -15,6 +15,8 @@
        - set vpn ipsec esp-group MyESPGroup proposal 3 encryption aes256
        - set vpn ipsec esp-group MyESPGroup proposal 3 hash sha512
        - set vpn ipsec esp-group MyESPGroup pfs disable
+       - set vpn ipsec ike-group MyIKEGroup close-action restart
+       - set vpn ipsec ike-group MyIKEGroup dead-peer-detection action restart
        - set vpn ipsec ike-group MyIKEGroup key-exchange 'ikev2'
        - set vpn ipsec ike-group MyIKEGroup proposal 1 dh-group 14
        - set vpn ipsec ike-group MyIKEGroup proposal 1 encryption aes256gcm128
