@@ -1,0 +1,82 @@
+---
+- name: Create IPSEC Remote Access IKE
+  vyos.vyos.vyos_config:
+    lines:
+      - set vpn ipsec ike-group RemoteAccessIKE key-exchange ikev2
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 1 dh-group 14
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 1 encryption aes256ctr
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 1 hash sha256
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 2 encryption aes256gcm128
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 2 hash sha256
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 2 dh-group 14
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 3 encryption aes256
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 3 hash sha256
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 3 dh-group 28
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 4 encryption aes256
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 4 hash sha256
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 4 dh-group 14
+    save: true
+
+- name: Create IPSEC Remote Access ESP
+  vyos.vyos.vyos_config:
+    lines:
+      - set vpn ipsec esp-group RemoteAccessESP proposal 1 encryption aes256gcm128
+      - set vpn ipsec esp-group RemoteAccessESP proposal 1 hash sha256
+    save: true
+
+- name: Set certificate for IPSEC Remote access
+  vyos.vyos.vyos_config:
+    lines:
+      - set pki certificate jd-pfsense.linds.com.au certificate "{{ ipsec_remote_pub }}"
+      - set pki certificate jd-pfsense.linds.com.au private key "{{ ipsec_remote_priv }}""
+
+- name: IPSEC Remote Access
+  vyos.vyos.vyos_config:
+    lines:
+      - set vpn ipsec remote-access connection LINDS_MOBILE authentication client-mode eap-mschapv2
+      - set vpn ipsec remote-access connection LINDS_MOBILE ike-group RemoteAccessIKE
+      - set vpn ipsec remote-access connection LINDS_MOBILE esp-group RemoteAccessESP
+      - set vpn ipsec remote-access connection LINDS_MOBILE authentication x509 ca-certificate LINDS
+      - set vpn ipsec remote-access connection LINDS_MOBILE authentication x509 certificate jd-pfsense.linds.com.au
+      - set vpn ipsec remote-access connection LINDS_MOBILE authentication local-id jd-pfsense.linds.com.au
+      - set vpn ipsec remote-access connection LINDS_MOBILE authentication server-mode x509
+      - set vpn ipsec remote-access pool MOBILE name-server 10.0.50.1
+      - set vpn ipsec remote-access pool MOBILE prefix 10.0.10.0/24
+      - set vpn ipsec remote-access connection LINDS_MOBILE local prefix 0.0.0.0/0
+      - set vpn ipsec remote-access connection LINDS_MOBILE pool MOBILE
+    save: true
+
+- name: IPSEC Remote Access - Users
+  vyos.vyos.vyos_config:
+    lines:
+      - set vpn ipsec remote-access connection LINDS_MOBILE authentication local-users username "{{ item.user }}" password "{{ item.password }}"
+    save: true
+  loop: "{{ ipsec_users }}"
+
+
+- name: IPSEC Remote Access - NAT
+  vyos.vyos.vyos_config:
+    lines:
+      - set nat source rule 15 outbound-interface "{{ wan_interface }}"
+      - set nat source rule 15 source address '10.0.10.0/24'
+      - set nat source rule 15 translation address 'masquerade'
+    save: true
+
+- name: Firewall IPv4 rules
+  vyos.vyos.vyos_firewall_rules:
+    config:
+    - afi: ipv4
+      rule_sets:
+      - name: IPv4_WAN_LOCAL
+        description: IPv4 rules
+        default_action: drop
+        rules:
+        - number: 10
+          action: accept
+          description: IPv4 ICMP ALLOW
+          protocol: icmp
+        - number: 2
+          action: accept
+          description: IPSEC ALLOW
+          ipsec: match-ipsec
+    state: merged

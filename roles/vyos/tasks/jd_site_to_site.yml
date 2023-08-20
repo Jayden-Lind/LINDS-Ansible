@@ -7,7 +7,6 @@
 - name: IPSEC Site to Site
   vyos.vyos.vyos_config:
     lines:
-       - set vpn ipsec interface "{{ wan_interface }}"
        - set vpn ipsec esp-group MyESPGroup proposal 1 encryption aes128
        - set vpn ipsec esp-group MyESPGroup proposal 1 hash sha1
        - set vpn ipsec esp-group MyESPGroup proposal 2 encryption aes256gcm128
@@ -39,12 +38,12 @@
        - set vpn ipsec site-to-site peer LINDS tunnel 0 esp-group MyESPGroup
        - set vpn ipsec site-to-site peer LINDS tunnel 0 local prefix 10.0.50.0/24
        - set vpn ipsec site-to-site peer LINDS tunnel 0 local prefix 10.0.53.0/24
+       - set vpn ipsec site-to-site peer LINDS tunnel 0 local prefix 10.0.10.0/24
        - set vpn ipsec site-to-site peer LINDS tunnel 0 remote prefix 192.168.6.0/24
        - set vpn ipsec site-to-site peer LINDS tunnel 0 remote prefix 10.0.0.0/24
        - set vpn ipsec site-to-site peer LINDS tunnel 0 remote prefix 10.3.1.0/24
        - set vpn ipsec site-to-site peer LINDS tunnel 0 remote prefix 10.0.36.0/24
        - set vpn ipsec site-to-site peer LINDS tunnel 0 remote prefix 10.0.80.0/24
-       - set vpn ipsec site-to-site peer LINDS tunnel 0 remote prefix 10.0.10.0/24
        - set vpn ipsec site-to-site peer LINDS connection-type initiate
     save: true
 
