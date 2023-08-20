@@ -125,11 +125,24 @@
       - set service dhcp-server hostfile-update
       - set service dns forwarding listen-address 10.0.50.1
       - set service dns forwarding dhcp "{{ main_lan_interface }}"
+      - set service dns forwarding negative-ttl 60
       - set nat source rule 10 outbound-interface "{{ wan_interface }}"
       - set nat source rule 10 source address '10.0.50.0/24'
       - set nat source rule 10 translation address 'masquerade'
       - set nat source rule 10 destination group network-group !LAN-Addresses
       - set service router-advert interface "{{ main_lan_interface }}" prefix ::/56
+    save: true
+
+- name: Adding UBNT DHCP Option 43
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dhcp-server global-parameters 'option space ubnt;'
+      - set service dhcp-server global-parameters 'option ubnt.unifi-address code 1 = ip-address;'
+      - set service dhcp-server global-parameters 'class &quot;ubnt&quot; {'
+      - set service dhcp-server global-parameters 'match if substring (option vendor-class-identifier, 0, 4) = &quot;ubnt&quot;;'
+      - set service dhcp-server global-parameters 'option vendor-class-identifier &quot;ubnt&quot;;'
+      - set service dhcp-server global-parameters 'vendor-option-space ubnt;'
+      - set service dhcp-server global-parameters '}'
     save: true
 
 - name: Set up SNMP

@@ -10,5 +10,13 @@
       - set protocols bgp neighbor 10.0.53.7 remote-as 64500
       - set protocols bgp neighbor 10.0.53.7 update-source 10.3.1.1
       - set protocols bgp neighbor 10.0.53.7 ebgp-multihop '3'
+      - set protocols bgp neighbor 10.3.1.197 remote-as 64500
+      - set protocols bgp neighbor 10.3.1.197 update-source 10.3.1.1
+      - set protocols bgp neighbor 10.3.1.197 ebgp-multihop '3'
+      - set protocols bgp neighbor 10.3.1.197 address-family ipv4-unicast
+      - set protocols bgp neighbor 10.3.1.196 remote-as 64500
+      - set protocols bgp neighbor 10.3.1.196 update-source 10.3.1.1
+      - set protocols bgp neighbor 10.3.1.196 ebgp-multihop '3'
+      - set protocols bgp neighbor 10.3.1.196 address-family ipv4-unicast
       - set protocols bgp parameters router-id '10.3.1.1'
     save: true
