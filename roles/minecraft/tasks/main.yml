@@ -1,0 +1,53 @@
+---
+- name: Install Java
+  ansible.builtin.yum:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - "screen"
+    - "java-latest-openjdk"
+    - "nfs-utils"
+    - "net-tools"
+    - "wget"
+
+- name: Start server on startup
+  ansible.builtin.cron:
+    name: "Minecraft server"
+    special_time: reboot
+    job: "/root/LINDS/script.sh"
+
+- name: Start server on startup
+  ansible.builtin.cron:
+    name: "Minecraft server"
+    special_time: reboot
+    job: "screen -d -m bash -c 'cd /root/LINDS/ && /root/LINDS/script.sh'"
+
+- name: Hugepages for Minecraft Server Opt
+  ansible.posix.sysctl:
+    name: vm.nr_hugepages
+    value: '12288'
+    state: present
+
+- name: Create mount folder
+  ansible.builtin.file:
+    path: "/mnt/NAS"
+    state: directory
+    owner: root
+    group: root
+    mode: '0555'
+
+- name: Mount NFS NAS
+  ansible.posix.mount:
+    path: "/mnt/NAS"
+    src: "jd-truenas-01.linds.com.au:/mnt/NAS"
+    fstype: nfs4
+    opts: vers=4.2
+    state: mounted
+    boot: true
+
+- name: Copy Minecraft server to NAS
+  ansible.builtin.cron:
+    name: "Minecraft server copy"
+    hour: 23
+    minute: 0
+    job: "cp -pr /root/LINDS /mnt/NAS/minecraft/LINDS/"

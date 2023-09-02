@@ -49,6 +49,10 @@
     config:
       listen_addresses:
         - address: "192.168.6.1"
+      communities:
+        - authorization_type: "ro"
+          name: public
+
 
 - name: Enable LLDP
   vyos.vyos.vyos_lldp_global:

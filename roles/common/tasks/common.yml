@@ -61,3 +61,6 @@
 - name: Restart SSHD
   ansible.builtin.shell: "systemctl restart sshd"
   when: sshd.changed
+
+- name: Disable mitigations
+  ansible.builtin.shell: 'grubby --update-kernel=ALL --args="mitigations=off"'

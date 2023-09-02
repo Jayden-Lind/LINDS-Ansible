@@ -1,0 +1,6 @@
+---
+- name: Install minecraft
+  hosts: minecraft
+  roles:
+  - common
+  - minecraft
