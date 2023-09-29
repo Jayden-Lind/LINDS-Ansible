@@ -8,16 +8,21 @@
       - set nat destination rule 20 translation address '10.0.53.19'
     save: true
 
-- name: Minecraft firewall port forward
-  vyos.vyos.vyos_firewall_rules:
-    config:
-    - afi: ipv4
-      rule_sets:
-      - name: IPv4_WAN_IN
-        rules:
-        - number: 101
-          action: accept
-          description: Minecraft inbound
-          protocol: tcp_udp 
-          destination:
-            port: 25565
+- name: Minecraft Port forward - firewall
+  vyos.vyos.vyos_config:
+    lines:
+      - set firewall ipv4 input filter rule 6 action accept
+      - set firewall ipv4 input filter rule 6 destination port 25565
+      - set firewall ipv4 input filter rule 6 protocol tcp_udp
+      - set firewall ipv4 input filter rule 6 inbound-interface interface-name eth0
+      - set firewall ipv4 input filter rule 6 log enable
+    save: true
+
+- name: Plex Port forward
+  vyos.vyos.vyos_config:
+    lines:
+      - set nat destination rule 21 inbound-interface eth0
+      - set nat destination rule 21 protocol tcp_udp
+      - set nat destination rule 21 destination port 32400
+      - set nat destination rule 21 translation address '10.0.50.94'
+    save: true

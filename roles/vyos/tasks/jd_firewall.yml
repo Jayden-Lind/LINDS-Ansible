@@ -1,0 +1,23 @@
+- name: Set Firewall
+  vyos.vyos.vyos_config:
+    lines:
+      - set firewall ipv4 input filter default-action drop
+      # IPSEC Mobile
+      - set firewall ipv4 input filter rule 3 action accept
+      - set firewall ipv4 input filter rule 3 destination port 500,4500
+      - set firewall ipv4 input filter rule 3 protocol tcp_udp
+      - set firewall ipv4 input filter rule 3 log enable
+      - set firewall ipv4 input filter rule 3 inbound-interface interface-name eth0
+      #SSH
+      - set firewall ipv4 input filter rule 4 action accept
+      - set firewall ipv4 input filter rule 4 destination port 22
+      - set firewall ipv4 input filter rule 4 protocol tcp
+      - set firewall ipv4 input filter rule 4 source group network-group LAN-Addresses
+      - set firewall ipv4 input filter rule 4 log enable
+      #Plex
+      - set firewall ipv4 input filter rule 5 action accept
+      - set firewall ipv4 input filter rule 5 destination port 32400
+      - set firewall ipv4 input filter rule 5 protocol tcp_udp
+      - set firewall ipv4 input filter rule 5 inbound-interface interface-name eth0
+      - set firewall ipv4 input filter rule 5 log enable
+    save: true

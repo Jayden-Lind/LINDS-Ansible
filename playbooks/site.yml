@@ -16,4 +16,6 @@
 
 - name: Include torrent
   ansible.builtin.import_playbook: torrent.yml
-    
+
+- name: Include dev
+  ansible.builtin.import_playbook: dev.yml

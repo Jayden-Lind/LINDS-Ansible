@@ -102,22 +102,10 @@
     save: true
 
 - name: Set up firewall
-  vyos.vyos.vyos_firewall_global:
-    config:
-      validation: disable
-      log_martians: true
-      syn_cookies: true
-      twa_hazards_protection: true
-      ping:
-        all: true
-        broadcast: true
-      state_policy:
-      - connection_type: established
-        action: accept
-        log: false
-      - connection_type: invalid
-        action: accept
-        log: false
+  vyos.vyos.vyos_config:
+    lines:
+      - set firewall global-options all-ping enable
+      - set firewall global-options broadcast-ping enable
 
 - name: Point to NTP
   vyos.vyos.vyos_config:
