@@ -12,12 +12,12 @@
       - set protocols static table 100 route 0.0.0.0/0 interface wg101
       - set policy route NordVPN rule 100 set table 100
       - set policy route NordVPN rule 100 destination address 0.0.0.0/0
-      - set policy route NordVPN interface eth0.36
+      - set policy route NordVPN interface "{{ main_lan_interface }}".36
       - set policy route VPN rule 1 description 'Local destinations'
       - set policy route VPN rule 1 destination group network-group LAN-Addresses
       - set policy route VPN rule 1 set table 'main'
-      - set policy route VPN interface eth0.36
-      - set nat source rule 9999 outbound-interface wg101
+      - set policy route VPN interface "{{ main_lan_interface }}".36
+      - set nat source rule 9999 outbound-interface name wg101
       - set nat source rule 9999 source address '10.0.36.0/24'
       - set nat source rule 9999 translation address 'masquerade'
     save: true

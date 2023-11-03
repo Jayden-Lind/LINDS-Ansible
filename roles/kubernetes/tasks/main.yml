@@ -29,14 +29,14 @@
   ansible.builtin.dnf:
     name: kubelet
     state: latest
-    disable_excludes: kubernetes
+    disable_excludes: all
     nobest: true
 
 - name: Ensure K8s packages installed
   ansible.builtin.dnf:
     name: "{{ item }}"
     state: latest
-    disable_excludes: kubernetes
+    disable_excludes: all
   with_items:
     - kubeadm
     - kubectl

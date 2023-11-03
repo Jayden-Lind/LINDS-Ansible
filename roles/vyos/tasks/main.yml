@@ -15,16 +15,6 @@
 - name: Enable latency optimisation
   vyos.vyos.vyos_config:
     lines:
-       - set interfaces ethernet "{{ wan_interface }}" offload gro
-       - set interfaces ethernet "{{ wan_interface }}" offload gso
-       - set interfaces ethernet "{{ wan_interface }}" offload rfs
-       - set interfaces ethernet "{{ wan_interface }}" offload rps
-       - set interfaces ethernet "{{ wan_interface }}" offload sg
-    save: true
-
-- name: Enable latency optimisation
-  vyos.vyos.vyos_config:
-    lines:
        - set interfaces ethernet "{{ main_lan_interface }}" offload gro
        - set interfaces ethernet "{{ main_lan_interface }}" offload gso
        - set interfaces ethernet "{{ main_lan_interface }}" offload rfs
@@ -32,21 +22,17 @@
        - set interfaces ethernet "{{ main_lan_interface }}" offload sg
     save: true
 
-- name: Configure WAN interfaces
-  vyos.vyos.vyos_interfaces:
-    config:
-    - name: "{{ wan_interface }}"
-      description: WAN
-      enabled: yes
+- name: Enable DHCP on WAN
+  vyos.vyos.vyos_config:
+    lines:
+       - set interfaces ethernet "{{ wan_interface }}" address dhcp
+       - set interfaces ethernet "{{ wan_interface }}" address dhcpv6
+    save: true
 
-- name: DHCP on WAN
-  vyos.vyos.vyos_l3_interfaces:
-    config:
-    - name: "{{ wan_interface }}"
-      ipv4:
-      - address: dhcp
-      ipv6:
-      - address: dhcpv6
+- name: Disable mitigations
+  vyos.vyos.vyos_command:
+    commands: 
+    - sudo sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT=\"quiet\"/GRUB_CMDLINE_LINUX_DEFAULT=\"quiet mitigations=off\"/' /etc/default/grub
 
 - name: Enable latency optimisation
   vyos.vyos.vyos_config:

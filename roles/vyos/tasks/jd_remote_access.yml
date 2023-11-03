@@ -57,7 +57,7 @@
 - name: IPSEC Remote Access - NAT
   vyos.vyos.vyos_config:
     lines:
-      - set nat source rule 15 outbound-interface "{{ wan_interface }}"
+      - set nat source rule 15 outbound-interface name "{{ wan_interface }}"
       - set nat source rule 15 source address '10.0.10.0/24'
       - set nat source rule 15 translation address 'masquerade'
     save: true
