@@ -77,6 +77,8 @@
       - set service dns forwarding domain linds.com.au name-server 10.3.1.200
       - set service dns forwarding domain linds.com.au name-server 10.0.50.200
       - set service dns forwarding domain linds.com.au addnta
+      - set service dns forwarding domain k8s.linds.com.au name-server 10.96.0.10
+      - set service dns forwarding domain k8s.linds.com.au addnta
     save: true
 
 - name: Include WireGuard
