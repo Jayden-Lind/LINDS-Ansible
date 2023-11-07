@@ -104,3 +104,7 @@
 - name: Include Firewall
   ansible.builtin.include_tasks:
     file: jd_firewall.yml
+  
+- name: Include Remote Access Site to Site VPN
+  ansible.builtin.include_tasks:
+    file: jd_remote_access.yml
