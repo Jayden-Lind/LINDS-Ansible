@@ -63,23 +63,5 @@
       - set nat source rule 9 outbound-interface name "{{ main_lan_interface }}"
       - set nat source rule 9 destination group network-group LAN-Addresses
       - set nat source rule 9 source address '10.0.10.0/24'
+      - set nat source rule 9 exclude
     save: true
-
-- name: Firewall IPv4 rules
-  vyos.vyos.vyos_firewall_rules:
-    config:
-    - afi: ipv4
-      rule_sets:
-      - name: IPv4_WAN_LOCAL
-        description: IPv4 rules
-        default_action: drop
-        rules:
-        - number: 10
-          action: accept
-          description: IPv4 ICMP ALLOW
-          protocol: icmp
-        - number: 2
-          action: accept
-          description: IPSEC ALLOW
-          ipsec: match-ipsec
-    state: merged

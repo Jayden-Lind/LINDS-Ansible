@@ -4,6 +4,16 @@
     host_name: jd-vyos-01
     domain_name: linds.com.au
 
+- name: Enable latency optimisation
+  vyos.vyos.vyos_config:
+    lines:
+       - set interfaces ethernet "{{ wan_interface }}" offload gro
+       - set interfaces ethernet "{{ wan_interface }}" offload gso
+       - set interfaces ethernet "{{ wan_interface }}" offload rfs
+       - set interfaces ethernet "{{ wan_interface }}" offload rps
+       - set interfaces ethernet "{{ wan_interface }}" offload sg
+    save: true
+
 - name: Set IP on LAN
   vyos.vyos.vyos_l3_interfaces:
     config:

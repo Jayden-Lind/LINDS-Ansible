@@ -34,6 +34,16 @@
     commands: 
     - sudo sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT=\"quiet\"/GRUB_CMDLINE_LINUX_DEFAULT=\"quiet mitigations=off\"/' /etc/default/grub
 
+- name: Enable ethtool WAN offloading
+  vyos.vyos.vyos_command:
+    commands: 
+    - |
+      cat >/config/scripts/vyos-postconfig-bootup.script <<EOL
+      #!/bin/sh
+      ethtool -K "{{ wan_interface }}" rx on tx on sg on tso on gro on gso on rx-udp-gro-forwarding on
+      EOL
+
+
 - name: Enable latency optimisation
   vyos.vyos.vyos_config:
     lines:
@@ -72,11 +82,13 @@
 - name: Set Dynamic DNS
   vyos.vyos.vyos_config:
     lines:
-      - set service dns dynamic address "{{ wan_interface }}" service DuckDNS host-name "{{ dyn_host }}"
-      - set service dns dynamic address "{{ wan_interface }}" service DuckDNS username nouser
-      - set service dns dynamic address "{{ wan_interface }}" service DuckDNS password "{{ dyn_dns }}"
-      - set service dns dynamic address "{{ wan_interface }}" service DuckDNS protocol dyndns2
-      - set service dns dynamic address "{{ wan_interface }}" service DuckDNS server www.duckdns.org
+      - set service dns dynamic address "{{ wan_interface }}" service Cloudflare protocol cloudflare
+      - set service dns dynamic address "{{ wan_interface }}" service Cloudflare username token 
+      - set service dns dynamic address "{{ wan_interface }}" service Cloudflare password "{{ cf_dyn_dns_key }}" 
+      - set service dns dynamic address "{{ wan_interface }}" service Cloudflare ip-version both
+      - set service dns dynamic address "{{ wan_interface }}" service Cloudflare host-name "{{ dyn_host }}"
+      - set service dns dynamic address "{{ wan_interface }}" service Cloudflare protocol cloudflare
+      - set service dns dynamic address "{{ wan_interface }}" service Cloudflare zone "{{ cf_dyn_dns_zone }}"
     save: true
 
 - name: Set UPnP
