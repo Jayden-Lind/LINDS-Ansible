@@ -8,10 +8,10 @@ roles:
 - name: claranet.motd
 collections:
 - name: ansible.posix
-- name: ansibleguy.opnsense
 - name: community.general
 - name: devsec.hardening
-- name: ansibleguy.opnsense
 - name: kubernetes.core
 - name: arensb.truenas
 - name: vyos.vyos
+- name: community.crypto
+- name: community.vmware

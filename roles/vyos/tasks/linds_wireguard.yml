@@ -20,4 +20,4 @@
       - set nat source rule 9999 outbound-interface name wg101
       - set nat source rule 9999 source address '10.0.36.0/24'
       - set nat source rule 9999 translation address 'masquerade'
-    save: true
+    

@@ -4,5 +4,3 @@
   - common
   - ansible
   tasks:
-  # - debug:
-  #     var: ansible_facts

@@ -15,15 +15,13 @@
       - set vpn ipsec ike-group RemoteAccessIKE proposal 4 encryption aes256
       - set vpn ipsec ike-group RemoteAccessIKE proposal 4 hash sha256
       - set vpn ipsec ike-group RemoteAccessIKE proposal 4 dh-group 14
-    save: true
-
+    
 - name: Create IPSEC Remote Access ESP
   vyos.vyos.vyos_config:
     lines:
       - set vpn ipsec esp-group RemoteAccessESP proposal 1 encryption aes256gcm128
       - set vpn ipsec esp-group RemoteAccessESP proposal 1 hash sha256
-    save: true
-
+    
 - name: Set certificate for IPSEC Remote access
   vyos.vyos.vyos_config:
     lines:
@@ -44,13 +42,11 @@
       - set vpn ipsec remote-access pool MOBILE prefix 10.0.10.0/24
       - set vpn ipsec remote-access connection LINDS_MOBILE local prefix 0.0.0.0/0
       - set vpn ipsec remote-access connection LINDS_MOBILE pool MOBILE
-    save: true
-
+    
 - name: IPSEC Remote Access - Users
   vyos.vyos.vyos_config:
     lines:
       - set vpn ipsec remote-access connection LINDS_MOBILE authentication local-users username "{{ item.user }}" password "{{ item.password }}"
-    save: true
   loop: "{{ ipsec_users }}"
 
 
@@ -64,4 +60,4 @@
       - set nat source rule 9 destination group network-group LAN-Addresses
       - set nat source rule 9 source address '10.0.10.0/24'
       - set nat source rule 9 exclude
-    save: true
+    

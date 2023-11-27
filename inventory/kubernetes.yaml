@@ -1,7 +1,6 @@
 ---
 kubernetes:
   hosts:
-    #localhost:
   children:
     nodes:
       hosts:

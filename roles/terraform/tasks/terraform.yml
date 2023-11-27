@@ -12,11 +12,6 @@
     gpgkey: "https://rpm.releases.hashicorp.com/gpg"
     gpgcheck: true
 
-# - name: Ensure Podman is installed
-#   ansible.builtin.dnf:
-#     name: podman
-#     state: latest
-
 - name: Ensure packages is installed
   ansible.builtin.dnf:
     name: "{{ item }}"

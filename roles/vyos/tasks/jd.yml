@@ -12,8 +12,7 @@
        - set interfaces ethernet "{{ wan_interface }}" offload rfs
        - set interfaces ethernet "{{ wan_interface }}" offload rps
        - set interfaces ethernet "{{ wan_interface }}" offload sg
-    save: true
-
+    
 - name: Set IP on LAN
   vyos.vyos.vyos_l3_interfaces:
     config:
@@ -42,13 +41,11 @@
       - set nat source rule 10 source address '10.0.50.0/24'
       - set nat source rule 10 translation address 'masquerade'
       - set nat source rule 10 destination group network-group !LAN-Addresses
-      - set interfaces ethernet "{{ wan_interface }}" ipv6 address autoconf
       - set interfaces ethernet "{{ wan_interface }}" address dhcpv6
       - set interfaces ethernet "{{ wan_interface }}" dhcpv6-options pd 0 length '56'
       - set interfaces ethernet "{{ wan_interface }}" dhcpv6-options pd 0 interface "{{ main_lan_interface }}" sla-id '0'
       - set service router-advert interface "{{ main_lan_interface }}" prefix ::/64
-    save: true
-
+    
 - name: Adding UBNT DHCP Option 43
   vyos.vyos.vyos_config:
     lines:
@@ -59,8 +56,7 @@
       - set service dhcp-server global-parameters 'option vendor-class-identifier &quot;ubnt&quot;;'
       - set service dhcp-server global-parameters 'vendor-option-space ubnt;'
       - set service dhcp-server global-parameters '}'
-    save: true
-
+    
 - name: Set up SNMP
   vyos.vyos.vyos_snmp_server:
     config:
@@ -89,8 +85,7 @@
       - set service dns forwarding domain linds.com.au addnta
       - set service dns forwarding domain k8s.linds.com.au name-server 10.96.0.10
       - set service dns forwarding domain k8s.linds.com.au addnta
-    save: true
-
+    
 - name: Include WireGuard
   ansible.builtin.include_tasks:
     file: jd_wireguard.yml

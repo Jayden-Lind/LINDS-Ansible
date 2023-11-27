@@ -3,15 +3,14 @@
   vyos.vyos.vyos_config:
     lines:
        - "set pki ca LINDS certificate {{ item }}"
-    save: true
   with_file: linds-ca.cer
+    
 
 - name: Set tz
   vyos.vyos.vyos_config:
     lines:
        - "set system time-zone Australia/Melbourne"
-    save: true
-
+    
 - name: Enable latency optimisation
   vyos.vyos.vyos_config:
     lines:
@@ -20,15 +19,13 @@
        - set interfaces ethernet "{{ main_lan_interface }}" offload rfs
        - set interfaces ethernet "{{ main_lan_interface }}" offload rps
        - set interfaces ethernet "{{ main_lan_interface }}" offload sg
-    save: true
-
+    
 - name: Enable DHCP on WAN
   vyos.vyos.vyos_config:
     lines:
        - set interfaces ethernet "{{ wan_interface }}" address dhcp
        - set interfaces ethernet "{{ wan_interface }}" address dhcpv6
-    save: true
-
+    
 - name: Disable mitigations
   vyos.vyos.vyos_command:
     commands: 
@@ -48,8 +45,7 @@
   vyos.vyos.vyos_config:
     lines:
        - "set system option performance throughput"
-    save: true
-
+    
 - name: Create firewall group
   vyos.vyos.vyos_firewall_global:
     config:
@@ -77,8 +73,7 @@
       - set service dns forwarding allow-from 10.0.0.0/8
       - set service dns forwarding allow-from 172.16.0.0/12
       - set service dns forwarding allow-from 192.168.0.0/16
-    save: true
-
+    
 - name: Set Dynamic DNS
   vyos.vyos.vyos_config:
     lines:
@@ -89,16 +84,14 @@
       - set service dns dynamic address "{{ wan_interface }}" service Cloudflare host-name "{{ dyn_host }}"
       - set service dns dynamic address "{{ wan_interface }}" service Cloudflare protocol cloudflare
       - set service dns dynamic address "{{ wan_interface }}" service Cloudflare zone "{{ cf_dyn_dns_zone }}"
-    save: true
-
+    
 - name: Set UPnP
   vyos.vyos.vyos_config:
     lines:
       - set service upnp wan-interface "{{ wan_interface }}"
       - set service upnp listen "{{ main_lan_interface }}"
       - set service upnp nat-pmp
-    save: true
-
+    
 - name: Set up firewall
   vyos.vyos.vyos_config:
     lines:
@@ -109,8 +102,7 @@
   vyos.vyos.vyos_config:
     lines:
       - set service ntp server 0.au.pool.ntp.org
-    save: true
-
+    
 - name: Run JD VyOS
   ansible.builtin.include_tasks:
     file: jd.yml

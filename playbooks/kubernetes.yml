@@ -6,7 +6,3 @@
   roles:
     - common
     - kubernetes
-# - hosts: all
-#   tasks:
-#   - debug:
-#       var: ansible_facts

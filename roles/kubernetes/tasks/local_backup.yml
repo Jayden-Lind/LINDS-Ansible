@@ -42,7 +42,3 @@
     path: "{{ k8s_var['arr_local_dir'] }}/present"
     state: touch
   when: st['stat']['exists'] == false
-
-- name: Print return information from the previous task
-  ansible.builtin.debug:
-    var: st

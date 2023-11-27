@@ -23,8 +23,7 @@
       - set service dhcp-server shared-network-name torrent-lan subnet 10.0.51.0/24 range 0 start 10.0.51.2
       - set service dhcp-server shared-network-name torrent-lan subnet 10.0.51.0/24 range 0 stop 10.0.51.199
       - set service dhcp-server shared-network-name torrent-lan subnet 10.0.51.0/24 default-router 10.0.51.1
-    save: true
-
+    
 - name: Create VLAN Dev
   vyos.vyos.vyos_vlan:
     vlan_id: 53
@@ -59,4 +58,3 @@
       - set nat source rule 12 source address '10.0.53.0/24'
       - set nat source rule 12 translation address 'masquerade'
       - set nat source rule 12 destination group network-group !LAN-Addresses
-    save: true

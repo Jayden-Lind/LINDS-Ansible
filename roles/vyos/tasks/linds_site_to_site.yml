@@ -47,4 +47,4 @@
        - set vpn ipsec site-to-site peer LINDS tunnel 0 local prefix 10.0.36.0/24
        - set vpn ipsec site-to-site peer LINDS tunnel 0 local prefix 10.0.80.0/24
        - set vpn ipsec site-to-site peer LINDS connection-type initiate
-    save: true
+    

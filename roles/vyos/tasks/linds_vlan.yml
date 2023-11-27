@@ -34,8 +34,7 @@
       - set nat source rule 21 source address '10.3.1.0/24'
       - set nat source rule 21 translation address 'masquerade'
       - set nat source rule 21 destination group network-group !LAN-Addresses
-    save: true
-
+    
 - name: Create VLAN Management
   vyos.vyos.vyos_vlan:
     vlan_id: 80
@@ -71,8 +70,7 @@
       - set nat source rule 22 translation address 'masquerade'
       - set nat source rule 22 destination group network-group !LAN-Addresses
       - set service dhcp-server shared-network-name LINDS_MANAGEMENT subnet 10.0.80.0/24 subnet-parameters 'option ubnt.unifi-address 172.16.10.2;'
-    save: true
-
+    
 - name: Create VLAN VPN
   vyos.vyos.vyos_vlan:
     vlan_id: 36
@@ -107,8 +105,7 @@
       - set nat source rule 22 source address '10.0.36.0/24'
       - set nat source rule 22 translation address 'masquerade'
       - set nat source rule 22 destination group network-group !LAN-Addresses
-    save: true
-
+    
 - name: Create VLAN cameras
   vyos.vyos.vyos_vlan:
     vlan_id: 110
@@ -139,4 +136,3 @@
       - set service dhcp-server shared-network-name LINDS_CAMERAS domain-search linds.com.au
       - set service dns forwarding dhcp "{{ main_lan_interface }}"
       - set service dns forwarding listen-address 10.0.110.1
-    save: true

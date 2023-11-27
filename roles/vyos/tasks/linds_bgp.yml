@@ -7,4 +7,3 @@
       - set protocols bgp peer-group k8s address-family ipv4-unicast
       - set protocols bgp peer-group k8s remote-as '64512'
       - set protocols bgp system-as '64551'
-    save: true

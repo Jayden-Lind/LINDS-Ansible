@@ -3,6 +3,3 @@
   roles:
   - common
   - terraform
-  tasks:
-  # - debug:
-  #     var: ansible_facts
