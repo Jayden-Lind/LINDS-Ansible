@@ -34,6 +34,7 @@
       - set service dhcp-server shared-network-name JD-LAN domain-search linds.com.au
       - set service dhcp-server host-decl-name
       - set service dhcp-server hostfile-update
+      - set service dhcp-server dynamic-dns-update
       - set service dns forwarding listen-address 10.0.50.1
       - set service dns forwarding dhcp "{{ main_lan_interface }}"
       - set service dns forwarding negative-ttl 60

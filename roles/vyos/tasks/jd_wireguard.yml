@@ -20,3 +20,25 @@
       - set nat source rule 9999 outbound-interface name wg101
       - set nat source rule 9999 source address '10.0.51.0/24'
       - set nat source rule 9999 translation address 'masquerade'
+
+- name: Wireguard for US VPN
+  vyos.vyos.vyos_config:
+    lines:
+      - set interfaces wireguard wg10 address 10.5.0.2/32
+      - set interfaces wireguard wg10 peer nordvpn address "{{ wg_us_host }}"
+      - set interfaces wireguard wg10 peer nordvpn allowed-ips '0.0.0.0/0'
+      - set interfaces wireguard wg10 peer nordvpn port '51820'
+      - set interfaces wireguard wg10 peer nordvpn public-key "{{ wg_us_pub_key }}"
+      - set interfaces wireguard wg10 private-key "{{ wg_us_priv_key }}"
+      - set interfaces wireguard wg10 peer nordvpn persistent-keepalive 25
+      - set protocols static table 90 route 0.0.0.0/0 interface wg10
+      - set policy route NordVPNUS interface "{{ main_lan_interface }}.58" 
+      - set policy route NordVPNUS rule 9 destination group network-group 'LAN-Addresses'
+      - set policy route NordVPNUS rule 9 set table 'main'
+      - set policy route NordVPNUS rule 9 source address '10.0.58.0/24'
+      - set policy route NordVPNUS rule 10 destination address '0.0.0.0/0'
+      - set policy route NordVPNUS rule 10 set table '90'
+      - set policy route NordVPNUS rule 10  source address '10.0.58.0/24'
+      - set nat source rule 9998 outbound-interface name 'wg10'
+      - set nat source rule 9998 source address '10.0.58.0/24'
+      - set nat source rule 9998 translation address 'masquerade'

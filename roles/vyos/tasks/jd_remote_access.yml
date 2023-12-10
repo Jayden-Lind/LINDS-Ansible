@@ -26,7 +26,7 @@
   vyos.vyos.vyos_config:
     lines:
       - set pki certificate jd-pfsense.linds.com.au certificate "{{ ipsec_remote_pub }}"
-      - set pki certificate jd-pfsense.linds.com.au private key "{{ ipsec_remote_priv }}""
+      - set pki certificate jd-pfsense.linds.com.au private key "{{ ipsec_remote_priv }}"
 
 - name: IPSEC Remote Access
   vyos.vyos.vyos_config:

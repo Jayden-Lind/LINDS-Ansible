@@ -14,7 +14,7 @@
       - set firewall ipv4 input filter rule 6 destination port 25565
       - set firewall ipv4 input filter rule 6 protocol tcp_udp
       - set firewall ipv4 input filter rule 6 inbound-interface name "{{ wan_interface }}"
-      - set firewall ipv4 input filter rule 6 log enable
+      - set firewall ipv4 input filter rule 6 log 
     
 - name: Plex Port forward
   vyos.vyos.vyos_config:

@@ -27,6 +27,7 @@
       - set service dhcp-server shared-network-name LINDS-LAN domain-search linds.com.au
       - set service dhcp-server host-decl-name
       - set service dhcp-server hostfile-update
+      - set service dhcp-server dynamic-dns-update
       - set service dns forwarding listen-address 192.168.6.1
       - set service dns forwarding dhcp "{{ main_lan_interface }}"
       - set service dns forwarding negative-ttl 60
