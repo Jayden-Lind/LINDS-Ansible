@@ -4,15 +4,28 @@
     name: "{{ item }}"
     state: latest
   with_items: 
-    - transmission
-    - transmission-cli
-    - transmission-qt
-    - transmission-daemon
+    - qbittorrent
+    - qbittorrent-nox
     - cifs-utils
+
+- name: Create nas directory
+  ansible.builtin.file:
+    path: /root/.config/qBittorrent
+    state: directory
+    mode: '0755'
+
+- name: Copy Transmission settings
+  ansible.builtin.copy:
+    src: qBittorrent.conf
+    dest: /root/.config/qBittorrent/qBittorrent.conf
+    owner: root
+    group: root
+    mode: '600'
+    #decrypt: true
 
 - name: Start transmission
   ansible.builtin.service:
-    name: transmission-daemon
+    name: qbittorrent-nox@root.service
     state: started
     enabled: true
 
@@ -40,11 +53,14 @@
   ansible.builtin.shell: "mount -a"
   when: mount.changed
 
-- name: Copy Transmission settings
-  ansible.builtin.copy:
-    src: settings.json
-    dest: /var/lib/transmission/.config/transmission-daemon/settings.json
-    owner: transmission
-    group: transmission
-    mode: '600'
-    decrypt: true
+- name: Set Sysctl
+  ansible.posix.sysctl:
+    name: net.core.rmem_max
+    value: '16777216'
+    sysctl_set: true
+
+- name: Set Sysctl
+  ansible.posix.sysctl:
+    name: net.core.wmem_max
+    value: '16777216'
+    sysctl_set: true

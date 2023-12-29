@@ -1,7 +1,7 @@
-[devel_kubic_libcontainers_stable]
-name=Stable Releases of Upstream github.com/containers packages (CentOS_9_Stream)
+[devel_kubic_libcontainers_stable_cri-o_1.28]
+name=devel:kubic:libcontainers:stable:cri-o:1.28 (CentOS_9_Stream)
 type=rpm-md
-baseurl=https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/CentOS_9_Stream/
+baseurl=https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/1.28/CentOS_9_Stream/
 gpgcheck=1
-gpgkey=https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/CentOS_9_Stream/repodata/repomd.xml.key
+gpgkey=https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/1.28/CentOS_9_Stream/repodata/repomd.xml.key
 enabled=1

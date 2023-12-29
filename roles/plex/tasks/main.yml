@@ -1,13 +1,4 @@
 ---
-
-- name: Print return information from the previous task
-  ansible.builtin.debug:
-    var: group_names
-
-- name: Print return information from the previous task
-  ansible.builtin.debug:
-    var: role_name
-
 - name: Include vars
   ansible.builtin.include_vars:
     file: plex.yml
@@ -22,7 +13,7 @@
     name: robertdebock.autofs
   vars:
     autofs_maps:
-      - name: "jd_plex_mount_{{ server }}"
+      - name: jd_plex_mount_{{ server }}
         mountpoint: /mnt/
         options:
           - "--timeout 60"
@@ -37,9 +28,15 @@
               - "vers=3.1.1"
               - "dir_mode=0777"
               - "file_mode=0777"
+              - "soft"
             path: "nas"
+          - server: "{{ truenas_host }}:{{ truenas_path }}"
+            options:
+              - "fstype=nfs4"
+              - "vers=4.2"
+              - "soft"
+            path: "truenas"
   when: inventory_hostname in groups['jd']
-
 
 - name: Mount NFS Truenas
   ansible.builtin.include_role:
@@ -69,7 +66,16 @@
               - "vers=3.1.1"
               - "dir_mode=0777"
               - "file_mode=0777"
+              - "soft"
             path: "cifs"
+          - server: "{{ truenas_host }}:{{ truenas_path }}"
+            options:
+              - "fstype=nfs4"
+              - "vers=4.2"
+              - "soft"
+            path: "truenas"
   when: inventory_hostname in groups['linds']
 
-
+- name: Include Backup
+  ansible.builtin.include_tasks:
+    file: backup.yml

@@ -58,6 +58,14 @@
     dest: /etc/ssh/sshd_config.d
   register: sshd
 
+- name: Stop and disable useless services
+  service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  with_items: 
+    - firewalld
+
 - name: Restart SSHD
   ansible.builtin.shell: "systemctl restart sshd"
   when: sshd.changed
