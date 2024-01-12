@@ -32,6 +32,7 @@
       - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 default-router 10.0.50.1
       - set service dhcp-server shared-network-name JD-LAN domain-name linds.com.au
       - set service dhcp-server shared-network-name JD-LAN domain-search linds.com.au
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 time-zone Australia/Melbourne
       - set service dhcp-server host-decl-name
       - set service dhcp-server hostfile-update
       - set service dhcp-server dynamic-dns-update
@@ -86,7 +87,13 @@
       - set service dns forwarding domain linds.com.au addnta
       - set service dns forwarding domain k8s.linds.com.au name-server 10.96.0.10
       - set service dns forwarding domain k8s.linds.com.au addnta
-    
+
+- name: Set up auto-update
+  vyos.vyos.vyos_config:
+    lines:
+      - set system update-check auto-check
+      - set system update-check url 'https://raw.githubusercontent.com/vyos/vyos-rolling-nightly-builds/main/version.json'
+
 - name: Include WireGuard
   ansible.builtin.include_tasks:
     file: jd_wireguard.yml

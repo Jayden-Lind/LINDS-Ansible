@@ -56,8 +56,5 @@
       - set nat source rule 15 outbound-interface name "{{ wan_interface }}"
       - set nat source rule 15 source address '10.0.10.0/24'
       - set nat source rule 15 translation address 'masquerade'
-      - set nat source rule 9 outbound-interface name "{{ main_lan_interface }}"
-      - set nat source rule 9 destination group network-group LAN-Addresses
-      - set nat source rule 9 source address '10.0.10.0/24'
-      - set nat source rule 9 exclude
+      - set nat source rule 15 destination group network-group '!LAN-Addresses'
     
