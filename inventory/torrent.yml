@@ -7,3 +7,9 @@ torrent:
       vars:
         smb_server: 10.0.50.200
         smb_path: nas
+    linds_torrent:
+      hosts:
+        "10.0.36.4":
+      vars:
+        nfs_server: "linds-truenas-01"
+        nfs_path: "/mnt/ZFS_NAS"

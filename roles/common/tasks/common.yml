@@ -9,6 +9,22 @@
     state: latest
   ignore_errors: true
 
+- name: Install common packages
+  ansible.builtin.dnf:
+    name: "{{ item }}"
+    state: latest
+  ignore_errors: true
+  with_items: 
+    -  qemu-guest-agent
+
+- name: Start qemu-guest-agent
+  service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  with_items: 
+    - qemu-guest-agent
+
 - name: Enable Auto Update
   ansible.builtin.include_role:
     name: robertdebock.auto_update

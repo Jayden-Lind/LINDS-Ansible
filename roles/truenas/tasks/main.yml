@@ -7,10 +7,6 @@
   arensb.truenas.hostname:
     name: "{{ hostname }}"
 
-- name: Enable NFSv4
-  arensb.truenas.nfs:
-    nfsv4: true
-
 - name: Share out NAS
   arensb.truenas.sharing_nfs:
     name: NFS_NAS_Kubernetes
@@ -19,7 +15,8 @@
       - 10.0.50.0/24
       - 10.0.53.0/24
       - 10.3.1.0/24
-    mapall_user: root
+    maproot_user: root
+    maproot_group: wheel
   when: inventory_hostname in groups['jd_truenas']
 
 - name: Create snapshos
@@ -28,7 +25,7 @@
     lifetime_value: 2
     lifetime_unit: weeks
     minute: "0"
-    hour: "0"
+    hour: "2"
     day: "*"
     month: "*"
     name_format: "hourly-%Y-%m-%d_%H:%M"

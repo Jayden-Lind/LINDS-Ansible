@@ -1,0 +1,32 @@
+---
+- name: Include vars
+  ansible.builtin.include_vars:
+    file: torrent.yml
+    name: torrent
+
+- name: Copy Transmission settings
+  ansible.builtin.copy:
+    src: qBittorrent.conf
+    dest: /root/.config/qBittorrent/qBittorrent.conf
+    owner: root
+    group: root
+    mode: '600'
+
+- name: Create nas directory
+  ansible.builtin.file:
+    path: /mnt/nas
+    state: directory
+    mode: '0755'
+
+- name: Mount SMB NAS
+  ansible.posix.mount:
+    src: "//{{ smb_server }}/{{ smb_path }}"
+    path: /mnt/nas
+    fstype: cifs
+    opts: "username={{ torrent.smb_username }},password={{ torrent.smb_password }},domain=linds.com.au,dir_mode=0777,file_mode=0777,nounix"
+    state: present
+  register: mount
+
+- name: Mount NAS if changed
+  ansible.builtin.shell: "mount -a"
+  when: mount.changed

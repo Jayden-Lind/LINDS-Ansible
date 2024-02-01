@@ -7,51 +7,41 @@
     - qbittorrent
     - qbittorrent-nox
     - cifs-utils
+    - nfs-utils
 
-- name: Create nas directory
+- name: Stop service qbittorrent, if started
+  ansible.builtin.service:
+    name: qbittorrent
+    state: stopped
+  ignore_errors: true
+
+- name: Stop service qbittorrent, if started
+  ansible.builtin.service:
+    name: "system-qbittorrent\\x2dnox.slice"
+    state: stopped
+  ignore_errors: true
+
+- name: Create config directory
   ansible.builtin.file:
     path: /root/.config/qBittorrent
     state: directory
     mode: '0755'
 
-- name: Copy Transmission settings
-  ansible.builtin.copy:
-    src: qBittorrent.conf
-    dest: /root/.config/qBittorrent/qBittorrent.conf
-    owner: root
-    group: root
-    mode: '600'
-    #decrypt: true
+- name: Include JD
+  ansible.builtin.include_tasks:
+    file: jd.yml
+  when: inventory_hostname in groups['jd_torrent']
+
+- name: Include LINDS
+  ansible.builtin.include_tasks:
+    file: linds.yml
+  when: inventory_hostname in groups['linds_torrent']
 
 - name: Start transmission
   ansible.builtin.service:
     name: qbittorrent-nox@root.service
     state: started
     enabled: true
-
-- name: Include vars
-  ansible.builtin.include_vars:
-    file: torrent.yml
-    name: torrent
-
-- name: Create nas directory
-  ansible.builtin.file:
-    path: /mnt/nas
-    state: directory
-    mode: '0755'
-
-- name: Mount SMB NAS
-  ansible.posix.mount:
-    src: "//{{ smb_server }}/{{ smb_path }}"
-    path: /mnt/nas
-    fstype: cifs
-    opts: "username={{ torrent.smb_username }},password={{ torrent.smb_password }},domain=linds.com.au,dir_mode=0777,file_mode=0777,nounix"
-    state: present
-  register: mount
-
-- name: Mount NAS if changed
-  ansible.builtin.shell: "mount -a"
-  when: mount.changed
 
 - name: Set Sysctl
   ansible.posix.sysctl:
