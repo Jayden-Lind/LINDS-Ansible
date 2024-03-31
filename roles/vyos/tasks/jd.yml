@@ -24,16 +24,14 @@
   vyos.vyos.vyos_config:
     lines:
       - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 
-      - set service dhcp-server shared-network-name JD-LAN domain-search linds.com.au
-      - set service dhcp-server shared-network-name JD-LAN name-server 10.0.50.1
-      - set service dhcp-server shared-network-name JD-LAN name-server 10.0.50.200
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option domain-search linds.com.au
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option name-server 10.0.50.1
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option name-server 10.0.50.200
       - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 range 0 start 10.0.50.2
       - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 range 0 stop 10.0.50.199
-      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 default-router 10.0.50.1
-      - set service dhcp-server shared-network-name JD-LAN domain-name linds.com.au
-      - set service dhcp-server shared-network-name JD-LAN domain-search linds.com.au
-      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 time-zone Australia/Melbourne
-      - set service dhcp-server host-decl-name
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option default-router 10.0.50.1
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option domain-name linds.com.au
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option time-zone Australia/Melbourne
       - set service dhcp-server hostfile-update
       - set service dhcp-server dynamic-dns-update
       - set service dns forwarding listen-address 10.0.50.1
@@ -48,17 +46,6 @@
       - set interfaces ethernet "{{ wan_interface }}" dhcpv6-options pd 0 interface "{{ main_lan_interface }}" sla-id '0'
       - set service router-advert interface "{{ main_lan_interface }}" prefix ::/64
     
-- name: Adding UBNT DHCP Option 43
-  vyos.vyos.vyos_config:
-    lines:
-      - set service dhcp-server global-parameters 'option space ubnt;'
-      - set service dhcp-server global-parameters 'option ubnt.unifi-address code 1 = ip-address;'
-      - set service dhcp-server global-parameters 'class &quot;ubnt&quot; {'
-      - set service dhcp-server global-parameters 'match if substring (option vendor-class-identifier, 0, 4) = &quot;ubnt&quot;;'
-      - set service dhcp-server global-parameters 'option vendor-class-identifier &quot;ubnt&quot;;'
-      - set service dhcp-server global-parameters 'vendor-option-space ubnt;'
-      - set service dhcp-server global-parameters '}'
-    
 - name: Set up SNMP
   vyos.vyos.vyos_snmp_server:
     config:
@@ -68,21 +55,21 @@
         - authorization_type: "ro"
           name: public
 
-- name: Enable LLDP
-  vyos.vyos.vyos_lldp_global:
-    config:
-      legacy_protocols:
-      - fdp
-      - cdp
-      - edp
-      - sonmp
-      snmp: enable
+- name: Create DHCP for LAN
+  vyos.vyos.vyos_config:
+    lines:
+    - set service lldp legacy-protocols cdp
+    - set service lldp legacy-protocols edp
+    - set service lldp legacy-protocols fdp
+    - set service lldp legacy-protocols sonmp
+    - set service lldp snmp
 
 - name: Set DNS for global
   vyos.vyos.vyos_config:
     lines:
       - set service dns forwarding domain linds.com.au name-server 192.168.6.1
       - set service dns forwarding domain linds.com.au name-server 10.3.1.200
+      - set service dns forwarding domain linds.com.au name-server 10.3.1.201
       - set service dns forwarding domain linds.com.au name-server 10.0.50.200
       - set service dns forwarding domain linds.com.au addnta
       - set service dns forwarding domain k8s.linds.com.au name-server 10.96.0.10

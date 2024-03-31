@@ -6,40 +6,34 @@
       - set firewall ipv4 input filter rule 3 action accept
       - set firewall ipv4 input filter rule 3 destination port 500,4500
       - set firewall ipv4 input filter rule 3 protocol tcp_udp
-      - set firewall ipv4 input filter rule 3 log
       - set firewall ipv4 input filter rule 3 inbound-interface name "{{ wan_interface }}"
       #SSH
       - set firewall ipv4 input filter rule 4 action accept
       - set firewall ipv4 input filter rule 4 destination port 22
       - set firewall ipv4 input filter rule 4 protocol tcp
       - set firewall ipv4 input filter rule 4 source group network-group LAN-Addresses
-      - set firewall ipv4 input filter rule 4 log
       #Plex
       - set firewall ipv4 input filter rule 5 action accept
       - set firewall ipv4 input filter rule 5 destination port 32400
       - set firewall ipv4 input filter rule 5 protocol tcp_udp
       - set firewall ipv4 input filter rule 5 inbound-interface name "{{ wan_interface }}"
-      - set firewall ipv4 input filter rule 5 log
 
       #DNS
       - set firewall ipv4 input filter rule 9 action accept
       - set firewall ipv4 input filter rule 9 destination port 53
       - set firewall ipv4 input filter rule 9 protocol tcp_udp
-      - set firewall ipv4 input filter rule 9 log
       - set firewall ipv4 input filter rule 9 source group network-group LAN-Addresses
 
       #SNMP
       - set firewall ipv4 input filter rule 10 action accept
       - set firewall ipv4 input filter rule 10 destination port 161
       - set firewall ipv4 input filter rule 10 protocol udp
-      - set firewall ipv4 input filter rule 10 log
       - set firewall ipv4 input filter rule 10 source group network-group LAN-Addresses
 
       #NTP
       - set firewall ipv4 input filter rule 11 action accept
       - set firewall ipv4 input filter rule 11 destination port 123
       - set firewall ipv4 input filter rule 11 protocol udp
-      - set firewall ipv4 input filter rule 11 log
       - set firewall ipv4 input filter rule 11 source group network-group LAN-Addresses
 
     

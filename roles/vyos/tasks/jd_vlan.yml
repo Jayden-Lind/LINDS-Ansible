@@ -19,10 +19,10 @@
   vyos.vyos.vyos_config:
     lines:
       - set service dhcp-server shared-network-name torrent-lan subnet 10.0.51.0/24 
-      - set service dhcp-server shared-network-name torrent-lan name-server 1.1.1.1
+      - set service dhcp-server shared-network-name torrent-lan subnet 10.0.51.0/24 option name-server 1.1.1.1
       - set service dhcp-server shared-network-name torrent-lan subnet 10.0.51.0/24 range 0 start 10.0.51.2
       - set service dhcp-server shared-network-name torrent-lan subnet 10.0.51.0/24 range 0 stop 10.0.51.199
-      - set service dhcp-server shared-network-name torrent-lan subnet 10.0.51.0/24 default-router 10.0.51.1
+      - set service dhcp-server shared-network-name torrent-lan subnet 10.0.51.0/24 option default-router 10.0.51.1
     
 - name: Create VLAN Dev
   vyos.vyos.vyos_vlan:
@@ -45,13 +45,12 @@
   vyos.vyos.vyos_config:
     lines:
       - set service dhcp-server shared-network-name VLAN_DEV subnet 10.0.53.0/24 
-      - set service dhcp-server shared-network-name VLAN_DEV domain-search linds.com.au
-      - set service dhcp-server shared-network-name VLAN_DEV name-server 10.0.53.1
+      - set service dhcp-server shared-network-name VLAN_DEV subnet 10.0.53.0/24 option name-server 10.0.53.1
       - set service dhcp-server shared-network-name VLAN_DEV subnet 10.0.53.0/24 range 0 start 10.0.53.2
       - set service dhcp-server shared-network-name VLAN_DEV subnet 10.0.53.0/24 range 0 stop 10.0.53.20
-      - set service dhcp-server shared-network-name VLAN_DEV subnet 10.0.53.0/24 default-router 10.0.53.1
-      - set service dhcp-server shared-network-name VLAN_DEV domain-name linds.com.au
-      - set service dhcp-server shared-network-name VLAN_DEV domain-search linds.com.au
+      - set service dhcp-server shared-network-name VLAN_DEV subnet 10.0.53.0/24 option default-router 10.0.53.1
+      - set service dhcp-server shared-network-name VLAN_DEV subnet 10.0.53.0/24 option domain-name linds.com.au
+      - set service dhcp-server shared-network-name VLAN_DEV subnet 10.0.53.0/24 option domain-search linds.com.au
       - set service dns forwarding dhcp "{{ main_lan_interface }}"
       - set service dns forwarding listen-address 10.0.53.1
       - set nat source rule 12 outbound-interface name "{{ wan_interface }}"
@@ -80,7 +79,7 @@
   vyos.vyos.vyos_config:
     lines:
       - set service dhcp-server shared-network-name us-lan subnet 10.0.58.0/24 
-      - set service dhcp-server shared-network-name us-lan name-server 103.86.96.100
+      - set service dhcp-server shared-network-name us-lan subnet 10.0.58.0/24 option name-server 103.86.96.100
       - set service dhcp-server shared-network-name us-lan subnet 10.0.58.0/24 range 0 start 10.0.58.2
       - set service dhcp-server shared-network-name us-lan subnet 10.0.58.0/24 range 0 stop 10.0.58.199
-      - set service dhcp-server shared-network-name us-lan subnet 10.0.58.0/24 default-router 10.0.58.1
+      - set service dhcp-server shared-network-name us-lan subnet 10.0.58.0/24 option default-router 10.0.58.1

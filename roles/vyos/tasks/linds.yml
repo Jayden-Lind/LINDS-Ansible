@@ -74,6 +74,7 @@
 - name: Set DNS for global
   vyos.vyos.vyos_config:
     lines:
+      - set service dns forwarding domain linds.com.au name-server 10.3.1.201
       - set service dns forwarding domain linds.com.au name-server 10.0.50.1
       - set service dns forwarding domain linds.com.au name-server 10.3.1.200
       - set service dns forwarding domain linds.com.au name-server 10.0.50.200
