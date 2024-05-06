@@ -166,38 +166,13 @@
   ansible.builtin.command: "{{ hostvars[groups['master'][0]]['kubernetes_join_command']['stdout'] }}"
   when: kubernetes_joined.rc != 0 and inventory_hostname in groups['nodes']
 
-- name: Git checkout
-  ansible.builtin.git:
-    repo: 'https://github.com/Jayden-Lind/LINDS-Kubernetes.git'
-    dest: "{{ k8s_var.local_k8s_dir }}"
-  when: inventory_hostname in groups['master']
-  ignore_errors: true
+- name: Cleanup old unused images
+  ansible.builtin.cron:
+    name: "Cleanup old images"
+    special_time: "weekly"
+    job: "crictl rmi --prune"
 
-- name: Copy LINDS secret
-  ansible.builtin.copy:
-    src: linds-secret.yml
-    dest: "{{ k8s_var.local_k8s_dir }}linds-secret.yml"
-    owner: root
-    group: root
-    mode: '0600'
-    decrypt: true
+- name: Local data for Sonaar & Radaar
+  ansible.builtin.include_tasks:
+    file: local_backup.yml
   when: inventory_hostname in groups['master']
-
-- name: Configure git
-  community.general.git_config:
-    name: user.email
-    scope: global
-    value: jaydenlind@gmail.com
-  when: inventory_hostname in groups['master']
-
-- name: Configure git
-  community.general.git_config:
-    name: user.name
-    scope: global
-    value: Jayden Lind
-  when: inventory_hostname in groups['master']
-
-- name: Check if need to deploy manifests
-  ansible.builtin.shell: "cd {{ k8s_var.local_k8s_dir }} && ./app-deployment.sh"
-  when: inventory_hostname in groups['master']
-  ignore_errors: true

@@ -38,6 +38,7 @@
       - set vpn ipsec remote-access connection LINDS_MOBILE authentication x509 certificate jd-pfsense.linds.com.au
       - set vpn ipsec remote-access connection LINDS_MOBILE authentication local-id jd-pfsense.linds.com.au
       - set vpn ipsec remote-access connection LINDS_MOBILE authentication server-mode x509
+      - set vpn ipsec remote-access connection LINDS_MOBILE local-address any
       - set vpn ipsec remote-access pool MOBILE name-server 10.0.50.1
       - set vpn ipsec remote-access pool MOBILE prefix 10.0.10.0/24
       - set vpn ipsec remote-access connection LINDS_MOBILE local prefix 0.0.0.0/0
