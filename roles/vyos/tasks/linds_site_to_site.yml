@@ -37,14 +37,14 @@
        - set vpn ipsec site-to-site peer LINDS default-esp-group MyESPGroup
        - set vpn ipsec site-to-site peer LINDS ike-group MyIKEGroup
        - set vpn ipsec site-to-site peer LINDS local-address any
-       - set vpn ipsec site-to-site peer LINDS tunnel 0 esp-group MyESPGroup
-       - set vpn ipsec site-to-site peer LINDS tunnel 0 remote prefix 10.0.50.0/24
-       - set vpn ipsec site-to-site peer LINDS tunnel 0 remote prefix 10.0.53.0/24
-       - set vpn ipsec site-to-site peer LINDS tunnel 0 remote prefix 10.0.10.0/24
-       - set vpn ipsec site-to-site peer LINDS tunnel 0 local prefix 192.168.6.0/24
-       - set vpn ipsec site-to-site peer LINDS tunnel 0 local prefix 10.0.0.0/24
-       - set vpn ipsec site-to-site peer LINDS tunnel 0 local prefix 10.3.1.0/24
-       - set vpn ipsec site-to-site peer LINDS tunnel 0 local prefix 10.0.36.0/24
-       - set vpn ipsec site-to-site peer LINDS tunnel 0 local prefix 10.0.80.0/24
+       - set interfaces vti vti0 address '10.255.0.2/30'
        - set vpn ipsec site-to-site peer LINDS connection-type initiate
+       - set protocols bgp neighbor 10.255.0.1 remote-as 64550
+       - set protocols bgp neighbor 10.255.0.1 update-source vti0
+       - set protocols bgp neighbor 10.255.0.1 address-family ipv4-unicast
+       - set protocols bgp address-family ipv4-unicast network 192.168.6.0/24
+       - set protocols bgp address-family ipv4-unicast network 10.3.1.0/24
+       - set protocols bgp address-family ipv4-unicast network 10.0.36.0/24
+       - set protocols bgp address-family ipv4-unicast network 10.0.80.0/24
+       - set protocols bgp address-family ipv4-unicast network 10.0.110.0/24
     
