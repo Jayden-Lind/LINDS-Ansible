@@ -46,4 +46,4 @@
        - set protocols bgp address-family ipv4-unicast network 10.0.51.0/24
        - set protocols bgp address-family ipv4-unicast network 10.0.50.0/24
        - set protocols bgp address-family ipv4-unicast network 10.0.58.0/24
-    
+       - set protocols bgp address-family ipv4-unicast network 10.0.53.0/24

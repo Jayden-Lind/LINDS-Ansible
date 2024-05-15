@@ -7,3 +7,8 @@
       - set protocols bgp peer-group k8s address-family ipv4-unicast
       - set protocols bgp peer-group k8s remote-as '64512'
       - set protocols bgp system-as '64551'
+      - set policy prefix-list NO-ADVERTISE rule 10 action deny
+      - set policy prefix-list NO-ADVERTISE rule 10 prefix 0.0.0.0/0
+      - set policy route-map RM-NO-ADVERTISE rule 10 action deny
+      - set policy route-map RM-NO-ADVERTISE rule 10 match ip address prefix-list NO-ADVERTISE
+      - set protocols bgp peer-group k8s address-family ipv4-unicast route-map export RM-NO-ADVERTISE
