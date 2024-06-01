@@ -1,6 +1,0 @@
----
-- hosts: ansible
-  roles:
-  - common
-  - ansible
-  tasks:

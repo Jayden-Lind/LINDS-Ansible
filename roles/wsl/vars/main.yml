@@ -2,7 +2,7 @@
 packages:
   - ansible
   - podman
-root_dir: /root/
+root_dir: /home/jayden/git
 ssh_private_key: !vault | 
             $ANSIBLE_VAULT;1.1;AES256
             38346133356533363465616633383465653634633832653631356261356165626162363533633564

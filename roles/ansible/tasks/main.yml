@@ -1,9 +1,0 @@
----
-- name: Include Ansible vars
-  ansible.builtin.include_vars:
-    file: main.yml
-    name: ansible_vars
-
-- name: Include Ansible task
-  ansible.builtin.include_tasks:
-    file: ansible.yml

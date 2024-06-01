@@ -1,0 +1,23 @@
+---
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install pip3
+  ansible.builtin.apt:
+    name: python3-pip
+    state: latest
+
+- name: Include Ansible vars
+  ansible.builtin.include_vars:
+    file: main.yml
+    name: ansible_vars
+
+- name: Include Ansible task
+  ansible.builtin.include_tasks:
+    file: ansible.yml
+
+- name: Include Terraform task
+  ansible.builtin.include_tasks:
+    file: terraform.yml

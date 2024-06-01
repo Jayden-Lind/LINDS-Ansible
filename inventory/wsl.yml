@@ -1,4 +1,4 @@
 ---
-ansible:
+wsl:
   hosts:
     "localhost":

@@ -1,0 +1,72 @@
+---
+- name: Install Terraform
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: latest
+  with_items:
+    - gnupg 
+    - software-properties-common
+
+- name: Install HashiCorp PGP
+  ansible.builtin.shell: wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null
+
+- name: Install HashiCorp Repo
+  ansible.builtin.shell: echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: yes
+    cache_valid_time: 0
+
+- name: Install Terraform Packer
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: latest
+  with_items:
+    - packer
+    - terraform
+
+- name: Clone LINDS Terraform
+  ansible.builtin.git:
+    repo: https://github.com/Jayden-Lind/LINDS-Terraform.git
+    dest: "{{ vars.root_dir }}/LINDS-Terraform"
+  ignore_errors: true
+
+- name: Check if the initialization file exists
+  ansible.builtin.shell: |
+    find "{{ vars.root_dir }}/LINDS-Terraform" -name .terraform | uniq
+  become_user: jayden
+  register: init_check
+
+- name: Initialise Terraform
+  ansible.builtin.shell: |
+    find "{{ vars.root_dir }}/LINDS-Terraform" -type f -name '*.tf' -exec dirname {} \; | uniq | while read dir; do
+      echo "Initializing Terraform in directory $dir"
+      cd "$dir"
+      terraform init
+      cd -
+    done
+  become_user: jayden
+  args:
+    executable: /bin/bash
+  when: init_check.stdout_lines | length == 0
+
+- name: Copy var files for Terraform
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ vars.root_dir }}/LINDS-Terraform/proxmox/"
+    mode: preserve
+  become_user: jayden
+  with_items: 
+    - proxmox_jd_terraform.tfvars
+    - proxmox_linds_terraform.tfvars
+
+- name: Copy var files for Terraform
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ vars.root_dir }}/LINDS-Terraform/packer/"
+    mode: preserve
+  become_user: jayden
+  with_items: 
+    - packer_jd.pkrvars.hcl
+    - packer_linds.pkrvars.hcl
