@@ -1,4 +1,10 @@
 ---
-- name: Include Common
+- name: Include Common for RedHat
   ansible.builtin.include_tasks:
     file: common.yml
+  when: ansible_facts['os_family'] == "RedHat"
+
+- name: Include Common for Debian
+  ansible.builtin.include_tasks:
+    file: debian.yml
+  when: ansible_facts['os_family'] == "Debian"

@@ -1,9 +1,4 @@
 ---
-# - name: Print return information from the previous task
-#   ansible.builtin.debug:
-#     var: hostvars
-#   when: inventory_hostname in groups['master']
-
 - name: Include kubernetes vars
   ansible.builtin.include_vars:
     file: vars.yml
@@ -16,6 +11,7 @@
     owner: root
     group: root
     mode: '0644'
+  when: ansible_facts['os_family'] == "RedHat"
 
 - name: Kubernetes Repo
   ansible.builtin.copy:
@@ -24,15 +20,43 @@
     owner: root
     group: root
     mode: '0644'
+  when: ansible_facts['os_family'] == "RedHat"
 
-- name: Ensure Kubernetes is installed
+- name: Add Kubernetes apt-key
+  apt_key:
+    url: https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key
+    state: present
+    keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  when: ansible_facts['os_family'] == "Debian"
+
+- name: Add cri-o apt-key
+  apt_key:
+    url: https://pkgs.k8s.io/addons:/cri-o:/prerelease:/main/deb/Release.key
+    state: present
+    keyring: /etc/apt/keyrings/cri-o-apt-keyring.gpg 
+  when: ansible_facts['os_family'] == "Debian"
+
+- name: Add cro-i repository
+  apt_repository:
+    repo: deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://pkgs.k8s.io/addons:/cri-o:/prerelease:/main/deb/ /
+    state: present
+  when: ansible_facts['os_family'] == "Debian"
+
+- name: Add Kubernetes repository
+  apt_repository:
+    repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /
+    state: present
+  when: ansible_facts['os_family'] == "Debian"
+
+- name: Ensure Kubernetes is installed (RedHat)
   ansible.builtin.dnf:
     name: kubelet
     state: latest
     disable_excludes: all
     nobest: true
+  when: ansible_facts['os_family'] == "RedHat"
 
-- name: Ensure K8s packages installed
+- name: Ensure K8s packages installed (RedHat)
   ansible.builtin.dnf:
     name: "{{ item }}"
     state: latest
@@ -42,8 +66,33 @@
     - kubectl
     - cri-o
     - nfs-utils
+  when: ansible_facts['os_family'] == "RedHat"
 
-- name: Ensure K8s services are started
+- name: Ensure K8s packages installed (Debian)
+  apt:
+    name: "{{ item }}"
+    state: present
+    update_cache: yes
+  with_items:
+    - kubelet
+    - kubeadm
+    - kubectl
+    - cri-o
+    - nfs-common
+  when: ansible_facts['os_family'] == "Debian"
+
+- name: Ensure K8s services are started (Debian)
+  ansible.builtin.service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  with_items:
+    - kubelet
+    - cri-o
+  when: ansible_facts['os_family'] == "Debian"
+
+
+- name: Ensure K8s services are started (RedHat)
   ansible.builtin.service:
     name: "{{ item }}"
     enabled: true
@@ -52,6 +101,7 @@
     - kubelet
     - crio
     - cri-o
+  when: ansible_facts['os_family'] == "RedHat"
 
 - name: Local data for Sonaar & Radaar
   ansible.builtin.include_tasks:

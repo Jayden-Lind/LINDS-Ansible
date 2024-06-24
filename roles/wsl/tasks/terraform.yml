@@ -70,3 +70,8 @@
   with_items: 
     - packer_jd.pkrvars.hcl
     - packer_linds.pkrvars.hcl
+
+- name: Init packer
+  ansible.builtin.shell: |
+      cd {{ vars.root_dir }}/LINDS-Terraform/packer && packer init -upgrade .
+  become_user: jayden

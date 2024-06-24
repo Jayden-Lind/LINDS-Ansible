@@ -4,7 +4,7 @@ kubernetes:
   children:
     nodes:
       hosts:
-        jd-kube-[02:03]:
+        jd-kube-[02:04]:
         linds-kube-[01:02].linds.com.au:
     master:
       hosts:

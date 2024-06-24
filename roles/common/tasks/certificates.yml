@@ -1,12 +1,26 @@
 ---
 - name: update-ca-trust
   ansible.builtin.shell: "update-ca-trust enable"
+  when: ansible_facts['os_family'] == "RedHat"
 
 - name: Copy LINDS-CA
   ansible.builtin.copy:
     src: LINDS-CA.enc
     dest: /etc/pki/ca-trust/source/anchors/LINDS-CA.cer
     decrypt: true
+  when: ansible_facts['os_family'] == "RedHat"
 
 - name: Trust LINDS-CA
   ansible.builtin.shell: "update-ca-trust extract"
+  when: ansible_facts['os_family'] == "RedHat"
+
+- name: Copy LINDS-CA
+  ansible.builtin.copy:
+    src: LINDS-CA.enc
+    dest: /usr/local/share/ca-certificates/LINDS-CA.crt
+    decrypt: true
+  when: ansible_facts['os_family'] == "Debian"
+
+- name: Update CA certificates
+  command: update-ca-certificates
+  when: ansible_facts['os_family'] == "Debian"

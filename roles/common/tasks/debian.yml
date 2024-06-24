@@ -1,0 +1,71 @@
+---
+- name: Start qemu-guest-agent
+  service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  with_items: 
+    - qemu-guest-agent
+  ignore_errors: true
+
+- name: Enable Auto Update
+  ansible.builtin.include_role:
+    name: robertdebock.auto_update
+  vars:
+    auto_update_apply_updates: yes
+    auto_update_message: yes
+
+- name: Enable NTP
+  ansible.builtin.include_role:
+    name: robertdebock.ntp
+  vars:
+   ntp_pool:
+    - name: "0.au.pool.ntp.org iburst"
+    - name: "1.au.pool.ntp.org iburst"
+    - name: "2.au.pool.ntp.org iburst"
+    - name: "3.au.pool.ntp.org iburst"
+   ntp_timezone: "Australia/Melbourne"
+
+- name: MOTD
+  ansible.builtin.include_role:
+    name: claranet.motd
+  vars:
+    motd_template: "{{ ansible_parent_role_paths[0] }}/template/motd"
+
+- name: Logrotate
+  ansible.builtin.include_role:
+    name: robertdebock.logrotate
+  vars:
+    logrotate_compress: yes
+    logrotate_keep: 7
+    logrotate_frequency: daily
+    logrotate_dateext: yes
+
+- name: Include updating trust
+  ansible.builtin.include_tasks:
+    file: certificates.yml
+
+- name: Copy UseDNS SSHD
+  ansible.builtin.copy:
+    src: 02-disabledns.conf
+    dest: /etc/ssh/sshd_config.d
+  register: sshd
+
+- name: Ensure GRUB configuration file is present
+  copy:
+    dest: /etc/default/grub
+    content: |
+      # If you change this file, run 'update-grub' afterwards to update
+      # /boot/grub/grub.cfg.
+      # For full documentation of the options in this file, see:
+      #   info -f grub -n 'Simple configuration'
+
+      GRUB_DEFAULT=0
+      GRUB_TIMEOUT_STYLE=hidden
+      GRUB_TIMEOUT=0
+      GRUB_DISTRIBUTOR=`( . /etc/os-release; echo ${NAME:-Ubuntu} ) 2>/dev/null || echo Ubuntu`
+      GRUB_CMDLINE_LINUX_DEFAULT="mitigations=off"
+      GRUB_CMDLINE_LINUX=""
+
+- name: Update GRUB configuration
+  command: update-grub

@@ -4,5 +4,5 @@
   remote_user: root
 
   roles:
-    - common
-    - kubernetes
+    - role: common
+    - role: kubernetes
