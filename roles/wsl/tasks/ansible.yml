@@ -3,9 +3,10 @@
   ansible.builtin.apt:
     name: "{{ item }}"
     state: latest
-  with_items: 
-  - python3-argcomplete
-  - python3-paramiko
+  with_items:
+    - python3-argcomplete
+    - python3-paramiko
+    - pipx
 
 - name: Clone LINDS Ansible
   ansible.builtin.git:
@@ -14,12 +15,11 @@
   ignore_errors: true
 
 - name: Install Ansible reqs
-  ansible.builtin.shell: "ansible-galaxy install -r {{ vars.root_dir }}/LINDS-Ansible/requirements.yml"
-
+  ansible.builtin.command: ansible-galaxy install -r {{ vars.root_dir }}/LINDS-Ansible/requirements.yml
 - name: Copy private key
   ansible.builtin.copy:
     dest: /home/jayden/.ssh/id_rsa
     content: "{{ ansible_vars.ssh_private_key }}"
     owner: jayden
     group: jayden
-    mode: '0600'
+    mode: "0600"

@@ -1,6 +1,6 @@
 ---
 - name: Git checkout required repos
   ansible.builtin.git:
-    repo: "{{ item.value.path}}"
+    repo: "{{ item.value.path }}"
     dest: "{{ backup_var.root_path }}{{ item.value.dest_folder }}"
   loop: "{{ lookup('ansible.builtin.dict', backup_var.backups) }}"

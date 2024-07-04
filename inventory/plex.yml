@@ -7,7 +7,7 @@ plex:
       vars:
         server: jd-dc-01.linds.com.au
         path: /nas
-        truenas_plex_path: "/plex/jd"
+        truenas_plex_path: /plex/jd
     linds:
       hosts:
         linds-plex-01.linds.com.au:
@@ -16,16 +16,16 @@ plex:
         path: /mnt/ZFS_NAS
         smb_server: linds-dc.linds.com.au
         smb_path: /nas/holiday videos
-        truenas_plex_path: "/plex/linds"
+        truenas_plex_path: /plex/linds
   vars:
     truenas_host: jd-truenas-01.linds.com.au
     truenas_path: /mnt/NAS
-    plex_base_dir: "/var/lib/plexmediaserver/Library/Application\ Support/Plex\ Media\ Server"
-    plex_files_backup: 
-      - "/Preferences.xml"
-      - "/Plug-in\\ Support/Databases/com.plexapp.plugins.library.db"
-      - "/Plug-in\\ Support/Databases/com.plexapp.plugins.library.db-shm"
-      - "/Plug-in\\ Support/Databases/com.plexapp.plugins.library.db-wal"
-      - "/Plug-in\\ Support/Databases/com.plexapp.plugins.library.blobs.db"
-      - "/Plug-in\\ Support/Databases/com.plexapp.plugins.library.blobs.db-shm"
-      - "/Plug-in\\ Support/Databases/com.plexapp.plugins.library.blobs.db-wal"
+    plex_base_dir: /var/lib/plexmediaserver/Library/Application Support/Plex Media Server
+    plex_files_backup:
+      - /Preferences.xml
+      - /Plug-in\ Support/Databases/com.plexapp.plugins.library.db
+      - /Plug-in\ Support/Databases/com.plexapp.plugins.library.db-shm
+      - /Plug-in\ Support/Databases/com.plexapp.plugins.library.db-wal
+      - /Plug-in\ Support/Databases/com.plexapp.plugins.library.blobs.db
+      - /Plug-in\ Support/Databases/com.plexapp.plugins.library.blobs.db-shm
+      - /Plug-in\ Support/Databases/com.plexapp.plugins.library.blobs.db-wal

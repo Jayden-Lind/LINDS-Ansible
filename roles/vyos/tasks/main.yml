@@ -2,77 +2,76 @@
 - name: Add LINDS-CA
   vyos.vyos.vyos_config:
     lines:
-       - "set pki ca LINDS certificate {{ item }}"
+      - set pki ca LINDS certificate {{ item }}
   with_file: linds-ca.cer
-    
 
 - name: Set tz
   vyos.vyos.vyos_config:
     lines:
-       - "set system time-zone Australia/Melbourne"
-    
+      - set system time-zone Australia/Melbourne
+
 - name: Enable latency optimisation
   vyos.vyos.vyos_config:
     lines:
-       - set interfaces ethernet "{{ main_lan_interface }}" offload gro
-       - set interfaces ethernet "{{ main_lan_interface }}" offload gso
-       - set interfaces ethernet "{{ main_lan_interface }}" offload rfs
-       - set interfaces ethernet "{{ main_lan_interface }}" offload rps
-       - set interfaces ethernet "{{ main_lan_interface }}" offload sg
-    
+      - set interfaces ethernet "{{ main_lan_interface }}" offload gro
+      - set interfaces ethernet "{{ main_lan_interface }}" offload gso
+      - set interfaces ethernet "{{ main_lan_interface }}" offload rfs
+      - set interfaces ethernet "{{ main_lan_interface }}" offload rps
+      - set interfaces ethernet "{{ main_lan_interface }}" offload sg
+
 - name: Enable DHCP on WAN
   vyos.vyos.vyos_config:
     lines:
-       - set interfaces ethernet "{{ wan_interface }}" address dhcp
-       - set interfaces ethernet "{{ wan_interface }}" address dhcpv6
-    
+      - set interfaces ethernet "{{ wan_interface }}" address dhcp
+      - set interfaces ethernet "{{ wan_interface }}" address dhcpv6
+
 - name: Disable mitigations
   vyos.vyos.vyos_command:
-    commands: 
-    - sudo sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT=\"quiet\"/GRUB_CMDLINE_LINUX_DEFAULT=\"quiet mitigations=off\"/' /etc/default/grub
+    commands:
+      - sudo sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT=\"quiet\"/GRUB_CMDLINE_LINUX_DEFAULT=\"quiet mitigations=off\"/' /etc/default/grub
 
 - name: Enable ethtool WAN offloading
   vyos.vyos.vyos_command:
-    commands: 
-    - |
-      cat >/config/scripts/vyos-postconfig-bootup.script <<EOL
-      #!/bin/sh
-      ethtool -K "{{ wan_interface }}" rx on tx on sg on tso on gro on gso on rx-udp-gro-forwarding on
-      EOL
+    commands:
+      - |
+        cat >/config/scripts/vyos-postconfig-bootup.script <<EOL
+        #!/bin/sh
+        ethtool -K "{{ wan_interface }}" rx on tx on sg on tso on gro on gso on rx-udp-gro-forwarding on
+        EOL
 
 
 - name: Enable latency optimisation
   vyos.vyos.vyos_config:
     lines:
-       - "set system option performance throughput"
+      - set system option performance throughput
 
 - name: Enable latency optimisation
   vyos.vyos.vyos_config:
     lines:
-       - "set system sysctl parameter net.ipv4.tcp_low_latency value 1"
-       - "set system sysctl parameter net.ipv4.tcp_timestamps value 0"
-       - "set system sysctl parameter net.ipv4.tcp_sack value 1"
-       - "set system sysctl parameter net.core.rmem_max value 26214400"
-       - "set system sysctl parameter net.core.rmem_default value 26214400"
+      - set system sysctl parameter net.ipv4.tcp_low_latency value 1
+      - set system sysctl parameter net.ipv4.tcp_timestamps value 0
+      - set system sysctl parameter net.ipv4.tcp_sack value 1
+      - set system sysctl parameter net.core.rmem_max value 26214400
+      - set system sysctl parameter net.core.rmem_default value 26214400
 
 - name: Create firewall group
   vyos.vyos.vyos_firewall_global:
     config:
       group:
         network_group:
-        - name: LAN-Addresses
-          description: LAN Networks
-          members:
-          - address: 192.168.0.0/16
-          - address: 10.0.0.0/8
-          - address: 172.16.0.0/12
+          - name: LAN-Addresses
+            description: LAN Networks
+            members:
+              - address: 192.168.0.0/16
+              - address: 10.0.0.0/8
+              - address: 172.16.0.0/12
     state: merged
 
-- name: configure name servers
-  vyos.vyos.vyos_system: 
+- name: Configure name servers
+  vyos.vyos.vyos_system:
     name_servers:
-     - 1.1.1.1
-     - 1.0.0.1
+      - 1.1.1.1
+      - 1.0.0.1
 
 - name: Set DNS for global
   vyos.vyos.vyos_config:
@@ -82,7 +81,7 @@
       - set service dns forwarding allow-from 10.0.0.0/8
       - set service dns forwarding allow-from 172.16.0.0/12
       - set service dns forwarding allow-from 192.168.0.0/16
-    
+
 # - name: Set Dynamic DNS
 #   vyos.vyos.vyos_config:
 #     lines:
@@ -93,14 +92,14 @@
 #       - set service dns dynamic address "{{ wan_interface }}" service Cloudflare host-name "{{ dyn_host }}"
 #       - set service dns dynamic address "{{ wan_interface }}" service Cloudflare protocol cloudflare
 #       - set service dns dynamic address "{{ wan_interface }}" service Cloudflare zone "{{ cf_dyn_dns_zone }}"
-    
+
 - name: Set UPnP
   vyos.vyos.vyos_config:
     lines:
       - set service upnp wan-interface "{{ wan_interface }}"
       - set service upnp listen "{{ main_lan_interface }}"
       - set service upnp nat-pmp
-    
+
 - name: Set up firewall
   vyos.vyos.vyos_config:
     lines:
@@ -111,7 +110,7 @@
   vyos.vyos.vyos_config:
     lines:
       - set service ntp server 0.au.pool.ntp.org
-    
+
 - name: Run JD VyOS
   ansible.builtin.include_tasks:
     file: jd.yml

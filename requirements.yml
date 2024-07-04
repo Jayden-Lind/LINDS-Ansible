@@ -1,17 +1,17 @@
 ---
 roles:
-- name: robertdebock.autofs
-- name: robertdebock.auto_update
-- name: robertdebock.epel
-- name: robertdebock.ntp
-- name: robertdebock.logrotate
-- name: claranet.motd
+  - name: robertdebock.autofs
+  - name: robertdebock.auto_update
+  - name: robertdebock.epel
+  - name: robertdebock.ntp
+  - name: robertdebock.logrotate
+  - name: claranet.motd
 collections:
-- name: ansible.posix
-- name: community.general
-- name: devsec.hardening
-- name: kubernetes.core
-- name: arensb.truenas
-- name: vyos.vyos
-- name: community.crypto
-- name: community.vmware
+  - name: ansible.posix
+  - name: community.general
+  - name: devsec.hardening
+  - name: kubernetes.core
+  - name: arensb.truenas
+  - name: vyos.vyos
+  - name: community.crypto
+  - name: community.vmware

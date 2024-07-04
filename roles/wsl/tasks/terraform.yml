@@ -4,18 +4,19 @@
     name: "{{ item }}"
     state: latest
   with_items:
-    - gnupg 
+    - gnupg
     - software-properties-common
 
 - name: Install HashiCorp PGP
   ansible.builtin.shell: wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null
 
 - name: Install HashiCorp Repo
-  ansible.builtin.shell: echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+  ansible.builtin.shell: echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo
+    tee /etc/apt/sources.list.d/hashicorp.list
 
 - name: Update apt cache
   ansible.builtin.apt:
-    update_cache: yes
+    update_cache: true
     cache_valid_time: 0
 
 - name: Install Terraform Packer
@@ -57,7 +58,7 @@
     dest: "{{ vars.root_dir }}/LINDS-Terraform/proxmox/"
     mode: preserve
   become_user: jayden
-  with_items: 
+  with_items:
     - proxmox_jd_terraform.tfvars
     - proxmox_linds_terraform.tfvars
 
@@ -67,11 +68,11 @@
     dest: "{{ vars.root_dir }}/LINDS-Terraform/packer/"
     mode: preserve
   become_user: jayden
-  with_items: 
+  with_items:
     - packer_jd.pkrvars.hcl
     - packer_linds.pkrvars.hcl
 
 - name: Init packer
   ansible.builtin.shell: |
-      cd {{ vars.root_dir }}/LINDS-Terraform/packer && packer init -upgrade .
+    cd {{ vars.root_dir }}/LINDS-Terraform/packer && packer init -upgrade .
   become_user: jayden

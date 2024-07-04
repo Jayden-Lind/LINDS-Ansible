@@ -11,14 +11,14 @@
       - name: JD_truenas_terraform{{ server }}
         mountpoint: /mnt/
         options:
-          - "--timeout 60"
-          - "--ghost"
+          - --timeout 60
+          - --ghost
         directories:
           - server: "{{ server }}:{{ path }}"
             options:
-              - "fstype=nfs4"
-              - "dir_mode=0777"
-              - "file_mode=0777"
-              - "vers=4.2"
-              - "soft"
-            path: "NAS"
+              - fstype=nfs4
+              - dir_mode=0777
+              - file_mode=0777
+              - vers=4.2
+              - soft
+            path: NAS

@@ -1,17 +1,15 @@
 ---
-
 - name: Copy files periodically to TrueNAS
   ansible.builtin.cron:
-    name: "Copy Plex backup {{ item }} to TrueNAS"
+    name: Copy Plex backup {{ item }} to TrueNAS
     minute: "0"
     hour: "2"
-    job: "cp -p {{ plex_base_dir | regex_replace(' ', '\\ ' ) }}{{ item }} /mnt/truenas{{ truenas_plex_path }}{{item}}"
+    job: cp -p {{ plex_base_dir | regex_replace(' ', '\ ') }}{{ item }} /mnt/truenas{{ truenas_plex_path }}{{ item }}
   with_items: "{{ plex_files_backup }}"
-
 
 - name: Check if files need to be copied across
   ansible.builtin.stat:
-    path: '{{ plex_base_dir }}/present'
+    path: "{{ plex_base_dir }}/present"
   register: st
 
 - name: Copy files from NAS if they don't exist locally
@@ -30,5 +28,5 @@
   when: st['stat']['exists'] == false
 
 - name: Restart Plex
-  ansible.builtin.shell: "systemctl restart plexmediaserver"
+  ansible.builtin.command: systemctl restart plexmediaserver
   when: st['stat']['exists'] == false

@@ -8,8 +8,8 @@
   ansible.builtin.yum_repository:
     name: Hashicorp
     description: Hashicorp
-    baseurl: "https://rpm.releases.hashicorp.com/RHEL/$releasever/$basearch/stable"
-    gpgkey: "https://rpm.releases.hashicorp.com/gpg"
+    baseurl: https://rpm.releases.hashicorp.com/RHEL/$releasever/$basearch/stable
+    gpgkey: https://rpm.releases.hashicorp.com/gpg
     gpgcheck: true
 
 - name: Ensure packages is installed
@@ -27,4 +27,4 @@
 - name: Fix Path for Packer
   ansible.builtin.lineinfile:
     path: ~/.bashrc
-    line: "export PATH=/usr/bin:$PATH"
+    line: export PATH=/usr/bin:$PATH

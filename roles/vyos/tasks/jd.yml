@@ -1,5 +1,5 @@
 ---
-- name: configure hostname and domain-name
+- name: Configure hostname and domain-name
   vyos.vyos.vyos_system:
     host_name: jd-vyos-01
     domain_name: linds.com.au
@@ -7,23 +7,23 @@
 - name: Enable latency optimisation
   vyos.vyos.vyos_config:
     lines:
-       - set interfaces ethernet "{{ wan_interface }}" offload gro
-       - set interfaces ethernet "{{ wan_interface }}" offload gso
-       - set interfaces ethernet "{{ wan_interface }}" offload rfs
-       - set interfaces ethernet "{{ wan_interface }}" offload rps
-       - set interfaces ethernet "{{ wan_interface }}" offload sg
-    
+      - set interfaces ethernet "{{ wan_interface }}" offload gro
+      - set interfaces ethernet "{{ wan_interface }}" offload gso
+      - set interfaces ethernet "{{ wan_interface }}" offload rfs
+      - set interfaces ethernet "{{ wan_interface }}" offload rps
+      - set interfaces ethernet "{{ wan_interface }}" offload sg
+
 - name: Set IP on LAN
   vyos.vyos.vyos_l3_interfaces:
     config:
-    - name: "{{ main_lan_interface }}"
-      ipv4:
-      - address: 10.0.50.1/24
+      - name: "{{ main_lan_interface }}"
+        ipv4:
+          - address: 10.0.50.1/24
 
 - name: Create DHCP for LAN
   vyos.vyos.vyos_config:
     lines:
-      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24
       - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option domain-search linds.com.au
       - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option name-server 10.0.50.1
       - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option name-server 10.0.50.200
@@ -45,24 +45,24 @@
       - set interfaces ethernet "{{ wan_interface }}" dhcpv6-options pd 0 length '56'
       - set interfaces ethernet "{{ wan_interface }}" dhcpv6-options pd 0 interface "{{ main_lan_interface }}" sla-id '0'
       - set service router-advert interface "{{ main_lan_interface }}" prefix ::/64
-    
+
 - name: Set up SNMP
   vyos.vyos.vyos_snmp_server:
     config:
       listen_addresses:
-        - address: "10.0.50.1"
+        - address: 10.0.50.1
       communities:
-        - authorization_type: "ro"
+        - authorization_type: ro
           name: public
 
 - name: Create DHCP for LAN
   vyos.vyos.vyos_config:
     lines:
-    - set service lldp legacy-protocols cdp
-    - set service lldp legacy-protocols edp
-    - set service lldp legacy-protocols fdp
-    - set service lldp legacy-protocols sonmp
-    - set service lldp snmp
+      - set service lldp legacy-protocols cdp
+      - set service lldp legacy-protocols edp
+      - set service lldp legacy-protocols fdp
+      - set service lldp legacy-protocols sonmp
+      - set service lldp snmp
 
 - name: Set DNS for global
   vyos.vyos.vyos_config:
@@ -104,7 +104,7 @@
 - name: Include Firewall
   ansible.builtin.include_tasks:
     file: jd_firewall.yml
-  
+
 - name: Include Remote Access Site to Site VPN
   ansible.builtin.include_tasks:
     file: jd_remote_access.yml

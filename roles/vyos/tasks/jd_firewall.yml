@@ -1,7 +1,8 @@
+---
 - name: Set Firewall
   vyos.vyos.vyos_config:
     lines:
-      - set firewall ipv4 input filter default-action accept 
+      - set firewall ipv4 input filter default-action accept
       # IPSEC Mobile
       - set firewall ipv4 input filter rule 3 action accept
       - set firewall ipv4 input filter rule 3 destination port 500,4500
@@ -35,5 +36,3 @@
       - set firewall ipv4 input filter rule 11 destination port 123
       - set firewall ipv4 input filter rule 11 protocol udp
       - set firewall ipv4 input filter rule 11 source group network-group LAN-Addresses
-
-    

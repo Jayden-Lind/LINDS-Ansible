@@ -2,7 +2,7 @@
 - hosts: vyos
   collections: vyos.vyos
   roles:
-  - vyos
+    - vyos
   module_defaults:
     vyos.vyos.vyos_config:
       save: true

@@ -10,7 +10,7 @@
     dest: /etc/yum.repos.d/devel_cri_1.24.repo
     owner: root
     group: root
-    mode: '0644'
+    mode: "0644"
   when: ansible_facts['os_family'] == "RedHat"
 
 - name: Kubernetes Repo
@@ -19,31 +19,31 @@
     dest: /etc/yum.repos.d/kubernetes.repo
     owner: root
     group: root
-    mode: '0644'
+    mode: "0644"
   when: ansible_facts['os_family'] == "RedHat"
 
 - name: Add Kubernetes apt-key
-  apt_key:
+  ansible.builtin.apt_key:
     url: https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key
     state: present
     keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
   when: ansible_facts['os_family'] == "Debian"
 
 - name: Add cri-o apt-key
-  apt_key:
+  ansible.builtin.apt_key:
     url: https://pkgs.k8s.io/addons:/cri-o:/prerelease:/main/deb/Release.key
     state: present
-    keyring: /etc/apt/keyrings/cri-o-apt-keyring.gpg 
+    keyring: /etc/apt/keyrings/cri-o-apt-keyring.gpg
   when: ansible_facts['os_family'] == "Debian"
 
 - name: Add cro-i repository
-  apt_repository:
+  ansible.builtin.apt_repository:
     repo: deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://pkgs.k8s.io/addons:/cri-o:/prerelease:/main/deb/ /
     state: present
   when: ansible_facts['os_family'] == "Debian"
 
 - name: Add Kubernetes repository
-  apt_repository:
+  ansible.builtin.apt_repository:
     repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /
     state: present
   when: ansible_facts['os_family'] == "Debian"
@@ -69,10 +69,10 @@
   when: ansible_facts['os_family'] == "RedHat"
 
 - name: Ensure K8s packages installed (Debian)
-  apt:
+  ansible.builtin.apt:
     name: "{{ item }}"
     state: present
-    update_cache: yes
+    update_cache: true
   with_items:
     - kubelet
     - kubeadm
@@ -90,7 +90,6 @@
     - kubelet
     - cri-o
   when: ansible_facts['os_family'] == "Debian"
-
 
 - name: Ensure K8s services are started (RedHat)
   ansible.builtin.service:
@@ -119,11 +118,11 @@
     dest: /etc/containers/policy.json
     owner: root
     group: root
-    mode: '0644'
+    mode: "0644"
 
 - name: Check if swap enabled
   changed_when: false
-  ansible.builtin.command: "awk '{ if (NR > 1) exit 1}' /proc/swaps"
+  ansible.builtin.command: awk '{ if (NR > 1) exit 1}' /proc/swaps
   register: swap_enabled
   ignore_errors: true
 
@@ -133,38 +132,38 @@
 
 - name: Remove swap from fstab
   ansible.builtin.lineinfile:
-    path: "/etc/fstab"
+    path: /etc/fstab
     state: absent
-    regexp: '\sswap\s'
+    regexp: \sswap\s
 
 - name: Check if ip_forward enabled
   changed_when: false
-  ansible.builtin.command: "grep 1 /proc/sys/net/ipv4/ip_forward"
+  ansible.builtin.command: grep 1 /proc/sys/net/ipv4/ip_forward
   register: ip_forward_enabled
   failed_when: ip_forward_enabled.rc >=2
 
 - name: Enable ip_forward
-  ansible.builtin.shell: "echo 1 > /proc/sys/net/ipv4/ip_forward"
+  ansible.builtin.shell: echo 1 > /proc/sys/net/ipv4/ip_forward
   when: ip_forward_enabled.rc == 1
 
 - name: Check if br_filter enabled
   changed_when: false
-  ansible.builtin.command: "grep 1 /proc/sys/net/bridge/bridge-nf-call-iptables"
+  ansible.builtin.command: grep 1 /proc/sys/net/bridge/bridge-nf-call-iptables
   register: br_filter_enabled
   failed_when: br_filter_enabled.rc > 2
 
 - name: Enable br_filter
-  ansible.builtin.command: "modprobe br_netfilter"
+  ansible.builtin.command: modprobe br_netfilter
   when: br_filter_enabled.rc != 0
 
 - name: Check if kubectl autocomple
   changed_when: false
-  ansible.builtin.command: "test -f /etc/bash_completion.d/kubectl"
+  ansible.builtin.command: test -f /etc/bash_completion.d/kubectl
   register: kubectl_autocomplete_enabled
   failed_when: kubectl_autocomplete_enabled.rc >=2
 
 - name: Enable kubectl autocomplete
-  ansible.builtin.shell: "kubectl completion bash | sudo tee /etc/bash_completion.d/kubectl > /dev/null"
+  ansible.builtin.shell: kubectl completion bash | sudo tee /etc/bash_completion.d/kubectl > /dev/null
   when: kubectl_autocomplete_enabled.rc == 1
   failed_when: kubectl_autocomplete_enabled.rc >=2
 
@@ -175,29 +174,29 @@
 
 - name: Test if joined to kubernetes cluster
   changed_when: false
-  ansible.builtin.command: "test -f /etc/kubernetes/kubelet.conf"
+  ansible.builtin.command: test -f /etc/kubernetes/kubelet.conf
   register: kubernetes_joined
   failed_when: kubernetes_joined.rc >=2
 
 - name: Add KUBECONFIG to env
   ansible.builtin.lineinfile:
-    path: "/root/.bashrc"
-    regexp: '^export KUBECONFIG'
-    line: "export KUBECONFIG=/etc/kubernetes/admin.conf"
+    path: /root/.bashrc
+    regexp: ^export KUBECONFIG
+    line: export KUBECONFIG=/etc/kubernetes/admin.conf
 
 - name: Create kubernetes cluster check
-  ansible.builtin.shell: "kubectl get nodes | grep -i {{ ansible_facts['nodename'] }}"  
+  ansible.builtin.shell: kubectl get nodes | grep -i {{ ansible_facts['nodename'] }}
   register: create_cluster
   when: inventory_hostname in groups['master']
   ignore_errors: true
 
 - name: Create kubernetes cluster
-  ansible.builtin.command: "kubeadm init --pod-network-cidr 10.244.0.0/16 --token-ttl 0"
+  ansible.builtin.command: kubeadm init --pod-network-cidr 10.244.0.0/16 --token-ttl 0
   when: inventory_hostname in groups['master'] and create_cluster.rc!=0
   register: kube_create_cluster_output
 
 - name: Create kubernetes join command
-  ansible.builtin.command: "kubeadm token create --print-join-command"
+  ansible.builtin.command: kubeadm token create --print-join-command
   register: kubernetes_join_command
   when: inventory_hostname in groups['master']
 
@@ -218,9 +217,9 @@
 
 - name: Cleanup old unused images
   ansible.builtin.cron:
-    name: "Cleanup old images"
-    special_time: "weekly"
-    job: "crictl rmi --prune"
+    name: Cleanup old images
+    special_time: weekly
+    job: crictl rmi --prune
 
 - name: Local data for Sonaar & Radaar
   ansible.builtin.include_tasks:

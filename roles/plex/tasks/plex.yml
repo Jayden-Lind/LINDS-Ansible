@@ -1,12 +1,11 @@
 ---
 - name: Enable legacy crypto policies (bad)
-  shell: update-crypto-policies --set legacy
-
+  ansible.builtin.command: update-crypto-policies --set legacy
 - name: Install CIFS and NFS utils
-  ansible.builtin.yum:
+  ansible.builtin.dnf:
     name: "{{ item }}"
     state: present
-  with_items: 
+  with_items:
     - nfs-utils
     - cifs-utils
 - name: Add Plex Repo
@@ -18,7 +17,7 @@
     gpgcheck: true
 
 - name: Install Plex Media Server
-  ansible.builtin.yum:
+  ansible.builtin.dnf:
     name: plexmediaserver
     state: present
 

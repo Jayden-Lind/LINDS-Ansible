@@ -5,17 +5,17 @@
     dest: /root/.config/qBittorrent/qBittorrent.conf
     owner: root
     group: root
-    mode: '600'
+    mode: "600"
 
 - name: Create nas directory
   ansible.builtin.file:
     path: /mnt/nas
     state: directory
-    mode: '0755'
+    mode: "0755"
 
 - name: Mount NFS NAS
   ansible.posix.mount:
-    path: "/mnt/nas"
+    path: /mnt/nas
     src: "{{ nfs_server }}:{{ nfs_path }}"
     fstype: nfs4
     opts: vers=4.2,soft
@@ -24,5 +24,5 @@
   register: mount
 
 - name: Mount NAS if changed
-  ansible.builtin.shell: "mount -a"
+  ansible.builtin.command: mount -a
   when: mount.changed

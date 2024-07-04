@@ -2,5 +2,5 @@
 - hosts: backup
   remote_user: root
   roles:
-  - common
-  - backup
+    - common
+    - backup

@@ -1,6 +1,7 @@
+---
 - name: Create BGP Peering for K8s cluster
   vyos.vyos.vyos_config:
-    lines: 
+    lines:
       - set protocols bgp listen range 10.0.53.0/24 peer-group 'k8s'
       - set protocols bgp neighbor "{{ main_lan_interface }}".53 address-family ipv4-unicast
       - set protocols bgp neighbor "{{ main_lan_interface }}".53 interface remote-as 'external'

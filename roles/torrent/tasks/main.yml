@@ -1,9 +1,9 @@
 ---
 - name: Install transmission + required
-  ansible.builtin.yum:
+  ansible.builtin.dnf:
     name: "{{ item }}"
     state: latest
-  with_items: 
+  with_items:
     - qbittorrent
     - qbittorrent-nox
     - cifs-utils
@@ -17,7 +17,7 @@
 
 - name: Stop service qbittorrent, if started
   ansible.builtin.service:
-    name: "system-qbittorrent\\x2dnox.slice"
+    name: system-qbittorrent\x2dnox.slice
     state: stopped
   ignore_errors: true
 
@@ -25,7 +25,7 @@
   ansible.builtin.file:
     path: /root/.config/qBittorrent
     state: directory
-    mode: '0755'
+    mode: "0755"
 
 - name: Include JD
   ansible.builtin.include_tasks:
@@ -46,11 +46,11 @@
 - name: Set Sysctl
   ansible.posix.sysctl:
     name: net.core.rmem_max
-    value: '16777216'
+    value: "16777216"
     sysctl_set: true
 
 - name: Set Sysctl
   ansible.posix.sysctl:
     name: net.core.wmem_max
-    value: '16777216'
+    value: "16777216"
     sysctl_set: true

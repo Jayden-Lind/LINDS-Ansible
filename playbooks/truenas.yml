@@ -4,4 +4,4 @@
   environment:
     middleware_method: client
   roles:
-  - truenas
+    - truenas

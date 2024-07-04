@@ -1,10 +1,10 @@
 ---
 - name: Start qemu-guest-agent
-  service:
+  ansible.builtin.service:
     name: "{{ item }}"
     state: started
     enabled: true
-  with_items: 
+  with_items:
     - qemu-guest-agent
   ignore_errors: true
 
@@ -12,19 +12,19 @@
   ansible.builtin.include_role:
     name: robertdebock.auto_update
   vars:
-    auto_update_apply_updates: yes
-    auto_update_message: yes
+    auto_update_apply_updates: true
+    auto_update_message: true
 
 - name: Enable NTP
   ansible.builtin.include_role:
     name: robertdebock.ntp
   vars:
-   ntp_pool:
-    - name: "0.au.pool.ntp.org iburst"
-    - name: "1.au.pool.ntp.org iburst"
-    - name: "2.au.pool.ntp.org iburst"
-    - name: "3.au.pool.ntp.org iburst"
-   ntp_timezone: "Australia/Melbourne"
+    ntp_pool:
+      - name: 0.au.pool.ntp.org iburst
+      - name: 1.au.pool.ntp.org iburst
+      - name: 2.au.pool.ntp.org iburst
+      - name: 3.au.pool.ntp.org iburst
+    ntp_timezone: Australia/Melbourne
 
 - name: MOTD
   ansible.builtin.include_role:
@@ -36,10 +36,10 @@
   ansible.builtin.include_role:
     name: robertdebock.logrotate
   vars:
-    logrotate_compress: yes
+    logrotate_compress: true
     logrotate_keep: 7
     logrotate_frequency: daily
-    logrotate_dateext: yes
+    logrotate_dateext: true
 
 - name: Include updating trust
   ansible.builtin.include_tasks:
@@ -52,7 +52,7 @@
   register: sshd
 
 - name: Ensure GRUB configuration file is present
-  copy:
+  ansible.builtin.copy:
     dest: /etc/default/grub
     content: |
       # If you change this file, run 'update-grub' afterwards to update
@@ -68,4 +68,4 @@
       GRUB_CMDLINE_LINUX=""
 
 - name: Update GRUB configuration
-  command: update-grub
+  ansible.builtin.command: update-grub

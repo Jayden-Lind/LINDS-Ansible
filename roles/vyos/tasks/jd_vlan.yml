@@ -10,20 +10,20 @@
 - name: Set IP on VLAN torrent
   vyos.vyos.vyos_l3_interfaces:
     config:
-    - name: "{{ main_lan_interface }}"
-      vifs:
-      - vlan_id: 51
-        ipv4:
-        - address: 10.0.51.1/24
+      - name: "{{ main_lan_interface }}"
+        vifs:
+          - vlan_id: 51
+            ipv4:
+              - address: 10.0.51.1/24
 - name: Create DHCP for VLAN
   vyos.vyos.vyos_config:
     lines:
-      - set service dhcp-server shared-network-name torrent-lan subnet 10.0.51.0/24 
+      - set service dhcp-server shared-network-name torrent-lan subnet 10.0.51.0/24
       - set service dhcp-server shared-network-name torrent-lan subnet 10.0.51.0/24 option name-server 1.1.1.1
       - set service dhcp-server shared-network-name torrent-lan subnet 10.0.51.0/24 range 0 start 10.0.51.2
       - set service dhcp-server shared-network-name torrent-lan subnet 10.0.51.0/24 range 0 stop 10.0.51.199
       - set service dhcp-server shared-network-name torrent-lan subnet 10.0.51.0/24 option default-router 10.0.51.1
-    
+
 - name: Create VLAN Dev
   vyos.vyos.vyos_vlan:
     vlan_id: 53
@@ -35,16 +35,16 @@
 - name: Set IP on VLAN Dev
   vyos.vyos.vyos_l3_interfaces:
     config:
-    - name: "{{ main_lan_interface }}"
-      vifs:
-      - vlan_id: 53
-        ipv4:
-        - address: 10.0.53.1/24
+      - name: "{{ main_lan_interface }}"
+        vifs:
+          - vlan_id: 53
+            ipv4:
+              - address: 10.0.53.1/24
 
 - name: Create DHCP for VLAN
   vyos.vyos.vyos_config:
     lines:
-      - set service dhcp-server shared-network-name VLAN_DEV subnet 10.0.53.0/24 
+      - set service dhcp-server shared-network-name VLAN_DEV subnet 10.0.53.0/24
       - set service dhcp-server shared-network-name VLAN_DEV subnet 10.0.53.0/24 option name-server 10.0.53.1
       - set service dhcp-server shared-network-name VLAN_DEV subnet 10.0.53.0/24 range 0 start 10.0.53.2
       - set service dhcp-server shared-network-name VLAN_DEV subnet 10.0.53.0/24 range 0 stop 10.0.53.20
@@ -57,7 +57,6 @@
       - set nat source rule 12 source address '10.0.53.0/24'
       - set nat source rule 12 translation address 'masquerade'
       - set nat source rule 12 destination group network-group !LAN-Addresses
-  
 
 - name: Create VLAN US
   vyos.vyos.vyos_vlan:
@@ -70,15 +69,15 @@
 - name: Set IP on VLAN us
   vyos.vyos.vyos_l3_interfaces:
     config:
-    - name: "{{ main_lan_interface }}"
-      vifs:
-      - vlan_id: 58
-        ipv4:
-        - address: 10.0.58.1/24
+      - name: "{{ main_lan_interface }}"
+        vifs:
+          - vlan_id: 58
+            ipv4:
+              - address: 10.0.58.1/24
 - name: Create DHCP for VLAN
   vyos.vyos.vyos_config:
     lines:
-      - set service dhcp-server shared-network-name us-lan subnet 10.0.58.0/24 
+      - set service dhcp-server shared-network-name us-lan subnet 10.0.58.0/24
       - set service dhcp-server shared-network-name us-lan subnet 10.0.58.0/24 option name-server 103.86.96.100
       - set service dhcp-server shared-network-name us-lan subnet 10.0.58.0/24 range 0 start 10.0.58.2
       - set service dhcp-server shared-network-name us-lan subnet 10.0.58.0/24 range 0 stop 10.0.58.199

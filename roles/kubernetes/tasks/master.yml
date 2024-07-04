@@ -1,7 +1,7 @@
 ---
 - name: Git checkout
   ansible.builtin.git:
-    repo: 'https://github.com/Jayden-Lind/LINDS-Kubernetes.git'
+    repo: https://github.com/Jayden-Lind/LINDS-Kubernetes.git
     dest: "{{ k8s_var.local_k8s_dir }}"
   ignore_errors: true
 
@@ -11,7 +11,7 @@
     dest: "{{ k8s_var.local_k8s_dir }}linds-secret.yml"
     owner: root
     group: root
-    mode: '0600'
+    mode: "0600"
     decrypt: true
 
 - name: Configure git
@@ -27,5 +27,5 @@
     value: Jayden Lind
 
 - name: Check if need to deploy manifests
-  ansible.builtin.shell: "cd {{ k8s_var.local_k8s_dir }} && ./app-deployment.sh"
+  ansible.builtin.shell: cd {{ k8s_var.local_k8s_dir }} && ./app-deployment.sh
   ignore_errors: true

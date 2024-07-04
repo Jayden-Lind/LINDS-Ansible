@@ -32,7 +32,7 @@
       - set interfaces wireguard wg10 private-key "{{ wg_us_priv_key }}"
       - set interfaces wireguard wg10 peer nordvpn persistent-keepalive 25
       - set protocols static table 90 route 0.0.0.0/0 interface wg10
-      - set policy route NordVPNUS interface "{{ main_lan_interface }}.58" 
+      - set policy route NordVPNUS interface "{{ main_lan_interface }}.58"
       - set policy route NordVPNUS rule 9 destination group network-group 'LAN-Addresses'
       - set policy route NordVPNUS rule 9 set table 'main'
       - set policy route NordVPNUS rule 9 source address '10.0.58.0/24'

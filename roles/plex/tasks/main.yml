@@ -16,26 +16,26 @@
       - name: jd_plex_mount_{{ server }}
         mountpoint: /mnt/
         options:
-          - "--timeout 60"
-          - "--ghost"
+          - --timeout 60
+          - --ghost
         directories:
-          - server: "://{{ server }}{{ path }}/"
+          - server: ://{{ server }}{{ path }}/
             options:
-              - "fstype=cifs"
-              - "username={{ plex.smb_username }}"
-              - "password={{ plex.smb_password }}"
-              - "domain={{ plex.smb_domain }}"
-              - "vers=3.1.1"
-              - "dir_mode=0777"
-              - "file_mode=0777"
-              - "soft"
-            path: "nas"
+              - fstype=cifs
+              - username={{ plex.smb_username }}
+              - password={{ plex.smb_password }}
+              - domain={{ plex.smb_domain }}
+              - vers=3.1.1
+              - dir_mode=0777
+              - file_mode=0777
+              - soft
+            path: nas
           - server: "{{ truenas_host }}:{{ truenas_path }}"
             options:
-              - "fstype=nfs4"
-              - "vers=4.2"
-              - "soft"
-            path: "truenas"
+              - fstype=nfs4
+              - vers=4.2
+              - soft
+            path: truenas
   when: inventory_hostname in groups['jd']
 
 - name: Mount NFS Truenas
@@ -46,34 +46,34 @@
       - name: linds_plex_mount_{{ server }}
         mountpoint: /mnt/
         options:
-          - "--timeout 60"
-          - "--ghost"
+          - --timeout 60
+          - --ghost
         directories:
           - server: "{{ server }}:{{ path }}"
             options:
-              - "fstype=nfs4"
-              - "dir_mode=0777"
-              - "file_mode=0777"
-              - "vers=4.2"
-              - "soft"
-            path: "nas"
-          - server: "://{{ smb_server }}{{ smb_path }}/"
+              - fstype=nfs4
+              - dir_mode=0777
+              - file_mode=0777
+              - vers=4.2
+              - soft
+            path: nas
+          - server: ://{{ smb_server }}{{ smb_path }}/
             options:
-              - "fstype=cifs"
-              - "username={{ plex.smb_username }}"
-              - "password={{ plex.smb_password }}"
-              - "domain={{ plex.smb_domain }}"
-              - "vers=3.1.1"
-              - "dir_mode=0777"
-              - "file_mode=0777"
-              - "soft"
-            path: "cifs"
+              - fstype=cifs
+              - username={{ plex.smb_username }}
+              - password={{ plex.smb_password }}
+              - domain={{ plex.smb_domain }}
+              - vers=3.1.1
+              - dir_mode=0777
+              - file_mode=0777
+              - soft
+            path: cifs
           - server: "{{ truenas_host }}:{{ truenas_path }}"
             options:
-              - "fstype=nfs4"
-              - "vers=4.2"
-              - "soft"
-            path: "truenas"
+              - fstype=nfs4
+              - vers=4.2
+              - soft
+            path: truenas
   when: inventory_hostname in groups['linds']
 
 - name: Include Backup

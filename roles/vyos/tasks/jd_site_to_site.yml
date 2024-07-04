@@ -1,49 +1,50 @@
+---
 - name: IPSEC Site to Site auth
   vyos.vyos.vyos_config:
     lines:
-       - set pki certificate IPSEC certificate "{{ pub_key }}"
-       - set pki certificate IPSEC private key "{{ priv_key }}"
+      - set pki certificate IPSEC certificate "{{ pub_key }}"
+      - set pki certificate IPSEC private key "{{ priv_key }}"
 
 - name: IPSEC Site to Site
   vyos.vyos.vyos_config:
     lines:
-       - set vpn ipsec esp-group MyESPGroup proposal 1 encryption aes128
-       - set vpn ipsec esp-group MyESPGroup proposal 1 hash sha1
-       - set vpn ipsec esp-group MyESPGroup proposal 2 encryption aes256gcm128
-       - set vpn ipsec esp-group MyESPGroup proposal 2 hash sha256
-       - set vpn ipsec esp-group MyESPGroup proposal 3 encryption aes256
-       - set vpn ipsec esp-group MyESPGroup proposal 3 hash sha512
-       - set vpn ipsec esp-group MyESPGroup pfs disable
-       - set vpn ipsec ike-group MyIKEGroup close-action start 
-       - set vpn ipsec ike-group MyIKEGroup dead-peer-detection action restart
-       - set vpn ipsec ike-group MyIKEGroup key-exchange 'ikev2'
-       - set vpn ipsec ike-group MyIKEGroup proposal 1 dh-group 14
-       - set vpn ipsec ike-group MyIKEGroup proposal 1 encryption aes256gcm128
-       - set vpn ipsec ike-group MyIKEGroup proposal 1 hash sha256
-       - set vpn ipsec ike-group MyIKEGroup proposal 2 dh-group 14
-       - set vpn ipsec ike-group MyIKEGroup proposal 2 encryption aes256
-       - set vpn ipsec ike-group MyIKEGroup proposal 3 dh-group 14
-       - set vpn ipsec ike-group MyIKEGroup proposal 3 encryption aes256ccm128
-       - set vpn ipsec ike-group MyIKEGroup proposal 4 dh-group 14
-       - set vpn ipsec ike-group MyIKEGroup proposal 4 encryption aes256gmac
-       - set vpn ipsec site-to-site peer LINDS authentication mode x509
-       - set vpn ipsec site-to-site peer LINDS remote-address linds-pfsense.linds.com.au
-       - set vpn ipsec site-to-site peer LINDS authentication remote-id %any
-       - set vpn ipsec site-to-site peer LINDS authentication use-x509-id
-       - set vpn ipsec site-to-site peer LINDS authentication x509 ca-certificate LINDS
-       - set vpn ipsec site-to-site peer LINDS authentication x509 certificate IPSEC
-       - set vpn ipsec site-to-site peer LINDS default-esp-group MyESPGroup
-       - set vpn ipsec site-to-site peer LINDS ike-group MyIKEGroup
-       - set vpn ipsec site-to-site peer LINDS local-address any
-       - set interfaces vti vti0 address '10.255.0.1/30'
-       - set vpn ipsec site-to-site peer LINDS vti bind 'vti0'
-       - set vpn ipsec site-to-site peer LINDS vti esp-group 'MyESPGroup'
-       - set vpn ipsec option disable-route-autoinstall
-       - set vpn ipsec site-to-site peer LINDS connection-type initiate
-       - set protocols bgp neighbor 10.255.0.2 remote-as 64551
-       - set protocols bgp neighbor 10.255.0.2 update-source vti0
-       - set protocols bgp neighbor 10.255.0.2 address-family ipv4-unicast
-       - set protocols bgp address-family ipv4-unicast network 10.0.51.0/24
-       - set protocols bgp address-family ipv4-unicast network 10.0.50.0/24
-       - set protocols bgp address-family ipv4-unicast network 10.0.58.0/24
-       - set protocols bgp address-family ipv4-unicast network 10.0.53.0/24
+      - set vpn ipsec esp-group MyESPGroup proposal 1 encryption aes128
+      - set vpn ipsec esp-group MyESPGroup proposal 1 hash sha1
+      - set vpn ipsec esp-group MyESPGroup proposal 2 encryption aes256gcm128
+      - set vpn ipsec esp-group MyESPGroup proposal 2 hash sha256
+      - set vpn ipsec esp-group MyESPGroup proposal 3 encryption aes256
+      - set vpn ipsec esp-group MyESPGroup proposal 3 hash sha512
+      - set vpn ipsec esp-group MyESPGroup pfs disable
+      - set vpn ipsec ike-group MyIKEGroup close-action start
+      - set vpn ipsec ike-group MyIKEGroup dead-peer-detection action restart
+      - set vpn ipsec ike-group MyIKEGroup key-exchange 'ikev2'
+      - set vpn ipsec ike-group MyIKEGroup proposal 1 dh-group 14
+      - set vpn ipsec ike-group MyIKEGroup proposal 1 encryption aes256gcm128
+      - set vpn ipsec ike-group MyIKEGroup proposal 1 hash sha256
+      - set vpn ipsec ike-group MyIKEGroup proposal 2 dh-group 14
+      - set vpn ipsec ike-group MyIKEGroup proposal 2 encryption aes256
+      - set vpn ipsec ike-group MyIKEGroup proposal 3 dh-group 14
+      - set vpn ipsec ike-group MyIKEGroup proposal 3 encryption aes256ccm128
+      - set vpn ipsec ike-group MyIKEGroup proposal 4 dh-group 14
+      - set vpn ipsec ike-group MyIKEGroup proposal 4 encryption aes256gmac
+      - set vpn ipsec site-to-site peer LINDS authentication mode x509
+      - set vpn ipsec site-to-site peer LINDS remote-address linds-pfsense.linds.com.au
+      - set vpn ipsec site-to-site peer LINDS authentication remote-id %any
+      - set vpn ipsec site-to-site peer LINDS authentication use-x509-id
+      - set vpn ipsec site-to-site peer LINDS authentication x509 ca-certificate LINDS
+      - set vpn ipsec site-to-site peer LINDS authentication x509 certificate IPSEC
+      - set vpn ipsec site-to-site peer LINDS default-esp-group MyESPGroup
+      - set vpn ipsec site-to-site peer LINDS ike-group MyIKEGroup
+      - set vpn ipsec site-to-site peer LINDS local-address any
+      - set interfaces vti vti0 address '10.255.0.1/30'
+      - set vpn ipsec site-to-site peer LINDS vti bind 'vti0'
+      - set vpn ipsec site-to-site peer LINDS vti esp-group 'MyESPGroup'
+      - set vpn ipsec option disable-route-autoinstall
+      - set vpn ipsec site-to-site peer LINDS connection-type initiate
+      - set protocols bgp neighbor 10.255.0.2 remote-as 64551
+      - set protocols bgp neighbor 10.255.0.2 update-source vti0
+      - set protocols bgp neighbor 10.255.0.2 address-family ipv4-unicast
+      - set protocols bgp address-family ipv4-unicast network 10.0.51.0/24
+      - set protocols bgp address-family ipv4-unicast network 10.0.50.0/24
+      - set protocols bgp address-family ipv4-unicast network 10.0.58.0/24
+      - set protocols bgp address-family ipv4-unicast network 10.0.53.0/24

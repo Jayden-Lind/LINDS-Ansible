@@ -1,5 +1,5 @@
 ---
 - hosts: plex
   roles:
-  - common
-  - plex
+    - common
+    - plex

@@ -11,7 +11,7 @@
   arensb.truenas.sharing_nfs:
     name: NFS_NAS_Kubernetes
     path: /mnt/NAS
-    networks: 
+    networks:
       - 10.0.50.0/24
       - 10.0.53.0/24
       - 10.3.1.0/24
@@ -28,10 +28,10 @@
     hour: "2"
     day: "*"
     month: "*"
-    name_format: "hourly-%Y-%m-%d_%H:%M"
+    name_format: hourly-%Y-%m-%d_%H:%M
     match:
       dataset: NAS
-      name_format: "hourly-"
+      name_format: hourly-
     recursive: true
   when: inventory_hostname in groups['jd_truenas']
 
@@ -40,6 +40,6 @@
     name: "{{ item }}"
     enabled: true
     state: started
-  with_items: 
-  - ssh
-  - nfs
+  with_items:
+    - ssh
+    - nfs

@@ -14,14 +14,14 @@
     state: directory
     owner: root
     group: root
-    mode: '0555'
+    mode: "0555"
 
 - name: Copy files periodically to TrueNAS {{ k8s_var['truenas_host'] }}
   ansible.builtin.cron:
-    name: "Copy local arr data to TrueNAS"
+    name: Copy local arr data to TrueNAS
     minute: "0"
     hour: "2"
-    job: "cp -rp {{ k8s_var['arr_local_dir'] }} {{ k8s_var['arr_local_dir_host'] }}"
+    job: cp -rp {{ k8s_var['arr_local_dir'] }} {{ k8s_var['arr_local_dir_host'] }}
 
 - name: Check if files need to be copied across
   ansible.builtin.stat:

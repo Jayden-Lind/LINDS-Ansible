@@ -14,15 +14,15 @@
     name: "{{ item }}"
     state: latest
   ignore_errors: true
-  with_items: 
-    -  qemu-guest-agent
+  with_items:
+    - qemu-guest-agent
 
 - name: Start qemu-guest-agent
-  service:
+  ansible.builtin.service:
     name: "{{ item }}"
     state: started
     enabled: true
-  with_items: 
+  with_items:
     - qemu-guest-agent
   ignore_errors: true
 
@@ -30,19 +30,19 @@
   ansible.builtin.include_role:
     name: robertdebock.auto_update
   vars:
-    auto_update_apply_updates: yes
-    auto_update_message: yes
+    auto_update_apply_updates: true
+    auto_update_message: true
 
 - name: Enable NTP
   ansible.builtin.include_role:
     name: robertdebock.ntp
   vars:
-   ntp_pool:
-    - name: "0.au.pool.ntp.org iburst"
-    - name: "1.au.pool.ntp.org iburst"
-    - name: "2.au.pool.ntp.org iburst"
-    - name: "3.au.pool.ntp.org iburst"
-   ntp_timezone: "Australia/Melbourne"
+    ntp_pool:
+      - name: 0.au.pool.ntp.org iburst
+      - name: 1.au.pool.ntp.org iburst
+      - name: 2.au.pool.ntp.org iburst
+      - name: 3.au.pool.ntp.org iburst
+    ntp_timezone: Australia/Melbourne
 
 - name: MOTD
   ansible.builtin.include_role:
@@ -54,10 +54,10 @@
   ansible.builtin.include_role:
     name: robertdebock.logrotate
   vars:
-    logrotate_compress: yes
+    logrotate_compress: true
     logrotate_keep: 7
     logrotate_frequency: daily
-    logrotate_dateext: yes
+    logrotate_dateext: true
 
 - name: Include authorized_keys
   ansible.posix.authorized_key:
@@ -76,16 +76,16 @@
   register: sshd
 
 - name: Stop and disable useless services
-  service:
+  ansible.builtin.service:
     name: "{{ item }}"
     state: stopped
     enabled: false
-  with_items: 
+  with_items:
     - firewalld
 
 - name: Restart SSHD
-  ansible.builtin.shell: "systemctl restart sshd"
+  ansible.builtin.command: systemctl restart sshd
   when: sshd.changed
 
 - name: Disable mitigations
-  ansible.builtin.shell: 'grubby --update-kernel=ALL --args="mitigations=off"'
+  ansible.builtin.command: grubby --update-kernel=ALL --args="mitigations=off"
