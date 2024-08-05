@@ -16,6 +16,7 @@
 
 - name: Install Ansible reqs
   ansible.builtin.command: ansible-galaxy install -r {{ vars.root_dir }}/LINDS-Ansible/requirements.yml
+
 - name: Copy private key
   ansible.builtin.copy:
     dest: /home/jayden/.ssh/id_rsa

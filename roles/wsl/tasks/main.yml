@@ -10,7 +10,7 @@
     state: latest
 
 - name: Set global Git username
-  ansible.builtin.git_config:
+  community.general.git_config:
     name: user.name
     value: !vault |
       $ANSIBLE_VAULT;1.1;AES256
@@ -23,7 +23,7 @@
   become_user: jayden
 
 - name: Set global Git email
-  ansible.builtin.git_config:
+  community.general.git_config:
     name: user.email
     value: !vault |
       $ANSIBLE_VAULT;1.1;AES256
@@ -47,3 +47,7 @@
 - name: Include Terraform task
   ansible.builtin.include_tasks:
     file: terraform.yml
+
+- name: Include ZSH
+  ansible.builtin.include_tasks:
+    file: zsh.yml

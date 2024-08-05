@@ -2,3 +2,7 @@
 wsl:
   hosts:
     localhost:
+  vars:
+    oh_my_zsh_url: https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh
+    user: jayden
+    zsh_path: /usr/bin/zsh

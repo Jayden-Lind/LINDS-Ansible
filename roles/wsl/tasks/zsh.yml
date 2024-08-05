@@ -1,0 +1,31 @@
+---
+- name: Ensure Zsh is installed on Ubuntu
+  ansible.builtin.apt:
+    name: zsh
+    state: present
+    update_cache: true
+
+- name: Change default shell to Zsh for the user
+  ansible.builtin.user:
+    name: "{{ user }}"
+    shell: "{{ zsh_path }}"
+  become: true
+
+- name: Download and install Oh My Zsh
+  ansible.builtin.shell: sh -c '$(curl -fsSL {{ oh_my_zsh_url }})'
+  args:
+    creates: /home/{{ user }}/.oh-my-zsh
+  become: true
+  become_user: "{{ user }}"
+
+- name: Ensure ~/.zshrc exists for the user
+  ansible.builtin.copy:
+    dest: /home/{{ user }}/.zshrc
+    content: |
+      export ZSH="/home/{{ user }}/.oh-my-zsh"
+      ZSH_THEME="robbyrussell"
+      plugins=(git)
+      export PATH="$PATH:/home/jayden/.local/bin"
+      source $ZSH/oh-my-zsh.sh
+  become: true
+  become_user: "{{ user }}"
