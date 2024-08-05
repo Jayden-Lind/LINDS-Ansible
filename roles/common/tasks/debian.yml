@@ -15,6 +15,11 @@
     auto_update_apply_updates: true
     auto_update_message: true
 
+- name: Copy better unattended-upgrades file
+  ansible.builtin.copy:
+    src: 50unattended-upgrades
+    dest:  /etc/apt/apt.conf.d/50unattended-upgrades
+
 - name: Enable NTP
   ansible.builtin.include_role:
     name: robertdebock.ntp

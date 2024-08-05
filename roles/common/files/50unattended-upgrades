@@ -1,0 +1,9 @@
+Unattended-Upgrade::Allowed-Origins {
+        "*:*";
+};
+
+Unattended-Upgrade::Package-Blacklist {
+
+};
+
+Unattended-Upgrade::DevRelease "auto";
