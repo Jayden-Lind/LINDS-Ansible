@@ -14,7 +14,7 @@
     state: directory
     owner: root
     group: root
-    mode: "0555"
+    mode: "0777"
 
 - name: Copy files periodically to TrueNAS {{ k8s_var['truenas_host'] }}
   ansible.builtin.cron:

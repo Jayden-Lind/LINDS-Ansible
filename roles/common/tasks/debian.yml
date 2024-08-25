@@ -18,7 +18,12 @@
 - name: Copy better unattended-upgrades file
   ansible.builtin.copy:
     src: 50unattended-upgrades
-    dest:  /etc/apt/apt.conf.d/50unattended-upgrades
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+
+- name: Copy phased updates skip file
+  ansible.builtin.copy:
+    src: 99-Phased-Updates
+    dest: /etc/apt/apt.conf.d/99-Phased-Updates
 
 - name: Enable NTP
   ansible.builtin.include_role:

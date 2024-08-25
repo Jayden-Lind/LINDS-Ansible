@@ -24,27 +24,27 @@
 
 - name: Add Kubernetes apt-key
   ansible.builtin.apt_key:
-    url: https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key
+    url: https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key
     state: present
     keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
   when: ansible_facts['os_family'] == "Debian"
 
 - name: Add cri-o apt-key
   ansible.builtin.apt_key:
-    url: https://pkgs.k8s.io/addons:/cri-o:/prerelease:/main/deb/Release.key
+    url: https://pkgs.k8s.io/addons:/cri-o:/stable:/v1.30/deb/Release.key
     state: present
     keyring: /etc/apt/keyrings/cri-o-apt-keyring.gpg
   when: ansible_facts['os_family'] == "Debian"
 
 - name: Add cro-i repository
   ansible.builtin.apt_repository:
-    repo: deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://pkgs.k8s.io/addons:/cri-o:/prerelease:/main/deb/ /
+    repo: deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://pkgs.k8s.io/addons:/cri-o:/stable:/v1.30/deb/ /
     state: present
   when: ansible_facts['os_family'] == "Debian"
 
 - name: Add Kubernetes repository
   ansible.builtin.apt_repository:
-    repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /
+    repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /
     state: present
   when: ansible_facts['os_family'] == "Debian"
 
@@ -119,6 +119,7 @@
     owner: root
     group: root
     mode: "0644"
+  when: ansible_facts['os_family'] == "RedHat"
 
 - name: Check if swap enabled
   changed_when: false
@@ -185,10 +186,11 @@
     line: export KUBECONFIG=/etc/kubernetes/admin.conf
 
 - name: Create kubernetes cluster check
-  ansible.builtin.shell: kubectl get nodes | grep -i {{ ansible_facts['nodename'] }}
+  ansible.builtin.shell: export KUBECONFIG=/etc/kubernetes/admin.conf; kubectl get nodes | grep -i {{ ansible_facts['nodename'] }}
   register: create_cluster
   when: inventory_hostname in groups['master']
   ignore_errors: true
+  become_user: root
 
 - name: Create kubernetes cluster
   ansible.builtin.command: kubeadm init --pod-network-cidr 10.244.0.0/16 --token-ttl 0
@@ -204,7 +206,8 @@
   ansible.builtin.dnf:
     state: latest
     name: git
-  when: inventory_hostname in groups['master']
+  when: (inventory_hostname in groups['master']) and (ansible_facts['os_family'] == "RedHat")
+  ignore_errors: true
 
 - name: Print return information from the previous task
   ansible.builtin.debug:
@@ -213,7 +216,9 @@
 
 - name: Join Kubernetes cluster
   ansible.builtin.command: "{{ hostvars[groups['master'][0]]['kubernetes_join_command']['stdout'] }}"
-  when: kubernetes_joined.rc != 0 and inventory_hostname in groups['nodes']
+  when:
+    - kubernetes_joined.rc != 0
+    - inventory_hostname not in groups['master']
 
 - name: Cleanup old unused images
   ansible.builtin.cron:
@@ -224,4 +229,9 @@
 - name: Local data for Sonaar & Radaar
   ansible.builtin.include_tasks:
     file: local_backup.yml
+  when: inventory_hostname in groups['linds_master']
+
+- name: Setup Master
+  ansible.builtin.include_tasks:
+    file: master.yml
   when: inventory_hostname in groups['master']

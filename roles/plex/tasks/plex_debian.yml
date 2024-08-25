@@ -1,0 +1,26 @@
+---
+- name: Add Plex repository key
+  ansible.builtin.apt_key:
+    url: https://downloads.plex.tv/plex-keys/PlexSign.key
+    state: present
+
+- name: Install Cifs Utils
+  ansible.builtin.apt:
+    name: cifs-utils
+    state: latest
+
+- name: Add Plex repository
+  ansible.builtin.apt_repository:
+    repo: deb https://downloads.plex.tv/repo/deb public main
+    state: present
+
+- name: Install Plex Media Server
+  ansible.builtin.apt:
+    name: plexmediaserver
+    state: present
+
+- name: Plex enabled and started
+  ansible.builtin.service:
+    name: plexmediaserver
+    enabled: true
+    state: started

@@ -10,3 +10,4 @@ arr_dir:
   - radarr
   - sonarr
   - jackett
+  - unifi-appliance-mongo-db

@@ -1,0 +1,22 @@
+---
+rulesdir: []
+verbosity: 1
+
+use_default_rules: true
+
+enable_list:
+  - args
+  - empty-string-compare # opt-in
+  - no-log-password # opt-in
+  - no-same-owner # opt-in
+  - galaxy-version-incorrect # opt-in
+  - yaml
+
+# Exclude paths that should be ignored by the linter
+exclude_paths:
+  - roles/robertdebock*
+  - roles/claranet*
+
+offline: true
+
+write_list: [all]

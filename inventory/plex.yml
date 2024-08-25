@@ -24,8 +24,4 @@ plex:
     plex_files_backup:
       - /Preferences.xml
       - /Plug-in\ Support/Databases/com.plexapp.plugins.library.db
-      - /Plug-in\ Support/Databases/com.plexapp.plugins.library.db-shm
-      - /Plug-in\ Support/Databases/com.plexapp.plugins.library.db-wal
       - /Plug-in\ Support/Databases/com.plexapp.plugins.library.blobs.db
-      - /Plug-in\ Support/Databases/com.plexapp.plugins.library.blobs.db-shm
-      - /Plug-in\ Support/Databases/com.plexapp.plugins.library.blobs.db-wal

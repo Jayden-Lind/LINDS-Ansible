@@ -1,6 +1,7 @@
 ---
 - name: Enable legacy crypto policies (bad)
   ansible.builtin.command: update-crypto-policies --set legacy
+
 - name: Install CIFS and NFS utils
   ansible.builtin.dnf:
     name: "{{ item }}"

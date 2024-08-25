@@ -8,7 +8,7 @@
 - name: Copy LINDS secret
   ansible.builtin.copy:
     src: linds-secret.yml
-    dest: "{{ k8s_var.local_k8s_dir }}linds-secret.yml"
+    dest: "{{ k8s_var.local_k8s_dir }}base/linds-secret.yml"
     owner: root
     group: root
     mode: "0600"
@@ -25,7 +25,3 @@
     name: user.name
     scope: global
     value: Jayden Lind
-
-- name: Check if need to deploy manifests
-  ansible.builtin.shell: cd {{ k8s_var.local_k8s_dir }} && ./app-deployment.sh
-  ignore_errors: true

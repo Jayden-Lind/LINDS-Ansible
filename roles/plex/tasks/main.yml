@@ -4,9 +4,15 @@
     file: plex.yml
     name: plex
 
-- name: Include Plex
+- name: Include Plex (RedHat)
   ansible.builtin.include_tasks:
-    file: plex.yml
+    file: plex_redhat.yml
+  when: ansible_facts['os_family'] == "RedHat"
+
+- name: Include Plex (Debian)
+  ansible.builtin.include_tasks:
+    file: plex_debian.yml
+  when: ansible_facts['os_family'] == "Debian"
 
 - name: Mount SMB NAS
   ansible.builtin.include_role:

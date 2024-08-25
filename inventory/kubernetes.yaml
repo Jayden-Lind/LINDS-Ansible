@@ -5,7 +5,10 @@ kubernetes:
     nodes:
       hosts:
         jd-kube-[02:04]:
-        linds-kube-[01:02].linds.com.au:
+        10.3.1.22:
     master:
       hosts:
         jd-kube-01:
+    linds_master:
+      hosts:
+        10.3.1.23:
