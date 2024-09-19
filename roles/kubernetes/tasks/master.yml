@@ -14,6 +14,14 @@
     mode: "0600"
     decrypt: true
 
+- name: Ensure bash completion is sourced in .bashrc
+  lineinfile:
+    path: /root/.bashrc
+    line: "source /etc/bash_completion"
+    state: present
+    create: yes
+    insertafter: EOF
+
 - name: Configure git
   community.general.git_config:
     name: user.email
