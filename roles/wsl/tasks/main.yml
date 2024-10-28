@@ -51,3 +51,7 @@
 - name: Include ZSH
   ansible.builtin.include_tasks:
     file: zsh.yml
+
+- name: Include Golang
+  ansible.builtin.include_tasks:
+    file: go.yml

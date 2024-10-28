@@ -15,11 +15,11 @@
     decrypt: true
 
 - name: Ensure bash completion is sourced in .bashrc
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: /root/.bashrc
-    line: "source /etc/bash_completion"
+    line: source /etc/bash_completion
     state: present
-    create: yes
+    create: true
     insertafter: EOF
 
 - name: Configure git
