@@ -81,11 +81,6 @@
       - set service dns forwarding domain k8s.linds.com.au name-server 10.96.0.10
       - set service dns forwarding domain k8s.linds.com.au addnta
 
-- name: Set up NTP Listen
-  vyos.vyos.vyos_config:
-    lines:
-      - set service ntp listen-address 10.0.110.1
-
 - name: Include LINDS BGP
   ansible.builtin.include_tasks:
     file: linds_bgp.yml

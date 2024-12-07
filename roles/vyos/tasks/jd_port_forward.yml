@@ -23,3 +23,21 @@
       - set nat destination rule 21 protocol tcp_udp
       - set nat destination rule 21 destination port 32400
       - set nat destination rule 21 translation address '10.0.50.94'
+
+- name: NTP Redirect for cameras
+  vyos.vyos.vyos_config:
+    lines:
+      - set nat destination rule 110 inbound-interface name "{{ lan_interface }}.110"
+      - set nat destination rule 110 description 'Redirect NTP traffic to 10.0.110.1'
+      - set nat destination rule 110 destination port 123
+      - set nat destination rule 110 protocol udp
+      - set nat destination rule 110 translation address 10.0.110.1
+
+- name: DNS Redirect for cameras
+  vyos.vyos.vyos_config:
+    lines:
+      - set nat destination rule 111 inbound-interface name "{{ lan_interface }}.110"
+      - set nat destination rule 111 description 'Redirect DNS traffic to 10.0.110.1'
+      - set nat destination rule 111 destination port 53
+      - set nat destination rule 111 protocol tcp_udp
+      - set nat destination rule 111 translation address 10.0.110.1
