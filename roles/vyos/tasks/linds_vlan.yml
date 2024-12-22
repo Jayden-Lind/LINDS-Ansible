@@ -69,6 +69,9 @@
       - set nat source rule 22 source address '10.0.80.0/24'
       - set nat source rule 22 translation address 'masquerade'
       - set nat source rule 22 destination group network-group !LAN-Addresses
+      - set nat source rule 23 outbound-interface name "{{ wan_interface }}"
+      - set nat source rule 23 source address '10.0.80.4'
+      - set nat source rule 23 translation address 'masquerade'
       - set service dhcp-server shared-network-name LINDS_MANAGEMENT subnet 10.0.80.0/24 subnet-parameters 'option ubnt.unifi-address 172.16.1.2;'
 
 - name: Create VLAN VPN
