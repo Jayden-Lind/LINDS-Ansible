@@ -24,27 +24,27 @@
 
 - name: Add Kubernetes apt-key
   ansible.builtin.apt_key:
-    url: https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key
+    url: https://pkgs.k8s.io/core:/stable:/v1.32/deb/Release.key
     state: present
     keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
   when: ansible_facts['os_family'] == "Debian"
 
 - name: Add cri-o apt-key
   ansible.builtin.apt_key:
-    url: https://pkgs.k8s.io/addons:/cri-o:/stable:/v1.30/deb/Release.key
+    url: https://pkgs.k8s.io/addons:/cri-o:/stable:/v1.32/deb/Release.key
     state: present
     keyring: /etc/apt/keyrings/cri-o-apt-keyring.gpg
   when: ansible_facts['os_family'] == "Debian"
 
 - name: Add cro-i repository
   ansible.builtin.apt_repository:
-    repo: deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://pkgs.k8s.io/addons:/cri-o:/stable:/v1.30/deb/ /
+    repo: deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://pkgs.k8s.io/addons:/cri-o:/stable:/v1.32/deb/ /
     state: present
   when: ansible_facts['os_family'] == "Debian"
 
 - name: Add Kubernetes repository
   ansible.builtin.apt_repository:
-    repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /
+    repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.32/deb/ /
     state: present
   when: ansible_facts['os_family'] == "Debian"
 
@@ -198,7 +198,7 @@
   register: kube_create_cluster_output
 
 - name: Create kubernetes join command
-  ansible.builtin.command: kubeadm token create --print-join-command
+  ansible.builtin.command: kubeadm token create --print-join-command --v=5
   register: kubernetes_join_command
   when: inventory_hostname in groups['master']
 
