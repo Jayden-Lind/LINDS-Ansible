@@ -27,5 +27,7 @@
       plugins=(git)
       export PATH="$PATH:/home/jayden/.local/bin"
       source $ZSH/oh-my-zsh.sh
+      alias goland=/opt/GoLand-2024.3/bin/goland.sh
+      alias webstorm=/opt/WebStorm-243.26053.12/bin/webstorm.sh
   become: true
   become_user: "{{ user }}"
