@@ -37,6 +37,7 @@
       - set vpn ipsec site-to-site peer LINDS ike-group MyIKEGroup
       - set vpn ipsec site-to-site peer LINDS local-address any
       - set interfaces vti vti0 address '10.255.0.1/30'
+      - set interfaces vti vti0 ip adjust-mss 'clamp-mss-to-pmtu'
       - set vpn ipsec site-to-site peer LINDS vti bind 'vti0'
       - set vpn ipsec site-to-site peer LINDS vti esp-group 'MyESPGroup'
       - set vpn ipsec option disable-route-autoinstall

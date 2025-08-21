@@ -2,19 +2,22 @@
 - name: Create IPSEC Remote Access IKE
   vyos.vyos.vyos_config:
     lines:
-      - set vpn ipsec ike-group RemoteAccessIKE key-exchange ikev2
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 1 dh-group 14
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 1 encryption aes256ctr
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 1 hash sha256
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 2 encryption aes256gcm128
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 2 hash sha256
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 2 dh-group 14
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 3 encryption aes256
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 3 hash sha256
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 3 dh-group 28
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 4 encryption aes256
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 4 hash sha256
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 4 dh-group 14
+      - set vpn ipsec ike-group RemoteAccessIKE dead-peer-detection action 'restart'
+      - set vpn ipsec ike-group RemoteAccessIKE dead-peer-detection interval '30'
+      - set vpn ipsec ike-group RemoteAccessIKE key-exchange 'ikev2'
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 1 dh-group '14'
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 1 encryption 'aes256ctr'
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 1 hash 'sha256'
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 2 dh-group '14'
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 2 encryption 'aes256gcm128'
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 2 hash 'sha256'
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 3 dh-group '28'
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 3 encryption 'aes256'
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 3 hash 'sha256'
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 4 dh-group '14'
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 4 encryption 'aes256'
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 4 hash 'sha256'
+
 
 - name: Create IPSEC Remote Access ESP
   vyos.vyos.vyos_config:

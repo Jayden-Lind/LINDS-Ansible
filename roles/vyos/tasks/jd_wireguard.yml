@@ -9,6 +9,7 @@
       - set interfaces wireguard wg101 peer nordvpn public-key "{{ wg_pub_key }}"
       - set interfaces wireguard wg101 private-key "{{ wg_priv_key }}"
       - set interfaces wireguard wg101 peer nordvpn persistent-keepalive 25
+      - set interfaces wireguard wg101 ip adjust-mss 'clamp-mss-to-pmtu'
       - set protocols static table 100 route 0.0.0.0/0 interface wg101
       - set policy route NordVPN rule 100 set table 100
       - set policy route NordVPN rule 100 destination address 0.0.0.0/0
@@ -31,6 +32,7 @@
       - set interfaces wireguard wg10 peer nordvpn public-key "{{ wg_us_pub_key }}"
       - set interfaces wireguard wg10 private-key "{{ wg_us_priv_key }}"
       - set interfaces wireguard wg10 peer nordvpn persistent-keepalive 25
+      - set interfaces wireguard wg10 ip adjust-mss 'clamp-mss-to-pmtu'
       - set protocols static table 90 route 0.0.0.0/0 interface wg10
       - set policy route NordVPNUS interface "{{ main_lan_interface }}.58"
       - set policy route NordVPNUS rule 9 destination group network-group 'LAN-Addresses'

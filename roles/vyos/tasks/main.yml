@@ -24,6 +24,13 @@
     lines:
       - set interfaces ethernet "{{ wan_interface }}" address dhcp
       - set interfaces ethernet "{{ wan_interface }}" address dhcpv6
+      - set interfaces ethernet "{{ wan_interface }}" ip adjust-mss 'clamp-mss-to-pmtu'
+
+- name: Enable clamp MSS
+  vyos.vyos.vyos_config:
+    lines:
+      - set interfaces ethernet "{{ wan_interface }}" ip adjust-mss 'clamp-mss-to-pmtu'
+      - set interfaces ethernet "{{ main_lan_interface }}" ip adjust-mss 'clamp-mss-to-pmtu'
 
 - name: Disable mitigations
   vyos.vyos.vyos_command:
@@ -82,16 +89,16 @@
       - set service dns forwarding allow-from 172.16.0.0/12
       - set service dns forwarding allow-from 192.168.0.0/16
 
-# - name: Set Dynamic DNS
-#   vyos.vyos.vyos_config:
-#     lines:
-#       - set service dns dynamic address "{{ wan_interface }}" service Cloudflare protocol cloudflare
-#       - set service dns dynamic address "{{ wan_interface }}" service Cloudflare username token 
-#       - set service dns dynamic address "{{ wan_interface }}" service Cloudflare password "{{ cf_dyn_dns_key }}" 
-#       - set service dns dynamic address "{{ wan_interface }}" service Cloudflare ip-version both
-#       - set service dns dynamic address "{{ wan_interface }}" service Cloudflare host-name "{{ dyn_host }}"
-#       - set service dns dynamic address "{{ wan_interface }}" service Cloudflare protocol cloudflare
-#       - set service dns dynamic address "{{ wan_interface }}" service Cloudflare zone "{{ cf_dyn_dns_zone }}"
+- name: Set Dynamic DNS
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dns dynamic address "{{ wan_interface }}" service Cloudflare protocol cloudflare
+      - set service dns dynamic address "{{ wan_interface }}" service Cloudflare username token
+      - set service dns dynamic address "{{ wan_interface }}" service Cloudflare password "{{ cf_dyn_dns_key }}"
+      - set service dns dynamic address "{{ wan_interface }}" service Cloudflare ip-version both
+      - set service dns dynamic address "{{ wan_interface }}" service Cloudflare host-name "{{ dyn_host }}"
+      - set service dns dynamic address "{{ wan_interface }}" service Cloudflare protocol cloudflare
+      - set service dns dynamic address "{{ wan_interface }}" service Cloudflare zone "{{ cf_dyn_dns_zone }}"
 
 - name: Set UPnP
   vyos.vyos.vyos_config:
