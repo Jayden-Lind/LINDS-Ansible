@@ -8,6 +8,7 @@ plex:
         server: jd-dc-01.linds.com.au
         path: /nas
         truenas_plex_path: /plex/jd
+        truenas_hdd_path: /mnt/HDD
     linds:
       hosts:
         linds-plex-01.linds.com.au:

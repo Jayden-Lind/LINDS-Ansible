@@ -42,6 +42,12 @@
               - vers=4.2
               - soft
             path: truenas
+          - server: "{{ truenas_host }}:{{ truenas_hdd_path }}"
+            options:
+              - fstype=nfs4
+              - vers=4.2
+              - soft
+            path: HDD
   when: inventory_hostname in groups['jd']
 
 - name: Mount NFS Truenas

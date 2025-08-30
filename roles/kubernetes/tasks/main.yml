@@ -24,27 +24,27 @@
 
 - name: Add Kubernetes apt-key
   ansible.builtin.apt_key:
-    url: https://pkgs.k8s.io/core:/stable:/v1.33/deb/Release.key
+    url: https://pkgs.k8s.io/core:/stable:/v1.34/deb/Release.key
     state: present
     keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
   when: ansible_facts['os_family'] == "Debian"
 
 - name: Add cri-o apt-key
   ansible.builtin.apt_key:
-    url: https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.32/deb/Release.key
+    url: https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.33/deb/Release.key
     state: present
     keyring: /etc/apt/keyrings/cri-o-apt-keyring.gpg
   when: ansible_facts['os_family'] == "Debian"
 
 - name: Add cri-o repository
   ansible.builtin.apt_repository:
-    repo: deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.32/deb/ /
+    repo: deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.33/deb/ /
     state: present
   when: ansible_facts['os_family'] == "Debian"
 
 - name: Add Kubernetes repository
   ansible.builtin.apt_repository:
-    repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.33/deb/ /
+    repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.34/deb/ /
     state: present
   when: ansible_facts['os_family'] == "Debian"
 
@@ -71,7 +71,7 @@
 - name: Ensure K8s packages installed (Debian)
   ansible.builtin.apt:
     name: "{{ item }}"
-    state: present
+    state: latest
     update_cache: true
   with_items:
     - kubelet
@@ -225,11 +225,6 @@
     name: Cleanup old images
     special_time: weekly
     job: crictl rmi --prune
-
-- name: Local data for Sonaar & Radaar
-  ansible.builtin.include_tasks:
-    file: local_backup.yml
-  when: inventory_hostname in groups['linds_master']
 
 - name: Setup Master
   ansible.builtin.include_tasks:
