@@ -4,103 +4,15 @@
     file: vars.yml
     name: k8s_var
 
-- name: CRI-O Repo
-  ansible.builtin.copy:
-    src: cri-o.repo
-    dest: /etc/yum.repos.d/devel_cri_1.24.repo
-    owner: root
-    group: root
-    mode: "0644"
+- name: Include RedHat-specific tasks
+  ansible.builtin.include_tasks:
+    file: redhat.yml
   when: ansible_facts['os_family'] == "RedHat"
 
-- name: Kubernetes Repo
-  ansible.builtin.copy:
-    src: kubernetes.repo
-    dest: /etc/yum.repos.d/kubernetes.repo
-    owner: root
-    group: root
-    mode: "0644"
-  when: ansible_facts['os_family'] == "RedHat"
-
-- name: Add Kubernetes apt-key
-  ansible.builtin.apt_key:
-    url: https://pkgs.k8s.io/core:/stable:/v1.34/deb/Release.key
-    state: present
-    keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+- name: Include Debian-specific tasks
+  ansible.builtin.include_tasks:
+    file: debian.yml
   when: ansible_facts['os_family'] == "Debian"
-
-- name: Add cri-o apt-key
-  ansible.builtin.apt_key:
-    url: https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.33/deb/Release.key
-    state: present
-    keyring: /etc/apt/keyrings/cri-o-apt-keyring.gpg
-  when: ansible_facts['os_family'] == "Debian"
-
-- name: Add cri-o repository
-  ansible.builtin.apt_repository:
-    repo: deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.33/deb/ /
-    state: present
-  when: ansible_facts['os_family'] == "Debian"
-
-- name: Add Kubernetes repository
-  ansible.builtin.apt_repository:
-    repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.34/deb/ /
-    state: present
-  when: ansible_facts['os_family'] == "Debian"
-
-- name: Ensure Kubernetes is installed (RedHat)
-  ansible.builtin.dnf:
-    name: kubelet
-    state: latest
-    disable_excludes: all
-    nobest: true
-  when: ansible_facts['os_family'] == "RedHat"
-
-- name: Ensure K8s packages installed (RedHat)
-  ansible.builtin.dnf:
-    name: "{{ item }}"
-    state: latest
-    disable_excludes: all
-  with_items:
-    - kubeadm
-    - kubectl
-    - cri-o
-    - nfs-utils
-  when: ansible_facts['os_family'] == "RedHat"
-
-- name: Ensure K8s packages installed (Debian)
-  ansible.builtin.apt:
-    name: "{{ item }}"
-    state: latest
-    update_cache: true
-  with_items:
-    - kubelet
-    - kubeadm
-    - kubectl
-    - cri-o
-    - nfs-common
-  when: ansible_facts['os_family'] == "Debian"
-
-- name: Ensure K8s services are started (Debian)
-  ansible.builtin.service:
-    name: "{{ item }}"
-    enabled: true
-    state: started
-  with_items:
-    - kubelet
-    - cri-o
-  when: ansible_facts['os_family'] == "Debian"
-
-- name: Ensure K8s services are started (RedHat)
-  ansible.builtin.service:
-    name: "{{ item }}"
-    enabled: true
-    state: started
-  with_items:
-    - kubelet
-    - crio
-    - cri-o
-  when: ansible_facts['os_family'] == "RedHat"
 
 - name: Local data for Sonaar & Radaar
   ansible.builtin.include_tasks:
@@ -111,15 +23,6 @@
   ansible.builtin.file:
     path: /etc/containers/
     state: directory
-
-- name: Containers Policy for RHEL 9
-  ansible.builtin.copy:
-    src: policy.json
-    dest: /etc/containers/policy.json
-    owner: root
-    group: root
-    mode: "0644"
-  when: ansible_facts['os_family'] == "RedHat"
 
 - name: Check if swap enabled
   changed_when: false
@@ -201,13 +104,6 @@
   ansible.builtin.command: kubeadm token create --print-join-command --v=5
   register: kubernetes_join_command
   when: inventory_hostname in groups['master']
-
-- name: Install git
-  ansible.builtin.dnf:
-    state: latest
-    name: git
-  when: (inventory_hostname in groups['master']) and (ansible_facts['os_family'] == "RedHat")
-  ignore_errors: true
 
 - name: Print return information from the previous task
   ansible.builtin.debug:

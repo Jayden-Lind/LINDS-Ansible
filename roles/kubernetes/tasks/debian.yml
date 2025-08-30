@@ -1,0 +1,44 @@
+---
+- name: Add Kubernetes apt-key
+  ansible.builtin.apt_key:
+    url: https://pkgs.k8s.io/core:/stable:/v1.34/deb/Release.key
+    state: present
+    keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+- name: Add cri-o apt-key
+  ansible.builtin.apt_key:
+    url: https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.33/deb/Release.key
+    state: present
+    keyring: /etc/apt/keyrings/cri-o-apt-keyring.gpg
+
+- name: Add cri-o repository
+  ansible.builtin.apt_repository:
+    repo: deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.33/deb/ /
+    state: present
+
+- name: Add Kubernetes repository
+  ansible.builtin.apt_repository:
+    repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.34/deb/ /
+    state: present
+
+- name: Ensure K8s packages installed (Debian)
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: latest
+    update_cache: true
+  with_items:
+    - kubelet
+    - kubeadm
+    - kubectl
+    - cri-o
+    - nfs-common
+
+- name: Ensure K8s services are started (Debian)
+  ansible.builtin.service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  with_items:
+    - kubelet
+    - cri-o
+
