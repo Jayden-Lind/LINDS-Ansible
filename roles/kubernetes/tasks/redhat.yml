@@ -57,4 +57,3 @@
     name: git
   when: inventory_hostname in groups['master']
   ignore_errors: true
-

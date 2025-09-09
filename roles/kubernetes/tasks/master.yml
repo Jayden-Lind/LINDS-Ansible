@@ -14,14 +14,31 @@
     mode: "0600"
     decrypt: true
 
-- name: Ensure Helm installed (Debian)
-  ansible.builtin.apt:
-    name: "{{ item }}"
+- name: Ensure prerequisites
+  ansible.builtin.apt: { name: ["curl", "gnupg", "apt-transport-https", "ca-certificates"], state: present, update_cache: true }
+  become: true
+
+- name: Ensure keyrings dir
+  ansible.builtin.file: { path: /usr/share/keyrings, state: directory, mode: "0755" }
+  become: true
+
+- name: Add Helm repo key (dearmored) if missing
+  ansible.builtin.shell: "curl -fsSL https://packages.buildkite.com/helm-linux/helm-debian/gpgkey | gpg --dearmor -o /usr/share/keyrings/helm.gpg"
+  args: { creates: /usr/share/keyrings/helm.gpg }
+  changed_when: true
+  become: true
+
+- name: Add Helm APT repo (signed-by)
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/helm.gpg] https://packages.buildkite.com/helm-linux/helm-debian/any/ any main"
+    filename: "helm-stable-debian"
     state: present
     update_cache: true
-  with_items:
-    - helm
-  when: ansible_facts['os_family'] == "Debian"
+  become: true
+
+- name: Install Helm
+  ansible.builtin.apt: { name: helm, state: present, update_cache: true }
+  become: true
 
 - name: Ensure bash completion is sourced in .bashrc
   ansible.builtin.lineinfile:

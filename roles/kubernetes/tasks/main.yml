@@ -14,11 +14,6 @@
     file: debian.yml
   when: ansible_facts['os_family'] == "Debian"
 
-- name: Local data for Sonaar & Radaar
-  ansible.builtin.include_tasks:
-    file: local_backup.yml
-  when: inventory_hostname == k8s_var['arr_host']
-
 - name: Create containers folder
   ansible.builtin.file:
     path: /etc/containers/
