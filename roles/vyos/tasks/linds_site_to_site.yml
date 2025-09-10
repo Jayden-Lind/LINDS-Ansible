@@ -39,6 +39,7 @@
       - set vpn ipsec site-to-site peer LINDS local-address any
       - set interfaces vti vti0 address '10.255.0.2/30'
       - set interfaces vti vti0 ip adjust-mss 'clamp-mss-to-pmtu'
+      - set interfaces vti vti0 mtu 1400
       - set vpn ipsec site-to-site peer LINDS connection-type initiate
       - set protocols bgp neighbor 10.255.0.1 remote-as 64550
       - set protocols bgp neighbor 10.255.0.1 update-source vti0
