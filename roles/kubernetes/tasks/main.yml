@@ -41,6 +41,36 @@
   register: ip_forward_enabled
   failed_when: ip_forward_enabled.rc >=2
 
+- name: Ensure system.conf.d directory exists
+  file:
+    path: /etc/systemd/system.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: 0755
+
+- name: Set default NOFILE and TasksMax
+  copy:
+    dest: /etc/systemd/system.conf.d/95-nofile.conf
+    owner: root
+    group: root
+    mode: 0644
+    content: |
+      [Manager]
+      DefaultLimitNOFILE=1048576:1048576
+      DefaultTasksMax=20000
+
+- name: Write inotify sysctls
+  copy:
+    dest: /etc/sysctl.d/95-inotify.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      fs.inotify.max_user_watches = 1048576
+      fs.inotify.max_user_instances = 8192
+      fs.inotify.max_queued_events = 16384
+
 - name: Enable TCP MTU probing (persist + apply)
   become: true
   ansible.posix.sysctl:

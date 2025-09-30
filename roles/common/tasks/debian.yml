@@ -79,3 +79,14 @@
 
 - name: Update GRUB configuration
   ansible.builtin.command: update-grub
+
+- name: Ensure remote rsyslog config
+  ansible.builtin.copy:
+    dest: /etc/rsyslog.d/90-remote.conf
+    content: |
+      *.* @(o)172.16.1.23:1514;RSYSLOG_SyslogProtocol23Format
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart rsyslog
+
