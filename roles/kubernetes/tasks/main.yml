@@ -80,6 +80,11 @@
     sysctl_file: /etc/sysctl.d/99-mtu-probing.conf
     reload: true
 
+- name: Ensure short_name_mode is disabled in crio.conf
+  ansible.builtin.lineinfile:
+    path: /etc/crio/crio.conf.d/10-crio.conf
+    line: 'short_name_mode = "disabled"'
+    insertafter: '^\[crio\.image\]'
 
 - name: Enable ip_forward
   ansible.builtin.shell: echo 1 > /proc/sys/net/ipv4/ip_forward
@@ -131,7 +136,7 @@
   become_user: root
 
 - name: Create kubernetes cluster
-  ansible.builtin.command: kubeadm init --pod-network-cidr 10.244.0.0/16 --token-ttl 0
+  ansible.builtin.command: kubeadm init --pod-network-cidr 10.244.0.0/16 --token-ttl 0 --control-plane-endpoint=jd-kube-01.linds.com.au:6443
   when: inventory_hostname in groups['master'] and create_cluster.rc!=0
   register: kube_create_cluster_output
 

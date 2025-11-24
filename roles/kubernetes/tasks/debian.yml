@@ -7,13 +7,13 @@
 
 - name: Add cri-o apt-key
   ansible.builtin.apt_key:
-    url: https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.33/deb/Release.key
+    url: https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.34/deb/Release.key
     state: present
     keyring: /etc/apt/keyrings/cri-o-apt-keyring.gpg
 
 - name: Add cri-o repository
   ansible.builtin.apt_repository:
-    repo: deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.33/deb/ /
+    repo: deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.34/deb/ /
     state: present
 
 - name: Add Kubernetes repository
