@@ -25,6 +25,11 @@
     src: 99-Phased-Updates
     dest: /etc/apt/apt.conf.d/99-Phased-Updates
 
+- name: Copy needrestart configuration file
+  ansible.builtin.copy:
+    src: 99needrestart
+    dest: /etc/apt/apt.conf.d/99needrestart
+
 - name: Enable NTP
   ansible.builtin.include_role:
     name: robertdebock.ntp
@@ -87,6 +92,5 @@
       *.* @(o)172.16.1.23:1514;RSYSLOG_SyslogProtocol23Format
     owner: root
     group: root
-    mode: '0644'
+    mode: "0644"
   notify: Restart rsyslog
-
