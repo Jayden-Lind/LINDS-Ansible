@@ -7,3 +7,4 @@ Unattended-Upgrade::Package-Blacklist {
 };
 
 Unattended-Upgrade::DevRelease "auto";
+Unattended-Upgrade::Automatic-Reboot "true";
