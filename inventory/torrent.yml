@@ -3,10 +3,7 @@ torrent:
   children:
     jd_torrent:
       hosts:
-        10.0.51.2:
-      vars:
-        smb_server: 10.0.50.200
-        smb_path: nas
+        10.0.50.58:
     linds_torrent:
       hosts:
         10.0.36.4:

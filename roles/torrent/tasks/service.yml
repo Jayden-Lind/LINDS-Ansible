@@ -1,0 +1,22 @@
+---
+- name: Stop qbittorrent (legacy unit), if started
+  become: true
+  ansible.builtin.service:
+    name: qbittorrent
+    state: stopped
+  ignore_errors: true
+
+- name: Stop qbittorrent slice (legacy), if started
+  become: true
+  ansible.builtin.service:
+    name: system-qbittorrent\x2dnox.slice
+    state: stopped
+  ignore_errors: true
+
+- name: Enable and start qBittorrent
+  become: true
+  ansible.builtin.service:
+    name: "{{ torrent_service_name }}"
+    state: started
+    enabled: true
+

@@ -1,0 +1,8 @@
+---
+- name: Install qBittorrent + required packages (Debian)
+  become: true
+  ansible.builtin.apt:
+    name: "{{ torrent_packages_debian }}"
+    state: present
+    update_cache: true
+

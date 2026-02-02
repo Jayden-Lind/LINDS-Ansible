@@ -1,0 +1,22 @@
+---
+- name: Determine if this host is a VM guest
+  ansible.builtin.set_fact:
+    common_is_vm_guest: "{{ ansible_facts.virtualization_role | default('') == 'guest' }}"
+
+- name: Determine if this host is high-memory
+  ansible.builtin.set_fact:
+    common_is_highmem: "{{ (ansible_facts.memtotal_mb | default(0) | int) >= (common_sysctl_highmem_threshold_mb | int) }}"
+
+- name: Apply high-memory sysctls
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_set: true
+    reload: true
+    sysctl_file: /etc/sysctl.d/99-common-highmem.conf
+  loop: "{{ common_sysctl_highmem | dict2items }}"
+  when:
+    - (not common_sysctl_vm_only | bool) or (common_is_vm_guest | bool)
+    - common_is_highmem | bool
+

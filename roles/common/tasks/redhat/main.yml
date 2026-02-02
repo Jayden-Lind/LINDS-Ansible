@@ -1,0 +1,37 @@
+---
+- name: Include EPEL Repo
+  ansible.builtin.include_role:
+    name: robertdebock.epel
+
+- name: Install bash-completion
+  ansible.builtin.dnf:
+    name: bash-completion
+    state: latest
+  ignore_errors: true
+
+- name: Install qemu-guest-agent
+  ansible.builtin.dnf:
+    name: qemu-guest-agent
+    state: latest
+  when: common_enable_qemu_guest_agent | bool
+  ignore_errors: true
+
+- name: Start qemu-guest-agent
+  ansible.builtin.service:
+    name: qemu-guest-agent
+    state: started
+    enabled: true
+  when: common_enable_qemu_guest_agent | bool
+  ignore_errors: true
+
+- name: Stop and disable useless services
+  ansible.builtin.service:
+    name: firewalld
+    state: stopped
+    enabled: false
+
+- name: Disable mitigations
+  ansible.builtin.command: grubby --update-kernel=ALL --args="mitigations=off"
+  changed_when: true
+  when: common_disable_mitigations | bool
+

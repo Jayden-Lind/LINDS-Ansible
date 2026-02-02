@@ -18,13 +18,14 @@
     state: directory
     mode: "0755"
 
-- name: Mount SMB NAS
+- name: Mount NFS NAS
   ansible.posix.mount:
-    src: //{{ smb_server }}/{{ smb_path }}
     path: /mnt/nas
-    fstype: cifs
-    opts: username={{ torrent.smb_username }},password={{ torrent.smb_password }},domain=linds.com.au,dir_mode=0777,file_mode=0777,nounix
+    src: "jd-truenas-01:/mnt/HDD"
+    fstype: nfs4
+    opts: defaults,rsize=1048576,wsize=1048576,noatime,nconnect=4,soft
     state: present
+    boot: true
   register: mount
 
 - name: Mount NAS if changed

@@ -1,0 +1,71 @@
+---
+- name: Enable Auto Update
+  ansible.builtin.include_role:
+    name: robertdebock.auto_update
+  vars:
+    auto_update_apply_updates: true
+    auto_update_message: true
+
+- name: Enable NTP
+  ansible.builtin.include_role:
+    name: robertdebock.ntp
+  vars:
+    ntp_pool:
+      - name: 0.au.pool.ntp.org iburst
+      - name: 1.au.pool.ntp.org iburst
+      - name: 2.au.pool.ntp.org iburst
+      - name: 3.au.pool.ntp.org iburst
+    ntp_timezone: Australia/Melbourne
+
+- name: MOTD
+  ansible.builtin.include_role:
+    name: claranet.motd
+  vars:
+    motd_template: "{{ ansible_parent_role_paths[0] }}/template/motd"
+
+- name: Logrotate
+  ansible.builtin.include_role:
+    name: robertdebock.logrotate
+  vars:
+    logrotate_compress: true
+    logrotate_keep: 7
+    logrotate_frequency: daily
+    logrotate_dateext: true
+
+- name: Include authorized_keys
+  ansible.posix.authorized_key:
+    user: root
+    state: present
+    key: "{{ lookup('file', 'authorized_keys') }}"
+
+- name: Include updating trust
+  ansible.builtin.include_tasks:
+    file: certificates.yml
+
+- name: Ensure remote rsyslog config
+  ansible.builtin.copy:
+    dest: /etc/rsyslog.d/90-remote.conf
+    content: |
+      {{ common_rsyslog_remote_line }}
+    owner: root
+    group: root
+    mode: '0644'
+  when: common_rsyslog_remote_line | length > 0
+  notify: Restart rsyslog
+
+- name: Copy UseDNS SSHD
+  ansible.builtin.copy:
+    src: 02-disabledns.conf
+    dest: /etc/ssh/sshd_config.d
+  register: sshd
+
+- name: Restart SSHD (if config changed)
+  ansible.builtin.systemd:
+    name: sshd
+    state: restarted
+  when: sshd.changed
+
+- name: Sysctl tuning
+  ansible.builtin.include_tasks:
+    file: sysctl.yml
+  when: common_sysctl_enabled | bool

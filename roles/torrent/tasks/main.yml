@@ -1,29 +1,15 @@
 ---
-- name: Install transmission + required
-  ansible.builtin.dnf:
-    name: "{{ item }}"
-    state: latest
-  with_items:
-    - qbittorrent
-    - qbittorrent-nox
-    - cifs-utils
-    - nfs-utils
+- name: Install packages (Debian)
+  ansible.builtin.include_tasks: install-debian.yml
+  when: ansible_facts.os_family == 'Debian'
 
-- name: Stop service qbittorrent, if started
-  ansible.builtin.service:
-    name: qbittorrent
-    state: stopped
-  ignore_errors: true
-
-- name: Stop service qbittorrent, if started
-  ansible.builtin.service:
-    name: system-qbittorrent\x2dnox.slice
-    state: stopped
-  ignore_errors: true
+- name: Install packages (RedHat)
+  ansible.builtin.include_tasks: install-redhat.yml
+  when: ansible_facts.os_family == 'RedHat'
 
 - name: Create config directory
   ansible.builtin.file:
-    path: /root/.config/qBittorrent
+    path: "{{ torrent_config_dir | default('/root/.config/qBittorrent') }}"
     state: directory
     mode: "0755"
 
@@ -37,20 +23,8 @@
     file: linds.yml
   when: inventory_hostname in groups['linds_torrent']
 
-- name: Start transmission
-  ansible.builtin.service:
-    name: qbittorrent-nox@root.service
-    state: started
-    enabled: true
+- name: Apply torrenting VM sysctl/kernel tuning
+  ansible.builtin.include_tasks: sysctl.yml
 
-- name: Set Sysctl
-  ansible.posix.sysctl:
-    name: net.core.rmem_max
-    value: "16777216"
-    sysctl_set: true
-
-- name: Set Sysctl
-  ansible.posix.sysctl:
-    name: net.core.wmem_max
-    value: "16777216"
-    sysctl_set: true
+- name: Manage qBittorrent service
+  ansible.builtin.include_tasks: service.yml

@@ -1,0 +1,56 @@
+---
+# Debian-family specifics
+
+- name: Start qemu-guest-agent
+  ansible.builtin.service:
+    name: qemu-guest-agent
+    state: started
+    enabled: true
+  when: common_enable_qemu_guest_agent | bool
+  ignore_errors: true
+
+- name: Copy better unattended-upgrades file
+  ansible.builtin.copy:
+    src: 50unattended-upgrades
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+
+- name: Copy phased updates skip file
+  ansible.builtin.copy:
+    src: 99-Phased-Updates
+    dest: /etc/apt/apt.conf.d/99-Phased-Updates
+
+- name: Copy needrestart configuration file
+  ansible.builtin.copy:
+    src: 99needrestart
+    dest: /etc/apt/apt.conf.d/99needrestart
+
+- name: Ensure GRUB configuration file is present
+  ansible.builtin.copy:
+    dest: /etc/default/grub
+    content: |
+      # If you change this file, run 'update-grub' afterwards to update
+      # /boot/grub/grub.cfg.
+      # For full documentation of the options in this file, see:
+      #   info -f grub -n 'Simple configuration'
+
+      GRUB_DEFAULT=0
+      GRUB_TIMEOUT_STYLE=hidden
+      GRUB_TIMEOUT=0
+      GRUB_DISTRIBUTOR=`( . /etc/os-release; echo ${NAME:-Ubuntu} ) 2>/dev/null || echo Ubuntu`
+      GRUB_CMDLINE_LINUX_DEFAULT="{{ (common_disable_mitigations | bool) | ternary('mitigations=off', '') }}"
+      GRUB_CMDLINE_LINUX=""
+
+- name: Update GRUB configuration
+  ansible.builtin.command: update-grub
+  changed_when: true
+  when: common_disable_mitigations | bool
+
+- name: Install Ubuntu HWE kernel
+  ansible.builtin.apt:
+    name: "{{ common_ubuntu_hwe_package }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when:
+    - common_ubuntu_hwe_enabled | bool
+    - ansible_facts.distribution == 'Ubuntu'

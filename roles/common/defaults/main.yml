@@ -1,0 +1,32 @@
+---
+# Common role defaults
+
+common_rsyslog_remote_line: "*.* @(o)172.16.1.23:1514;RSYSLOG_SyslogProtocol23Format"
+
+common_enable_qemu_guest_agent: true
+
+common_disable_mitigations: true
+
+common_sysctl_enabled: true
+common_sysctl_vm_only: true
+common_sysctl_highmem_threshold_mb: 32768
+
+common_sysctl_highmem:
+  vm.swappiness: 10
+  vm.vfs_cache_pressure: 50
+  vm.dirty_background_ratio: 2
+  vm.dirty_ratio: 10
+  vm.dirty_expire_centisecs: 3000
+  vm.dirty_writeback_centisecs: 500
+  fs.file-max: 2097152
+  fs.inotify.max_user_watches: 1048576
+  net.core.somaxconn: 4096
+  net.core.netdev_max_backlog: 16384
+  net.ipv4.tcp_fin_timeout: 15
+  net.ipv4.tcp_keepalive_time: 300
+  net.ipv4.tcp_keepalive_intvl: 30
+  net.ipv4.tcp_keepalive_probes: 5
+  net.ipv4.tcp_max_syn_backlog: 4096
+
+common_ubuntu_hwe_enabled: true
+common_ubuntu_hwe_package: linux-generic-hwe-{{ ansible_distribution_version }}
