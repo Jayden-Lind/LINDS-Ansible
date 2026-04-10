@@ -1,23 +1,37 @@
 ---
-- name: Add Plex repository key
-  ansible.builtin.apt_key:
-    url: https://downloads.plex.tv/plex-keys/PlexSign.key
-    state: present
-
-- name: Install Cifs Utils
+- name: Install prerequisites
   ansible.builtin.apt:
-    name: cifs-utils
-    state: latest
+    name:
+      - curl
+      - gnupg2
+      - cifs-utils
+    state: present
+    update_cache: true
+
+- name: Ensure keyrings directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Download and dearmor Plex signing key
+  ansible.builtin.shell: >
+    curl -fsSL https://downloads.plex.tv/plex-keys/PlexSign.v2.key |
+    gpg --yes --dearmor -o /etc/apt/keyrings/plexmediaserver.v2.gpg
+  args:
+    creates: /etc/apt/keyrings/plexmediaserver.v2.gpg
 
 - name: Add Plex repository
   ansible.builtin.apt_repository:
-    repo: deb https://downloads.plex.tv/repo/deb public main
+    repo: "deb [signed-by=/etc/apt/keyrings/plexmediaserver.v2.gpg] https://repo.plex.tv/deb/ public main"
+    filename: plex
     state: present
 
 - name: Install Plex Media Server
   ansible.builtin.apt:
     name: plexmediaserver
     state: present
+    update_cache: true
 
 - name: Plex enabled and started
   ansible.builtin.service:
