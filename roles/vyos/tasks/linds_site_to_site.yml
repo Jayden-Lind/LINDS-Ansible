@@ -9,13 +9,10 @@
   vyos.vyos.vyos_config:
     lines:
       - set vpn ipsec interface "{{ wan_interface }}"
-      - set vpn ipsec esp-group MyESPGroup proposal 1 encryption aes128
-      - set vpn ipsec esp-group MyESPGroup proposal 1 hash sha1
-      - set vpn ipsec esp-group MyESPGroup proposal 2 encryption aes256gcm128
-      - set vpn ipsec esp-group MyESPGroup proposal 2 hash sha256
-      - set vpn ipsec esp-group MyESPGroup proposal 3 encryption aes256
-      - set vpn ipsec esp-group MyESPGroup proposal 3 hash sha512
-      - set vpn ipsec esp-group MyESPGroup pfs disable
+      - set vpn ipsec esp-group MyESPGroup pfs 'disable'
+      - set vpn ipsec esp-group MyESPGroup proposal 1 encryption 'aes256gcm128'
+      - set vpn ipsec esp-group MyESPGroup proposal 2 encryption 'aes256'
+      - set vpn ipsec esp-group MyESPGroup proposal 2 hash 'sha256'
       - set vpn ipsec ike-group MyIKEGroup key-exchange 'ikev2'
       - set vpn ipsec ike-group MyIKEGroup close-action restart
       - set vpn ipsec ike-group MyIKEGroup dead-peer-detection action restart
@@ -38,7 +35,7 @@
       - set vpn ipsec site-to-site peer LINDS ike-group MyIKEGroup
       - set vpn ipsec site-to-site peer LINDS local-address any
       - set interfaces vti vti0 address '10.255.0.2/30'
-      - set interfaces vti vti0 ip adjust-mss 'clamp-mss-to-pmtu'
+      - set interfaces vti vti0 ip adjust-mss '1396'
       - set interfaces vti vti0 mtu 1438
       - set vpn ipsec site-to-site peer LINDS connection-type initiate
       - set protocols bgp neighbor 10.255.0.1 remote-as 64550
