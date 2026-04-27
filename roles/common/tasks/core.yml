@@ -6,17 +6,6 @@
     auto_update_apply_updates: true
     auto_update_message: true
 
-- name: Enable NTP
-  ansible.builtin.include_role:
-    name: robertdebock.ntp
-  vars:
-    ntp_pool:
-      - name: 0.au.pool.ntp.org iburst
-      - name: 1.au.pool.ntp.org iburst
-      - name: 2.au.pool.ntp.org iburst
-      - name: 3.au.pool.ntp.org iburst
-    ntp_timezone: Australia/Melbourne
-
 - name: MOTD
   ansible.builtin.include_role:
     name: claranet.motd

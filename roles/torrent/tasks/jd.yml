@@ -21,7 +21,7 @@
 - name: Mount NFS NAS
   ansible.posix.mount:
     path: /mnt/nas
-    src: "jd-truenas-01:/mnt/HDD"
+    src: "jd-truenas-01.linds.com.au:/mnt/HDD"
     fstype: nfs4
     opts: defaults,rsize=1048576,wsize=1048576,noatime,nconnect=4,soft
     state: present

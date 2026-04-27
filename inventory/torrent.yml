@@ -3,10 +3,10 @@ torrent:
   children:
     jd_torrent:
       hosts:
-        10.0.50.58:
+        jd-torrent-01.linds.com.au:
     linds_torrent:
       hosts:
-        10.0.36.4:
+        10.0.36.2:
       vars:
-        nfs_server: linds-truenas-01
+        nfs_server: linds-truenas-01.linds.com.au
         nfs_path: /mnt/ZFS_NAS
