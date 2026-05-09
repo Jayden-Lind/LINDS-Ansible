@@ -1,110 +1,52 @@
 ---
-- name: Configure hostname and domain-name
-  vyos.vyos.vyos_system:
-    host_name: jd-vyos-01
-    domain_name: linds.com.au
+# JD VyOS (10.0.50.1, jd-vyos-01) — orchestrator only.
+# All actual configuration lives in the jd_*.yml include files below,
+# grouped by concern so each file is short and self-explanatory.
 
-- name: Enable latency optimisation
-  vyos.vyos.vyos_config:
-    lines:
-      - set interfaces ethernet "{{ wan_interface }}" offload gro
-      - set interfaces ethernet "{{ wan_interface }}" offload gso
-      - set interfaces ethernet "{{ wan_interface }}" offload rfs
-      - set interfaces ethernet "{{ wan_interface }}" offload rps
-      - set interfaces ethernet "{{ wan_interface }}" offload sg
-
-- name: Set IP on LAN
-  vyos.vyos.vyos_l3_interfaces:
-    config:
-      - name: "{{ main_lan_interface }}"
-        ipv4:
-          - address: 10.0.50.1/24
-
-- name: Create DHCP for LAN
-  vyos.vyos.vyos_config:
-    lines:
-      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24
-      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option domain-search linds.com.au
-      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option name-server 10.0.50.1
-      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option name-server 10.0.50.200
-      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 range 0 start 10.0.50.2
-      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 range 0 stop 10.0.50.199
-      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option default-router 10.0.50.1
-      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option domain-name linds.com.au
-      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option time-zone Australia/Melbourne
-      - set service dhcp-server hostfile-update
-      - set service dhcp-server dynamic-dns-update
-      - set service dns forwarding listen-address 10.0.50.1
-      - set service dns forwarding dhcp "{{ main_lan_interface }}"
-      - set service dns forwarding negative-ttl 60
-      - set nat source rule 10 outbound-interface name "{{ wan_interface }}"
-      - set nat source rule 10 source address '10.0.50.0/24'
-      - set nat source rule 10 translation address 'masquerade'
-      - set nat source rule 10 destination group network-group !LAN-Addresses
-      - set interfaces ethernet "{{ wan_interface }}" address dhcpv6
-      - set interfaces ethernet "{{ wan_interface }}" dhcpv6-options pd 0 length '56'
-      - set interfaces ethernet "{{ wan_interface }}" dhcpv6-options pd 0 interface "{{ main_lan_interface }}" sla-id '0'
-      - set service router-advert interface "{{ main_lan_interface }}" prefix ::/64
-
-- name: Set up SNMP
-  vyos.vyos.vyos_snmp_server:
-    config:
-      listen_addresses:
-        - address: 10.0.50.1
-      communities:
-        - authorization_type: ro
-          name: public
-
-- name: Create DHCP for LAN
-  vyos.vyos.vyos_config:
-    lines:
-      - set service lldp legacy-protocols cdp
-      - set service lldp legacy-protocols edp
-      - set service lldp legacy-protocols fdp
-      - set service lldp legacy-protocols sonmp
-      - set service lldp snmp
-
-- name: Set DNS for global
-  vyos.vyos.vyos_config:
-    lines:
-      - set service dns forwarding domain linds.com.au name-server 192.168.6.1
-      - set service dns forwarding domain linds.com.au name-server 10.3.1.200
-      - set service dns forwarding domain linds.com.au name-server 10.3.1.201
-      - set service dns forwarding domain linds.com.au name-server 10.0.50.200
-      - set service dns forwarding domain linds.com.au addnta
-      - set service dns forwarding domain k8s.linds.com.au name-server 10.96.0.10
-      - set service dns forwarding domain k8s.linds.com.au addnta
-
-- name: Set up auto-update
-  vyos.vyos.vyos_config:
-    lines:
-      - set system update-check auto-check
-      - set system update-check url 'https://raw.githubusercontent.com/vyos/vyos-rolling-nightly-builds/main/version.json'
-
-- name: Include WireGuard
+- name: System (hostname, login, etc.)
   ansible.builtin.include_tasks:
-    file: jd_wireguard.yml
+    file: jd_system.yml
 
-- name: Include JD VLANS
+- name: Physical interfaces (eth1, eth2)
+  ansible.builtin.include_tasks:
+    file: jd_interfaces.yml
+
+- name: VLAN sub-interfaces + their DHCP
   ansible.builtin.include_tasks:
     file: jd_vlan.yml
 
-- name: Include Port Forward
+- name: DHCP server (JD-LAN)
   ansible.builtin.include_tasks:
-    file: jd_port_forward.yml
+    file: jd_dhcp.yml
 
-- name: Include Site to Site
+- name: DNS forwarder
   ansible.builtin.include_tasks:
-    file: jd_site_to_site.yml
+    file: jd_dns.yml
 
-- name: Include BGP
+- name: Services (SSH, SNMP, LLDP, router-advert)
   ansible.builtin.include_tasks:
-    file: jd_bgp.yml
+    file: jd_services.yml
 
-- name: Include Firewall
+- name: NAT (source + destination)
+  ansible.builtin.include_tasks:
+    file: jd_nat.yml
+
+- name: WireGuard tunnels + policy routing
+  ansible.builtin.include_tasks:
+    file: jd_wireguard.yml
+
+- name: Firewall
   ansible.builtin.include_tasks:
     file: jd_firewall.yml
 
-- name: Include Remote Access Site to Site VPN
+- name: BGP + route-maps + static routes
+  ansible.builtin.include_tasks:
+    file: jd_bgp.yml
+
+- name: IPsec site-to-site (LINDS peer)
+  ansible.builtin.include_tasks:
+    file: jd_site_to_site.yml
+
+- name: IPsec remote-access (mobile clients)
   ansible.builtin.include_tasks:
     file: jd_remote_access.yml

@@ -1,46 +1,63 @@
 ---
-- name: Wireguard
+# Two NordVPN WireGuard tunnels with policy routing per VLAN:
+#   wg101 → torrent VLAN 51 (table 100)
+#   wg10  → US VLAN 58       (table 90)
+# SNAT for the VLAN→tunnel egress lives in jd_nat.yml.
+
+# ----- wg101 (torrent) -----------------------------------------------------
+- name: WireGuard wg101 (NordVPN — torrent egress)
   vyos.vyos.vyos_config:
     lines:
       - set interfaces wireguard wg101 address 10.5.0.2/32
-      - set interfaces wireguard wg101 peer nordvpn address "{{ wg_host }}"
-      - set interfaces wireguard wg101 peer nordvpn allowed-ips '0.0.0.0/0'
-      - set interfaces wireguard wg101 peer nordvpn port '51820'
-      - set interfaces wireguard wg101 peer nordvpn public-key "{{ wg_pub_key }}"
+      - set interfaces wireguard wg101 ip adjust-mss clamp-mss-to-pmtu
       - set interfaces wireguard wg101 private-key "{{ wg_priv_key }}"
+      - set interfaces wireguard wg101 peer nordvpn address "{{ wg_host }}"
+      - set interfaces wireguard wg101 peer nordvpn allowed-ips 0.0.0.0/0
+      - set interfaces wireguard wg101 peer nordvpn port 51820
+      - set interfaces wireguard wg101 peer nordvpn public-key "{{ wg_pub_key }}"
       - set interfaces wireguard wg101 peer nordvpn persistent-keepalive 25
-      - set interfaces wireguard wg101 ip adjust-mss 'clamp-mss-to-pmtu'
+
+- name: Routing — wg101 default route (table 100)
+  vyos.vyos.vyos_config:
+    lines:
       - set protocols static table 100 route 0.0.0.0/0 interface wg101
-      - set policy route NordVPN rule 100 set table 100
-      - set policy route NordVPN rule 100 destination address 0.0.0.0/0
-      - set policy route NordVPN interface "{{ main_lan_interface }}".51
+
+- name: PBR — VLAN 51 → wg101, with LAN bypass
+  vyos.vyos.vyos_config:
+    lines:
+      - set policy route VPN interface "{{ main_lan_interface }}".51
       - set policy route VPN rule 1 description 'Local destinations'
       - set policy route VPN rule 1 destination group network-group LAN-Addresses
-      - set policy route VPN rule 1 set table 'main'
-      - set policy route VPN interface "{{ main_lan_interface }}".51
-      - set nat source rule 9999 outbound-interface name wg101
-      - set nat source rule 9999 source address '10.0.51.0/24'
-      - set nat source rule 9999 translation address 'masquerade'
+      - set policy route VPN rule 1 set table main
+      - set policy route NordVPN interface "{{ main_lan_interface }}".51
+      - set policy route NordVPN rule 100 destination address 0.0.0.0/0
+      - set policy route NordVPN rule 100 set table 100
 
-- name: Wireguard for US VPN
+# ----- wg10 (US) -----------------------------------------------------------
+- name: WireGuard wg10 (NordVPN — US egress)
   vyos.vyos.vyos_config:
     lines:
       - set interfaces wireguard wg10 address 10.5.0.2/32
-      - set interfaces wireguard wg10 peer nordvpn address "{{ wg_us_host }}"
-      - set interfaces wireguard wg10 peer nordvpn allowed-ips '0.0.0.0/0'
-      - set interfaces wireguard wg10 peer nordvpn port '51820'
-      - set interfaces wireguard wg10 peer nordvpn public-key "{{ wg_us_pub_key }}"
+      - set interfaces wireguard wg10 ip adjust-mss clamp-mss-to-pmtu
       - set interfaces wireguard wg10 private-key "{{ wg_us_priv_key }}"
+      - set interfaces wireguard wg10 peer nordvpn host-name "{{ wg_us_host }}"
+      - set interfaces wireguard wg10 peer nordvpn allowed-ips 0.0.0.0/0
+      - set interfaces wireguard wg10 peer nordvpn port 51820
+      - set interfaces wireguard wg10 peer nordvpn public-key "{{ wg_us_pub_key }}"
       - set interfaces wireguard wg10 peer nordvpn persistent-keepalive 25
-      - set interfaces wireguard wg10 ip adjust-mss 'clamp-mss-to-pmtu'
+
+- name: Routing — wg10 default route (table 90)
+  vyos.vyos.vyos_config:
+    lines:
       - set protocols static table 90 route 0.0.0.0/0 interface wg10
+
+- name: PBR — VLAN 58 → wg10, with LAN bypass
+  vyos.vyos.vyos_config:
+    lines:
       - set policy route NordVPNUS interface "{{ main_lan_interface }}.58"
-      - set policy route NordVPNUS rule 9 destination group network-group 'LAN-Addresses'
-      - set policy route NordVPNUS rule 9 set table 'main'
-      - set policy route NordVPNUS rule 9 source address '10.0.58.0/24'
-      - set policy route NordVPNUS rule 10 destination address '0.0.0.0/0'
-      - set policy route NordVPNUS rule 10 set table '90'
-      - set policy route NordVPNUS rule 10  source address '10.0.58.0/24'
-      - set nat source rule 9998 outbound-interface name 'wg10'
-      - set nat source rule 9998 source address '10.0.58.0/24'
-      - set nat source rule 9998 translation address 'masquerade'
+      - set policy route NordVPNUS rule 9 source address 10.0.58.0/24
+      - set policy route NordVPNUS rule 9 destination group network-group LAN-Addresses
+      - set policy route NordVPNUS rule 9 set table main
+      - set policy route NordVPNUS rule 10 source address 10.0.58.0/24
+      - set policy route NordVPNUS rule 10 destination address 0.0.0.0/0
+      - set policy route NordVPNUS rule 10 set table 90

@@ -1,0 +1,5 @@
+---
+- name: Hostname + domain
+  vyos.vyos.vyos_system:
+    host_name: linds-vyos-01
+    domain_name: linds.com.au

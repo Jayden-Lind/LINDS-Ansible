@@ -1,61 +1,66 @@
 ---
-- name: Create IPSEC Remote Access IKE
-  vyos.vyos.vyos_config:
-    lines:
-      - set vpn ipsec ike-group RemoteAccessIKE dead-peer-detection action 'restart'
-      - set vpn ipsec ike-group RemoteAccessIKE dead-peer-detection interval '30'
-      - set vpn ipsec ike-group RemoteAccessIKE key-exchange 'ikev2'
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 1 dh-group '14'
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 1 encryption 'aes256ctr'
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 1 hash 'sha256'
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 2 dh-group '14'
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 2 encryption 'aes256gcm128'
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 2 hash 'sha256'
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 3 dh-group '28'
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 3 encryption 'aes256'
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 3 hash 'sha256'
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 4 dh-group '14'
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 4 encryption 'aes256'
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 4 hash 'sha256'
+# IPsec IKEv2 remote-access for mobile clients.
+# Pool 10.0.10.0/24 — SNAT to WAN handled by jd_nat.yml rule 15.
+# PKI alias on the box is "ipsec_remote".
 
-- name: Create IPSEC Remote Access ESP
+- name: PKI — remote-access cert + key
   vyos.vyos.vyos_config:
     lines:
-      - set vpn ipsec esp-group RemoteAccessESP proposal 1 encryption aes256gcm128
-      - set vpn ipsec esp-group RemoteAccessESP proposal 1 hash sha256
+      - set pki certificate ipsec_remote certificate "{{ ipsec_remote_pub }}"
+      - set pki certificate ipsec_remote private key "{{ ipsec_remote_priv }}"
 
-- name: Set certificate for IPSEC Remote access
+- name: IKE group RemoteAccessIKE
   vyos.vyos.vyos_config:
     lines:
-      - set pki certificate jd-pfsense.linds.com.au certificate "{{ ipsec_remote_pub }}"
-      - set pki certificate jd-pfsense.linds.com.au private key "{{ ipsec_remote_priv }}"
+      - set vpn ipsec ike-group RemoteAccessIKE key-exchange ikev2
+      - set vpn ipsec ike-group RemoteAccessIKE dead-peer-detection action restart
+      - set vpn ipsec ike-group RemoteAccessIKE dead-peer-detection interval 30
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 1 dh-group 14
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 1 encryption aes256ctr
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 1 hash sha256
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 2 dh-group 14
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 2 encryption aes256gcm128
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 2 hash sha256
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 3 dh-group 28
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 3 encryption aes256
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 3 hash sha256
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 4 dh-group 14
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 4 encryption aes256
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 4 hash sha256
 
-- name: IPSEC Remote Access
+- name: ESP group RemoteAccessESP
   vyos.vyos.vyos_config:
     lines:
-      - set vpn ipsec remote-access connection LINDS_MOBILE authentication client-mode eap-mschapv2
+      - set vpn ipsec esp-group RemoteAccessESP lifetime 3600
+      - set vpn ipsec esp-group RemoteAccessESP pfs disable
+      - set vpn ipsec esp-group RemoteAccessESP proposal 1 encryption aes128gcm128
+      - set vpn ipsec esp-group RemoteAccessESP proposal 2 encryption aes256gcm128
+      - set vpn ipsec esp-group RemoteAccessESP proposal 3 encryption aes256
+      - set vpn ipsec esp-group RemoteAccessESP proposal 3 hash sha256
+
+- name: Remote-access pool MOBILE
+  vyos.vyos.vyos_config:
+    lines:
+      - set vpn ipsec remote-access pool MOBILE prefix 10.0.10.0/24
+      - set vpn ipsec remote-access pool MOBILE name-server 10.0.50.1
+
+- name: Remote-access connection LINDS_MOBILE
+  vyos.vyos.vyos_config:
+    lines:
       - set vpn ipsec remote-access connection LINDS_MOBILE ike-group RemoteAccessIKE
       - set vpn ipsec remote-access connection LINDS_MOBILE esp-group RemoteAccessESP
-      - set vpn ipsec remote-access connection LINDS_MOBILE authentication x509 ca-certificate LINDS
-      - set vpn ipsec remote-access connection LINDS_MOBILE authentication x509 certificate jd-pfsense.linds.com.au
-      - set vpn ipsec remote-access connection LINDS_MOBILE authentication local-id jd-pfsense.linds.com.au
-      - set vpn ipsec remote-access connection LINDS_MOBILE authentication server-mode x509
       - set vpn ipsec remote-access connection LINDS_MOBILE local-address any
-      - set vpn ipsec remote-access pool MOBILE name-server 10.0.50.1
-      - set vpn ipsec remote-access pool MOBILE prefix 10.0.10.0/24
       - set vpn ipsec remote-access connection LINDS_MOBILE local prefix 0.0.0.0/0
       - set vpn ipsec remote-access connection LINDS_MOBILE pool MOBILE
+      - set vpn ipsec remote-access connection LINDS_MOBILE authentication client-mode eap-mschapv2
+      - set vpn ipsec remote-access connection LINDS_MOBILE authentication server-mode x509
+      - set vpn ipsec remote-access connection LINDS_MOBILE authentication local-id jd-pfsense.linds.com.au
+      - set vpn ipsec remote-access connection LINDS_MOBILE authentication x509 ca-certificate LINDS
+      - set vpn ipsec remote-access connection LINDS_MOBILE authentication x509 certificate ipsec_remote
 
-- name: IPSEC Remote Access - Users
+- name: Remote-access — local users (EAP-MSCHAPv2)
   vyos.vyos.vyos_config:
     lines:
       - set vpn ipsec remote-access connection LINDS_MOBILE authentication local-users username "{{ item.user }}" password "{{ item.password }}"
   loop: "{{ ipsec_users }}"
-
-- name: IPSEC Remote Access - NAT
-  vyos.vyos.vyos_config:
-    lines:
-      - set nat source rule 15 outbound-interface name "{{ wan_interface }}"
-      - set nat source rule 15 source address '10.0.10.0/24'
-      - set nat source rule 15 translation address 'masquerade'
-      - set nat source rule 15 destination group network-group '!LAN-Addresses'
+  no_log: true

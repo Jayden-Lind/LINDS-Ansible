@@ -1,15 +1,66 @@
 ---
-- name: Create BGP Peering for K8s cluster
+# AS 64551 (this router) peers with:
+#   - JD vyos over IPsec VTI vti0 (10.255.0.1 / AS 64550)
+#   - k8s nodes inside VLAN300 + JD's VLAN53 (listen-range / AS 64512)
+#
+# Static routes set the WAN default and a back-route to JD-LAN via the VTI.
+
+- name: Static routes — WAN default + JD-LAN via VTI peer
   vyos.vyos.vyos_config:
     lines:
-      - set protocols bgp listen range 10.3.1.0/24 peer-group 'k8s'
-      - set protocols bgp neighbor "{{ main_lan_interface }}".300 address-family ipv4-unicast
-      - set protocols bgp neighbor "{{ main_lan_interface }}".300 interface remote-as 'external'
-      - set protocols bgp peer-group k8s address-family ipv4-unicast
-      - set protocols bgp peer-group k8s remote-as '64512'
-      - set protocols bgp system-as '64551'
+      - set protocols static route 0.0.0.0/0 interface "{{ wan_interface }}"
+      - set protocols static route 10.0.50.0/24 next-hop 10.255.0.1
+
+- name: BGP — system-AS
+  vyos.vyos.vyos_config:
+    lines:
+      - set protocols bgp system-as 64551
+
+- name: BGP — networks to originate
+  vyos.vyos.vyos_config:
+    lines:
+      - set protocols bgp address-family ipv4-unicast network 10.0.36.0/24
+      - set protocols bgp address-family ipv4-unicast network 10.0.80.0/24
+      - set protocols bgp address-family ipv4-unicast network 10.0.110.0/24
+      - set protocols bgp address-family ipv4-unicast network 10.3.1.0/24
+      - set protocols bgp address-family ipv4-unicast network 192.168.6.0/24
+
+- name: BGP — neighbour to JD vyos (over vti0)
+  vyos.vyos.vyos_config:
+    lines:
+      - set protocols bgp neighbor 10.255.0.1 remote-as 64550
+      - set protocols bgp neighbor 10.255.0.1 update-source vti0
+      - set protocols bgp neighbor 10.255.0.1 address-family ipv4-unicast route-map
+
+- name: BGP — k8s peer-group (listen ranges, local + JD subnets)
+  vyos.vyos.vyos_config:
+    lines:
+      - set protocols bgp listen range 10.0.53.0/24 peer-group k8s
+      - set protocols bgp listen range 10.3.1.0/24 peer-group k8s
+      - set protocols bgp peer-group k8s remote-as 64512
+      - set protocols bgp peer-group k8s address-family ipv4-unicast route-map export RM-NO-ADVERTISE
+
+- name: Prefix-lists — k8s networks
+  vyos.vyos.vyos_config:
+    lines:
+      - set policy prefix-list K8S-EXT  rule 10 action permit
+      - set policy prefix-list K8S-EXT  rule 10 prefix 172.16.1.0/24
+      - set policy prefix-list K8S-PODS rule 10 action permit
+      - set policy prefix-list K8S-PODS rule 10 prefix 10.244.0.0/16
+      - set policy prefix-list K8S-SVC  rule 10 action permit
+      - set policy prefix-list K8S-SVC  rule 10 prefix 10.96.0.0/12
       - set policy prefix-list NO-ADVERTISE rule 10 action deny
       - set policy prefix-list NO-ADVERTISE rule 10 prefix 0.0.0.0/0
+
+- name: Route-maps — export to IPSEC + suppress default
+  vyos.vyos.vyos_config:
+    lines:
+      - set policy route-map RM-EXPORT-IPSEC rule 10  action permit
+      - set policy route-map RM-EXPORT-IPSEC rule 10  match ip address prefix-list K8S-PODS
+      - set policy route-map RM-EXPORT-IPSEC rule 20  action permit
+      - set policy route-map RM-EXPORT-IPSEC rule 20  match ip address prefix-list K8S-SVC
+      - set policy route-map RM-EXPORT-IPSEC rule 30  action permit
+      - set policy route-map RM-EXPORT-IPSEC rule 30  match ip address prefix-list K8S-EXT
+      - set policy route-map RM-EXPORT-IPSEC rule 100 action deny
       - set policy route-map RM-NO-ADVERTISE rule 10 action deny
       - set policy route-map RM-NO-ADVERTISE rule 10 match ip address prefix-list NO-ADVERTISE
-      - set protocols bgp peer-group k8s address-family ipv4-unicast route-map export RM-NO-ADVERTISE

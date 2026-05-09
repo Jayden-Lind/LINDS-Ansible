@@ -1,106 +1,48 @@
 ---
-- name: Update hostname
-  vyos.vyos.vyos_system:
-    host_name: linds-vyos-01
-    domain_name: linds.com.au
+# LINDS VyOS (192.168.6.1, linds-vyos-01) — orchestrator only.
+# All configuration lives in the linds_*.yml include files below,
+# parallel to the JD layout in jd.yml.
 
-- name: Enable latency optimisation
-  vyos.vyos.vyos_config:
-    lines:
-      - set interfaces ethernet "{{ wan_interface }}" offload gro
-      - set interfaces ethernet "{{ wan_interface }}" offload gso
-      - set interfaces ethernet "{{ wan_interface }}" offload rfs
-      - set interfaces ethernet "{{ wan_interface }}" offload rps
-      - set interfaces ethernet "{{ wan_interface }}" offload sg
-
-- name: Create DHCP for LAN
-  vyos.vyos.vyos_config:
-    lines:
-      - set service dhcp-server shared-network-name LINDS-LAN subnet 192.168.6.0/24
-      - set service dhcp-server shared-network-name LINDS-LAN domain-search linds.com.au
-      - set service dhcp-server shared-network-name LINDS-LAN name-server 192.168.6.1
-      - set service dhcp-server shared-network-name LINDS-LAN name-server 10.3.1.200
-      - set service dhcp-server shared-network-name LINDS-LAN subnet 192.168.6.0/24 range 0 start 192.168.6.2
-      - set service dhcp-server shared-network-name LINDS-LAN subnet 192.168.6.0/24 range 0 stop 192.168.6.199
-      - set service dhcp-server shared-network-name LINDS-LAN subnet 192.168.6.0/24 default-router 192.168.6.1
-      - set service dhcp-server shared-network-name LINDS-LAN domain-name linds.com.au
-      - set service dhcp-server shared-network-name LINDS-LAN domain-search linds.com.au
-      - set service dhcp-server host-decl-name
-      - set service dhcp-server hostfile-update
-      - set service dhcp-server dynamic-dns-update
-      - set service dns forwarding listen-address 192.168.6.1
-      - set service dns forwarding dhcp "{{ main_lan_interface }}"
-      - set service dns forwarding negative-ttl 60
-      - set nat source rule 10 outbound-interface name "{{ wan_interface }}"
-      - set nat source rule 10 source address '192.168.6.0/24'
-      - set nat source rule 10 translation address 'masquerade'
-      - set nat source rule 10 destination group network-group !LAN-Addresses
-      - set interfaces ethernet "{{ wan_interface }}" address dhcpv6
-      - set interfaces ethernet "{{ wan_interface }}" dhcpv6-options pd 0 length '56'
-      - set interfaces ethernet "{{ wan_interface }}" dhcpv6-options pd 0 interface "{{ main_lan_interface }}" sla-id '0'
-      - set service router-advert interface "{{ main_lan_interface }}" prefix ::/64
-
-- name: Adding UBNT DHCP Option 43
-  vyos.vyos.vyos_config:
-    lines:
-      - set service dhcp-server global-parameters 'option space ubnt;'
-      - set service dhcp-server global-parameters 'option ubnt.unifi-address code 1 = ip-address;'
-      - set service dhcp-server global-parameters 'class &quot;ubnt&quot; {'
-      - set service dhcp-server global-parameters 'match if substring (option vendor-class-identifier, 0, 4) = &quot;ubnt&quot;;'
-      - set service dhcp-server global-parameters 'option vendor-class-identifier &quot;ubnt&quot;;'
-      - set service dhcp-server global-parameters 'vendor-option-space ubnt;'
-      - set service dhcp-server global-parameters '}'
-
-- name: Set up SNMP
-  vyos.vyos.vyos_snmp_server:
-    config:
-      listen_addresses:
-        - address: 192.168.6.1
-      communities:
-        - authorization_type: ro
-          name: public
-
-- name: Enable LLDP
-  vyos.vyos.vyos_lldp_global:
-    config:
-      legacy_protocols:
-        - fdp
-        - cdp
-        - edp
-        - sonmp
-      snmp: enable
-
-- name: Set DNS for global
-  vyos.vyos.vyos_config:
-    lines:
-      - set service dns forwarding domain linds.com.au name-server 10.3.1.201
-      - set service dns forwarding domain linds.com.au name-server 10.0.50.1
-      - set service dns forwarding domain linds.com.au name-server 10.3.1.200
-      - set service dns forwarding domain linds.com.au name-server 10.0.50.200
-      - set service dns forwarding domain linds.com.au addnta
-      - set service dns forwarding domain k8s.linds.com.au name-server 10.96.0.10
-      - set service dns forwarding domain k8s.linds.com.au addnta
-
-- name: Include LINDS BGP
+- name: System (hostname, login, etc.)
   ansible.builtin.include_tasks:
-    file: linds_bgp.yml
+    file: linds_system.yml
 
-- name: Include Site to Site
+- name: Physical interfaces (eth0, eth1)
   ansible.builtin.include_tasks:
-    file: linds_site_to_site.yml
+    file: linds_interfaces.yml
 
-- name: Include Site to Site
+- name: VLAN sub-interfaces + their DHCP
   ansible.builtin.include_tasks:
     file: linds_vlan.yml
 
-- name: Include Port Forward
+- name: DHCP server (LINDS-LAN + dynamic DNS update)
   ansible.builtin.include_tasks:
-    file: linds_port_forward.yml
+    file: linds_dhcp.yml
 
-- name: Include Wireguard
+- name: DNS forwarder
+  ansible.builtin.include_tasks:
+    file: linds_dns.yml
+
+- name: Services (SSH, SNMP, LLDP, router-advert)
+  ansible.builtin.include_tasks:
+    file: linds_services.yml
+
+- name: NAT (source + destination)
+  ansible.builtin.include_tasks:
+    file: linds_nat.yml
+
+- name: WireGuard tunnel + policy routing
   ansible.builtin.include_tasks:
     file: linds_wireguard.yml
 
-- name: Include Firewall
+- name: Firewall
   ansible.builtin.include_tasks:
     file: linds_firewall.yml
+
+- name: BGP + route-maps + static routes
+  ansible.builtin.include_tasks:
+    file: linds_bgp.yml
+
+- name: IPsec site-to-site (JD peer)
+  ansible.builtin.include_tasks:
+    file: linds_site_to_site.yml

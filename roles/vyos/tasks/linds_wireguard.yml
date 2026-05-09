@@ -1,23 +1,31 @@
 ---
-- name: Wireguard
+# Single NordVPN WireGuard tunnel with policy routing for VLAN 36 (VPN).
+# SNAT for VLAN36→tunnel egress lives in linds_nat.yml.
+
+- name: WireGuard wg101 (NordVPN)
   vyos.vyos.vyos_config:
     lines:
       - set interfaces wireguard wg101 address 10.5.0.2/32
-      - set interfaces wireguard wg101 peer nordvpn address "{{ wg_host }}"
-      - set interfaces wireguard wg101 peer nordvpn allowed-ips '0.0.0.0/0'
-      - set interfaces wireguard wg101 peer nordvpn port '51820'
-      - set interfaces wireguard wg101 peer nordvpn public-key "{{ wg_pub_key }}"
+      - set interfaces wireguard wg101 ip adjust-mss clamp-mss-to-pmtu
       - set interfaces wireguard wg101 private-key "{{ wg_priv_key }}"
+      - set interfaces wireguard wg101 peer nordvpn address "{{ wg_host }}"
+      - set interfaces wireguard wg101 peer nordvpn allowed-ips 0.0.0.0/0
+      - set interfaces wireguard wg101 peer nordvpn port 51820
+      - set interfaces wireguard wg101 peer nordvpn public-key "{{ wg_pub_key }}"
       - set interfaces wireguard wg101 peer nordvpn persistent-keepalive 25
-      - set interfaces wireguard wg101 ip adjust-mss 'clamp-mss-to-pmtu'
+
+- name: Routing — wg101 default route (table 100)
+  vyos.vyos.vyos_config:
+    lines:
       - set protocols static table 100 route 0.0.0.0/0 interface wg101
-      - set policy route NordVPN rule 100 set table 100
-      - set policy route NordVPN rule 100 destination address 0.0.0.0/0
-      - set policy route NordVPN interface "{{ main_lan_interface }}".36
+
+- name: PBR — VLAN 36 → wg101, with LAN bypass
+  vyos.vyos.vyos_config:
+    lines:
+      - set policy route VPN interface "{{ main_lan_interface }}".36
       - set policy route VPN rule 1 description 'Local destinations'
       - set policy route VPN rule 1 destination group network-group LAN-Addresses
-      - set policy route VPN rule 1 set table 'main'
-      - set policy route VPN interface "{{ main_lan_interface }}".36
-      - set nat source rule 9999 outbound-interface name wg101
-      - set nat source rule 9999 source address '10.0.36.0/24'
-      - set nat source rule 9999 translation address 'masquerade'
+      - set policy route VPN rule 1 set table main
+      - set policy route NordVPN interface "{{ main_lan_interface }}".36
+      - set policy route NordVPN rule 100 destination address 0.0.0.0/0
+      - set policy route NordVPN rule 100 set table 100

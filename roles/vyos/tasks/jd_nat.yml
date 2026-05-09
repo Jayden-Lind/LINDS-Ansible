@@ -1,0 +1,108 @@
+---
+# All NAT for jd-vyos. Source NAT (rules 10–100) + WireGuard SNAT
+# (rules 9998/9999) + destination NAT / port forwards (rules 20–50).
+#
+# Source-NAT numbering scheme:
+#   10   JD-LAN          → WAN (masq, except LAN-Addresses)
+#   12   VLAN53 dev      → WAN (masq, except LAN-Addresses)
+#   15   IPSEC mobile    → WAN
+#   20   k8s ingress IP  → WAN (single-host masq)
+#   100  WireGuard pool  → WAN
+#   9998 VLAN58 US       → wg10
+#   9999 VLAN51 torrent  → wg101
+
+# ===== Source NAT =========================================================
+- name: Source NAT — JD-LAN egress
+  vyos.vyos.vyos_config:
+    lines:
+      - set nat source rule 10 outbound-interface name "{{ wan_interface }}"
+      - set nat source rule 10 source address 10.0.50.0/24
+      - set nat source rule 10 destination group network-group '!LAN-Addresses'
+      - set nat source rule 10 translation address masquerade
+
+- name: Source NAT — Isolation egress
+  vyos.vyos.vyos_config:
+    lines:
+      - set nat source rule 12 outbound-interface name "{{ wan_interface }}"
+      - set nat source rule 12 source address 10.0.52.0/24
+      - set nat source rule 12 destination group network-group '!LAN-Addresses'
+      - set nat source rule 12 translation address masquerade
+
+- name: Source NAT — VLAN53 dev egress
+  vyos.vyos.vyos_config:
+    lines:
+      - set nat source rule 13 outbound-interface name "{{ wan_interface }}"
+      - set nat source rule 13 source address 10.0.53.0/24
+      - set nat source rule 13 destination group network-group '!LAN-Addresses'
+      - set nat source rule 13 translation address masquerade
+
+- name: Source NAT — IPSEC mobile pool
+  vyos.vyos.vyos_config:
+    lines:
+      - set nat source rule 15 outbound-interface name "{{ wan_interface }}"
+      - set nat source rule 15 source address 10.0.10.0/24
+      - set nat source rule 15 translation address masquerade
+
+- name: Source NAT — k8s ingress IP 172.16.1.1
+  vyos.vyos.vyos_config:
+    lines:
+      - set nat source rule 20 outbound-interface name "{{ wan_interface }}"
+      - set nat source rule 20 source address 172.16.1.1
+      - set nat source rule 20 translation address masquerade
+
+- name: Source NAT — WireGuard pool 10.100.100.0/24
+  vyos.vyos.vyos_config:
+    lines:
+      - set nat source rule 100 description 'NAT WireGuard ➜ WAN'
+      - set nat source rule 100 outbound-interface name "{{ wan_interface }}"
+      - set nat source rule 100 source address 10.100.100.0/24
+      - set nat source rule 100 translation address masquerade
+
+- name: Source NAT — VLAN58 over wg10 (US)
+  vyos.vyos.vyos_config:
+    lines:
+      - set nat source rule 9998 outbound-interface name wg10
+      - set nat source rule 9998 source address 10.0.58.0/24
+      - set nat source rule 9998 translation address masquerade
+
+- name: Source NAT — VLAN51 over wg101 (torrent)
+  vyos.vyos.vyos_config:
+    lines:
+      - set nat source rule 9999 outbound-interface name wg101
+      - set nat source rule 9999 source address 10.0.51.0/24
+      - set nat source rule 9999 translation address masquerade
+
+# ===== Destination NAT (port forwards) ====================================
+- name: DNAT 20 — Minecraft (25565) → 172.16.1.25
+  vyos.vyos.vyos_config:
+    lines:
+      - set nat destination rule 20 inbound-interface name "{{ wan_interface }}"
+      - set nat destination rule 20 protocol tcp_udp
+      - set nat destination rule 20 destination port 25565
+      - set nat destination rule 20 translation address 172.16.1.25
+      - set nat destination rule 20 log
+
+- name: DNAT 21 — Plex (32400) → 172.16.1.50
+  vyos.vyos.vyos_config:
+    lines:
+      - set nat destination rule 21 inbound-interface name "{{ wan_interface }}"
+      - set nat destination rule 21 protocol tcp_udp
+      - set nat destination rule 21 destination port 32400
+      - set nat destination rule 21 translation address 172.16.1.50
+
+- name: DNAT 23 — game/app (7777) → 172.16.1.1
+  vyos.vyos.vyos_config:
+    lines:
+      - set nat destination rule 23 inbound-interface name "{{ wan_interface }}"
+      - set nat destination rule 23 protocol tcp
+      - set nat destination rule 23 destination port 7777
+      - set nat destination rule 23 translation address 172.16.1.1
+      - set nat destination rule 23 log
+
+- name: DNAT 50 — Steam Source/Remote-Play → 10.0.50.164
+  vyos.vyos.vyos_config:
+    lines:
+      - set nat destination rule 50 inbound-interface name "{{ wan_interface }}"
+      - set nat destination rule 50 protocol tcp_udp
+      - set nat destination rule 50 destination port '27015,27016,33540,27031-27036,33540'
+      - set nat destination rule 50 translation address 10.0.50.164

@@ -1,0 +1,29 @@
+---
+- name: SSH listen-addresses
+  vyos.vyos.vyos_config:
+    lines:
+      - set service ssh listen-address 192.168.6.1
+      - set service ssh listen-address 10.3.1.1
+
+- name: SNMP
+  vyos.vyos.vyos_config:
+    lines:
+      - set service snmp community public authorization ro
+      - set service snmp listen-address 192.168.6.1
+
+- name: LLDP (with legacy protocol passthrough)
+  vyos.vyos.vyos_config:
+    lines:
+      - set service lldp legacy-protocols cdp
+      - set service lldp legacy-protocols edp
+      - set service lldp legacy-protocols fdp
+      - set service lldp legacy-protocols sonmp
+      - set service lldp snmp
+
+- name: IPv6 router advertisements on LAN
+  vyos.vyos.vyos_config:
+    lines:
+      - set service router-advert interface "{{ main_lan_interface }}" default-preference high
+      - set service router-advert interface "{{ main_lan_interface }}" link-mtu 1500
+      - set service router-advert interface "{{ main_lan_interface }}" other-config-flag
+      - set service router-advert interface "{{ main_lan_interface }}" prefix ::/64

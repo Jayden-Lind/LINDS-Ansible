@@ -1,38 +1,30 @@
 ---
-- name: Set Firewall
+# Filter chains. Global-options live in main.yml.
+
+- name: Default-action accept on all chains (v4 + v6)
   vyos.vyos.vyos_config:
     lines:
+      - set firewall ipv4 forward filter default-action accept
       - set firewall ipv4 input filter default-action accept
-      # IPSEC Mobile
+      - set firewall ipv4 output filter default-action accept
+      - set firewall ipv6 forward filter default-action accept
+      - set firewall ipv6 input filter default-action accept
+      - set firewall ipv6 output filter default-action accept
+
+- name: Input filter — IPSEC (500/4500)
+  vyos.vyos.vyos_config:
+    lines:
       - set firewall ipv4 input filter rule 3 action accept
-      - set firewall ipv4 input filter rule 3 destination port 500,4500
-      - set firewall ipv4 input filter rule 3 protocol tcp_udp
       - set firewall ipv4 input filter rule 3 inbound-interface name "{{ wan_interface }}"
-      #SSH
-      - set firewall ipv4 input filter rule 4 action accept
-      - set firewall ipv4 input filter rule 4 destination port 22
-      - set firewall ipv4 input filter rule 4 protocol tcp
-      - set firewall ipv4 input filter rule 4 source group network-group LAN-Addresses
-      #Plex
+      - set firewall ipv4 input filter rule 3 protocol tcp_udp
+      - set firewall ipv4 input filter rule 3 destination port 500,4500
+      - set firewall ipv4 input filter rule 3 log
+
+- name: Input filter — Plex (32400)
+  vyos.vyos.vyos_config:
+    lines:
       - set firewall ipv4 input filter rule 5 action accept
-      - set firewall ipv4 input filter rule 5 destination port 32400
-      - set firewall ipv4 input filter rule 5 protocol tcp_udp
       - set firewall ipv4 input filter rule 5 inbound-interface name "{{ wan_interface }}"
-
-      #DNS
-      - set firewall ipv4 input filter rule 9 action accept
-      - set firewall ipv4 input filter rule 9 destination port 53
-      - set firewall ipv4 input filter rule 9 protocol tcp_udp
-      - set firewall ipv4 input filter rule 9 source group network-group LAN-Addresses
-
-      #SNMP
-      - set firewall ipv4 input filter rule 10 action accept
-      - set firewall ipv4 input filter rule 10 destination port 161
-      - set firewall ipv4 input filter rule 10 protocol udp
-      - set firewall ipv4 input filter rule 10 source group network-group LAN-Addresses
-
-      #NTP
-      - set firewall ipv4 input filter rule 11 action accept
-      - set firewall ipv4 input filter rule 11 destination port 123
-      - set firewall ipv4 input filter rule 11 protocol udp
-      - set firewall ipv4 input filter rule 11 source group network-group LAN-Addresses
+      - set firewall ipv4 input filter rule 5 protocol tcp_udp
+      - set firewall ipv4 input filter rule 5 destination port 32400
+      - set firewall ipv4 input filter rule 5 log

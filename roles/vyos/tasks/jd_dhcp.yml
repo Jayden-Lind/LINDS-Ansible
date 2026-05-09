@@ -1,0 +1,46 @@
+---
+# JD-LAN (10.0.50.0/24) DHCP. VLAN DHCP scopes live in jd_vlan.yml.
+
+- name: DHCP server JD-LAN — shared-network options
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dhcp-server hostfile-update
+      - set service dhcp-server shared-network-name JD-LAN description 'Main LAN'
+      - set service dhcp-server shared-network-name JD-LAN option domain-name linds.com.au
+      - set service dhcp-server shared-network-name JD-LAN option domain-search linds.com.au
+      - set service dhcp-server shared-network-name JD-LAN option name-server 10.0.50.1
+
+- name: DHCP server JD-LAN — subnet 10.0.50.0/24
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 subnet-id 1
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 lease 3600
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option default-router 10.0.50.1
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option domain-name linds.com.au
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option domain-search linds.com.au
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option name-server 10.0.50.1
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option name-server 10.0.50.200
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 option time-zone Australia/Melbourne
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 range 0 start 10.0.50.2
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 range 0 stop 10.0.50.199
+
+- name: DHCP server JD-LAN — static mappings
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 static-mapping {{ item.name }} ip-address {{ item.ip }}
+      - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 static-mapping {{ item.name }} mac '{{ item.mac }}'
+  loop:
+    - { name: bedroom-aircon, ip: 10.0.50.231, mac: '28:2e:89:56:f0:10' }
+    - { name: lounge-aircon,  ip: 10.0.50.230, mac: '28:2e:89:56:f3:d3' }
+    - { name: solar-inverter, ip: 10.0.50.232, mac: 'cc:f9:57:7b:ae:49' }
+
+- name: DHCP server — dynamic DNS update
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dhcp-server dynamic-dns-update send-updates enable
+      - set service dhcp-server dynamic-dns-update update-on-renew enable
+      - set service dhcp-server dynamic-dns-update override-client-update enable
+      - set service dhcp-server dynamic-dns-update override-no-update enable
+      - set service dhcp-server dynamic-dns-update qualifying-suffix 'linds.com.au.'
+      - set service dhcp-server dynamic-dns-update forward-domain 'linds.com.au.' dns-server 1 address 10.0.50.200
+      - set service dhcp-server dynamic-dns-update forward-domain 'linds.com.au.' dns-server 2 address 10.3.1.200

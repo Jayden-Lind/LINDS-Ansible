@@ -1,0 +1,30 @@
+---
+# LINDS-LAN (192.168.6.0/24) DHCP. VLAN DHCP scopes live in linds_vlan.yml.
+
+- name: DHCP server LINDS-LAN — shared-network options
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dhcp-server hostfile-update
+      - set service dhcp-server shared-network-name LINDS-LAN option domain-name linds.com.au
+      - set service dhcp-server shared-network-name LINDS-LAN option domain-search linds.com.au
+      - set service dhcp-server shared-network-name LINDS-LAN option name-server 192.168.6.1
+
+- name: DHCP server LINDS-LAN — subnet 192.168.6.0/24
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dhcp-server shared-network-name LINDS-LAN subnet 192.168.6.0/24 subnet-id 1
+      - set service dhcp-server shared-network-name LINDS-LAN subnet 192.168.6.0/24 option default-router 192.168.6.1
+      - set service dhcp-server shared-network-name LINDS-LAN subnet 192.168.6.0/24 range 0 start 192.168.6.2
+      - set service dhcp-server shared-network-name LINDS-LAN subnet 192.168.6.0/24 range 0 stop 192.168.6.199
+
+- name: DHCP server — dynamic DNS update
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dhcp-server dynamic-dns-update send-updates enable
+      - set service dhcp-server dynamic-dns-update update-on-renew enable
+      - set service dhcp-server dynamic-dns-update conflict-resolution enable
+      - set service dhcp-server dynamic-dns-update override-client-update enable
+      - set service dhcp-server dynamic-dns-update override-no-update enable
+      - set service dhcp-server dynamic-dns-update qualifying-suffix linds.com.au
+      - set service dhcp-server dynamic-dns-update forward-domain 'linds.com.au.' dns-server 1 address 10.3.1.200
+      - set service dhcp-server dynamic-dns-update forward-domain 'linds.com.au.' dns-server 2 address 10.0.50.1

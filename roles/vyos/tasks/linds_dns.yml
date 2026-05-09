@@ -1,0 +1,24 @@
+---
+# LINDS-specific DNS forwarder bits. Common bits (cache size, allow-from,
+# upstream resolvers, dnssec, negative-ttl) live in main.yml.
+
+- name: DNS forwarder — listen + dhcp learn
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dns forwarding listen-address 192.168.6.1
+      - set service dns forwarding listen-address 10.0.36.1
+      - set service dns forwarding listen-address 10.0.80.1
+      - set service dns forwarding listen-address 10.0.110.1
+      - set service dns forwarding listen-address 10.3.1.1
+      - set service dns forwarding dhcp "{{ main_lan_interface }}"
+
+- name: DNS forwarder — domain stubs (linds.com.au + k8s)
+  vyos.vyos.vyos_config:
+    lines:
+      - set service dns forwarding domain linds.com.au addnta
+      - set service dns forwarding domain linds.com.au name-server 10.0.50.1
+      - set service dns forwarding domain linds.com.au name-server 10.0.50.200
+      - set service dns forwarding domain linds.com.au name-server 10.3.1.200
+      - set service dns forwarding domain linds.com.au name-server 10.3.1.201
+      - set service dns forwarding domain k8s.linds.com.au addnta
+      - set service dns forwarding domain k8s.linds.com.au name-server 10.96.0.10
