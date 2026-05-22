@@ -35,3 +35,22 @@
       # tcp_timestamps and tcp_low_latency are intentionally omitted:
       #   timestamps: removing the override lets the kernel default (on) stand — needed for PAWS/RTTM
       #   tcp_low_latency: removed in kernel 4.14, no-op
+      # NIC receive queue — headroom for GRO bursts
+      - set system sysctl parameter net.core.netdev_max_backlog value '5000'
+      # TCP Fast Open client+server (mode 3)
+      - set system sysctl parameter net.ipv4.tcp_fastopen value '3'
+      # Black hole detection for router's own TCP (BGP over VTI, SSH)
+      - set system sysctl parameter net.ipv4.tcp_mtu_probing value '1'
+      # Expand NAT port range (~55k ports vs ~28k default)
+      - set system sysctl parameter net.ipv4.ip_local_port_range value '10240 65535'
+      # Reuse TIME_WAIT sockets for new outbound connections
+      - set system sysctl parameter net.ipv4.tcp_tw_reuse value '1'
+      # Fail outbound SYN faster — speeds up BGP reconvergence
+      - set system sysctl parameter net.ipv4.tcp_syn_retries value '3'
+      # Conntrack TCP timeouts — replace 5-day kernel default with sensible values
+      - set system sysctl parameter net.netfilter.nf_conntrack_tcp_timeout_established value '3600'
+      - set system sysctl parameter net.netfilter.nf_conntrack_tcp_timeout_close value '10'
+      - set system sysctl parameter net.netfilter.nf_conntrack_tcp_timeout_close_wait value '60'
+      - set system sysctl parameter net.netfilter.nf_conntrack_tcp_timeout_fin_wait value '30'
+      - set system sysctl parameter net.netfilter.nf_conntrack_tcp_timeout_syn_recv value '30'
+      - set system sysctl parameter net.netfilter.nf_conntrack_tcp_timeout_time_wait value '30'
