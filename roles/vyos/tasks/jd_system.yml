@@ -54,3 +54,21 @@
       - set system sysctl parameter net.netfilter.nf_conntrack_tcp_timeout_fin_wait value '30'
       - set system sysctl parameter net.netfilter.nf_conntrack_tcp_timeout_syn_recv value '30'
       - set system sysctl parameter net.netfilter.nf_conntrack_tcp_timeout_time_wait value '30'
+      # QUIC / HTTP3 idle resume — give streams a 5-minute grace period
+      - set system sysctl parameter net.netfilter.nf_conntrack_udp_timeout_stream value '300'
+      # Conntrack capacity headroom (4x current observed peak)
+      - set system sysctl parameter net.netfilter.nf_conntrack_max value '524288'
+      # Stop returning to slow-start after idle — big win for HTTP/2, streaming, SSH
+      - set system sysctl parameter net.ipv4.tcp_slow_start_after_idle value '0'
+      # Don't poison fresh connections with cached metrics from prior bad RTTs
+      - set system sysctl parameter net.ipv4.tcp_no_metrics_save value '1'
+      # Cap unsent buffered data per socket to reduce HTTP/2 HoL blocking
+      - set system sysctl parameter net.ipv4.tcp_notsent_lowat value '131072'
+      # TCP keepalive — detect dead connections within ~12 min vs 2+ hours
+      - set system sysctl parameter net.ipv4.tcp_keepalive_time value '600'
+      - set system sysctl parameter net.ipv4.tcp_keepalive_intvl value '30'
+      - set system sysctl parameter net.ipv4.tcp_keepalive_probes value '5'
+      # Socket ancillary memory and softirq packet-processing batch size
+      - set system sysctl parameter net.core.optmem_max value '65536'
+      - set system sysctl parameter net.core.netdev_budget value '600'
+      - set system sysctl parameter net.core.netdev_budget_usecs value '8000'
