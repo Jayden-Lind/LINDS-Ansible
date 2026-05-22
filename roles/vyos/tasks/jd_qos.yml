@@ -1,0 +1,24 @@
+---
+# CAKE qdisc on WAN egress — DOCSIS / HFC 1000/100.
+# Shapes upload to 90 Mbit (90% of 100 Mbit provisioned) to keep the queue
+# at the router instead of the cable modem. This is the single biggest
+# bufferbloat fix on a residential cable connection.
+#
+# Why these flags:
+#   ack-filter           — DOCSIS asymmetry: compresses ACK floods on upload
+#   flow-isolation-nat   — runs flow hashing after NAT so per-host fairness
+#                          applies to the actual LAN clients, not the WAN IP
+#   triple-isolate       — default; per-host fairness layered with per-flow
+#   rtt 100              — internet-typical RTT for CAKE's AQM target
+#
+# Ingress shaping is not configured: CAKE is egress-only in this VyOS
+# release, and 1 Gbps download bufferbloat is rarely a real issue on cable.
+
+- name: CAKE qdisc — WAN egress shaper (upload bufferbloat fix)
+  vyos.vyos.vyos_config:
+    lines:
+      - set qos policy cake CAKE-WAN-OUT bandwidth 90mbit
+      - set qos policy cake CAKE-WAN-OUT rtt 100
+      - set qos policy cake CAKE-WAN-OUT ack-filter
+      - set qos policy cake CAKE-WAN-OUT flow-isolation-nat
+      - set qos interface "{{ wan_interface }}" egress CAKE-WAN-OUT

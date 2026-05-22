@@ -9,6 +9,7 @@
   vyos.vyos.vyos_config:
     lines:
       - set interfaces wireguard wg101 address 10.5.0.2/32
+      - set interfaces wireguard wg101 mtu 1420
       - set interfaces wireguard wg101 ip adjust-mss clamp-mss-to-pmtu
       - set interfaces wireguard wg101 private-key "{{ wg_priv_key }}"
       - set interfaces wireguard wg101 peer nordvpn address "{{ wg_host }}"
@@ -38,6 +39,7 @@
   vyos.vyos.vyos_config:
     lines:
       - set interfaces wireguard wg10 address 10.5.0.2/32
+      - set interfaces wireguard wg10 mtu 1420
       - set interfaces wireguard wg10 ip adjust-mss clamp-mss-to-pmtu
       - set interfaces wireguard wg10 private-key "{{ wg_us_priv_key }}"
       - set interfaces wireguard wg10 peer nordvpn host-name "{{ wg_us_host }}"

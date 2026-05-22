@@ -21,6 +21,11 @@
       - delete system conntrack modules h323
       - delete system conntrack modules sip
 
+- name: Conntrack hash buckets (1/4 of nf_conntrack_max for distribution)
+  vyos.vyos.vyos_config:
+    lines:
+      - set system conntrack hash-size 131072
+
 - name: Sysctl tuning
   vyos.vyos.vyos_config:
     lines:

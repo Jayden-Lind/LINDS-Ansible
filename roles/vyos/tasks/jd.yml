@@ -39,6 +39,10 @@
   ansible.builtin.include_tasks:
     file: jd_firewall.yml
 
+- name: QoS (CAKE qdisc on WAN egress)
+  ansible.builtin.include_tasks:
+    file: jd_qos.yml
+
 - name: BGP + route-maps + static routes
   ansible.builtin.include_tasks:
     file: jd_bgp.yml
