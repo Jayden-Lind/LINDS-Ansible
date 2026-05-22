@@ -20,6 +20,19 @@
       - set service lldp legacy-protocols sonmp
       - set service lldp snmp
 
+- name: NTP servers + restrict clients to RFC1918 only
+  vyos.vyos.vyos_config:
+    lines:
+      - set service ntp server 0.au.pool.ntp.org
+      - set service ntp server time1.vyos.net
+      - set service ntp server time2.vyos.net
+      - set service ntp server time3.vyos.net
+      - delete service ntp allow-client address 0.0.0.0/0
+      - delete service ntp allow-client address ::/0
+      - set service ntp allow-client address 10.0.0.0/8
+      - set service ntp allow-client address 172.16.0.0/12
+      - set service ntp allow-client address 192.168.0.0/16
+
 - name: IPv6 router advertisements on LAN
   vyos.vyos.vyos_config:
     lines:

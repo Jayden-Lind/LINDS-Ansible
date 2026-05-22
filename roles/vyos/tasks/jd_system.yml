@@ -3,3 +3,35 @@
   vyos.vyos.vyos_system:
     host_name: jd-vyos-01
     domain_name: linds.com.au
+
+- name: Kernel performance mode + mitigations
+  vyos.vyos.vyos_config:
+    lines:
+      - set system option performance network-throughput
+      - set system option kernel disable-mitigations
+
+- name: Conntrack modules (only what is needed)
+  vyos.vyos.vyos_config:
+    lines:
+      - set system conntrack modules ftp
+      - set system conntrack modules nfs
+      - set system conntrack modules pptp
+      - set system conntrack modules sqlnet
+      - set system conntrack modules tftp
+      - delete system conntrack modules h323
+      - delete system conntrack modules sip
+
+- name: Sysctl tuning
+  vyos.vyos.vyos_config:
+    lines:
+      # Socket buffers — match read and write at 25 MB
+      - set system sysctl parameter net.core.rmem_default value '26214400'
+      - set system sysctl parameter net.core.rmem_max value '26214400'
+      - set system sysctl parameter net.core.wmem_default value '26214400'
+      - set system sysctl parameter net.core.wmem_max value '26214400'
+      # TCP per-socket buffers: min / default / max
+      - set system sysctl parameter net.ipv4.tcp_rmem value '4096 87380 26214400'
+      - set system sysctl parameter net.ipv4.tcp_wmem value '4096 87380 26214400'
+      # tcp_timestamps and tcp_low_latency are intentionally omitted:
+      #   timestamps: removing the override lets the kernel default (on) stand — needed for PAWS/RTTM
+      #   tcp_low_latency: removed in kernel 4.14, no-op

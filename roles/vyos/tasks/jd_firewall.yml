@@ -1,6 +1,16 @@
 ---
 # Filter chains. Global-options live in main.yml.
 
+- name: Firewall global options
+  vyos.vyos.vyos_config:
+    lines:
+      - set firewall global-options all-ping enable
+      - set firewall global-options broadcast-ping enable
+      - set firewall global-options log-martians enable
+      - set firewall global-options source-validation loose
+      - set firewall global-options syn-cookies enable
+      - set firewall global-options twa-hazards-protection enable
+
 - name: Default-action accept on all chains (v4 + v6)
   vyos.vyos.vyos_config:
     lines:
