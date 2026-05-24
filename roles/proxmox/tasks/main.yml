@@ -13,3 +13,6 @@
 
 - name: Configure sanoid snapshots
   ansible.builtin.import_tasks: sanoid.yml
+
+- name: Manage LXC containers
+  ansible.builtin.import_tasks: lxc.yml

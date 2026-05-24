@@ -23,6 +23,9 @@ proxmox_iscsi_targets: []
 # Sanoid policies (override in inventory)
 proxmox_sanoid_policies: []
 
+# LXC containers (override in inventory)
+proxmox_lxc_containers: []
+
 # Sanoid retention templates -- shared across hosts
 proxmox_sanoid_templates:
   ssd_short:

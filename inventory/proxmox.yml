@@ -51,3 +51,34 @@ proxmox:
           - dataset: VM/truenas-nas
             template: ssd_short
             recursive: true
+
+        proxmox_lxc_containers:
+          - vmid: 106
+            hostname: jd-minio-01
+            description: "MinIO S3 (OCI image, migrated from jd-truenas-01)"
+            # OCI image must be staged in advance with:
+            #   pveam download local <oci-tar>
+            ostemplate: local:vztmpl/minio_latest.tar
+            storage: ssd-mixed
+            rootfs_size: 4
+            cores: 2
+            memory: 1024
+            swap: 256
+            unprivileged: true
+            onboot: true
+            network:
+              bridge: vmbr0
+              ip: 10.0.53.20/24
+              gw: 10.0.53.1
+              tag: 53
+            mounts:
+              - id: 0
+                host_path: /mnt/NAS/minio
+                ct_path: /export
+                # Map container UID 0 to on-disk UID 473 so MinIO root
+                # can read/write the existing data (preserves ownership)
+                idmap: "u:0:473:1;g:0:473:1"
+            entrypoint: "/usr/bin/docker-entrypoint.sh minio server /export --console-address :9002"
+            env:
+              MINIO_ROOT_USER: "{{ vault_minio_root_user }}"
+              MINIO_ROOT_PASSWORD: "{{ vault_minio_root_password }}"

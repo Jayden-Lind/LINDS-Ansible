@@ -1,0 +1,108 @@
+---
+- name: Ensure LXC OCI templates are staged
+  ansible.builtin.stat:
+    path: "/var/lib/vz/template/cache/{{ ct.ostemplate | regex_replace('^.*:vztmpl/', '') }}"
+  loop: "{{ proxmox_lxc_containers }}"
+  loop_control:
+    loop_var: ct
+    label: "{{ ct.vmid }} -> {{ ct.ostemplate }}"
+  register: proxmox_lxc_template_stat
+
+- name: Fail if any LXC template is missing
+  ansible.builtin.fail:
+    msg: >-
+      LXC template {{ item.ct.ostemplate }} not found on host.
+      Stage it manually with: pveam download local <name>
+  loop: "{{ proxmox_lxc_template_stat.results }}"
+  loop_control:
+    label: "{{ item.ct.vmid }}"
+  when: not item.stat.exists
+
+- name: Check if LXC containers already exist
+  ansible.builtin.stat:
+    path: "/etc/pve/lxc/{{ ct.vmid }}.conf"
+  loop: "{{ proxmox_lxc_containers }}"
+  loop_control:
+    loop_var: ct
+    label: "{{ ct.vmid }}"
+  register: proxmox_lxc_exists
+
+- name: Create LXC containers that do not exist
+  ansible.builtin.command:
+    cmd: >-
+      pct create {{ item.ct.vmid }} {{ item.ct.ostemplate }}
+      --hostname {{ item.ct.hostname }}
+      --storage {{ item.ct.storage }}
+      --rootfs {{ item.ct.storage }}:{{ item.ct.rootfs_size }}
+      --cores {{ item.ct.cores }}
+      --memory {{ item.ct.memory }}
+      --swap {{ item.ct.swap }}
+      --net0 name=eth0,bridge={{ item.ct.network.bridge }},ip={{ item.ct.network.ip }},gw={{ item.ct.network.gw }}{% if item.ct.network.tag is defined %},tag={{ item.ct.network.tag }}{% endif %}
+      --nameserver {{ item.ct.network.nameserver | default(item.ct.network.gw) }}
+      --unprivileged {{ 1 if item.ct.unprivileged | default(true) else 0 }}
+      --onboot {{ 1 if item.ct.onboot | default(true) else 0 }}
+      --description "{{ item.ct.description | default('') }}"
+  loop: "{{ proxmox_lxc_exists.results }}"
+  loop_control:
+    label: "{{ item.ct.vmid }}"
+  when: not item.stat.exists
+  register: proxmox_lxc_created
+
+- name: Apply LXC entrypoint
+  ansible.builtin.command:
+    cmd: pct set {{ ct.vmid }} --entrypoint "{{ ct.entrypoint }}"
+  loop: "{{ proxmox_lxc_containers }}"
+  loop_control:
+    loop_var: ct
+    label: "{{ ct.vmid }}"
+  when: ct.entrypoint is defined
+  changed_when: false  # pct set is idempotent; reload happens only on restart
+
+- name: Apply LXC bind mounts
+  ansible.builtin.command:
+    cmd: >-
+      pct set {{ item.0.vmid }}
+      --mp{{ item.1.id }} {{ item.1.host_path }},mp={{ item.1.ct_path }}{% if item.1.idmap is defined %},idmap='{{ item.1.idmap }}'{% endif %}
+  loop: "{{ proxmox_lxc_containers | subelements('mounts', skip_missing=True) }}"
+  loop_control:
+    label: "{{ item.0.vmid }} mp{{ item.1.id }} {{ item.1.host_path }}"
+  changed_when: false
+
+- name: Render LXC env vars into conf
+  ansible.builtin.blockinfile:
+    path: "/etc/pve/lxc/{{ ct.vmid }}.conf"
+    marker: "# {mark} ANSIBLE MANAGED ENV ({{ ct.vmid }})"
+    block: |-
+      {% for key, value in (ct.env | default({})).items() %}
+      lxc.environment.runtime: {{ key }}={{ value }}
+      {% endfor %}
+  loop: "{{ proxmox_lxc_containers }}"
+  loop_control:
+    loop_var: ct
+    label: "{{ ct.vmid }}"
+  when: ct.env is defined
+  register: proxmox_lxc_env_changed
+
+- name: Reboot LXC containers when env changed
+  ansible.builtin.shell:
+    cmd: |
+      pct stop {{ item.ct.vmid }} || true
+      pct start {{ item.ct.vmid }}
+  loop: "{{ proxmox_lxc_env_changed.results }}"
+  loop_control:
+    label: "{{ item.ct.vmid }}"
+  when: item.changed | default(false)
+  changed_when: true
+
+- name: Ensure LXC containers are running
+  ansible.builtin.command:
+    cmd: pct start {{ ct.vmid }}
+  loop: "{{ proxmox_lxc_containers }}"
+  loop_control:
+    loop_var: ct
+    label: "{{ ct.vmid }}"
+  register: proxmox_lxc_start
+  changed_when: "'already running' not in (proxmox_lxc_start.stderr | default(''))"
+  failed_when:
+    - proxmox_lxc_start.rc != 0
+    - "'already running' not in (proxmox_lxc_start.stderr | default(''))"
