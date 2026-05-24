@@ -1,0 +1,23 @@
+---
+- name: Ensure rtslib-fb-target config directory exists
+  ansible.builtin.file:
+    path: "{{ proxmox_iscsi_saveconfig | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Render iSCSI saveconfig.json
+  ansible.builtin.template:
+    src: saveconfig.json.j2
+    dest: "{{ proxmox_iscsi_saveconfig }}"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Reload iSCSI target
+
+- name: Enable and start rtslib-fb-targetctl
+  ansible.builtin.systemd:
+    name: rtslib-fb-targetctl
+    enabled: true
+    state: started

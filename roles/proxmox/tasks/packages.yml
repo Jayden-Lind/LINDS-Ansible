@@ -1,0 +1,14 @@
+---
+- name: Install required packages
+  ansible.builtin.apt:
+    name: "{{ proxmox_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Load iSCSI target kernel modules
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+    persistent: present
+  loop: "{{ proxmox_iscsi_kmods }}"

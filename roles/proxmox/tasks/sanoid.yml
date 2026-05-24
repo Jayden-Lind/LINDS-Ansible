@@ -1,0 +1,32 @@
+---
+- name: Ensure sanoid config directory exists
+  ansible.builtin.file:
+    path: "{{ proxmox_sanoid_conf_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Stage shipped sanoid.defaults.conf
+  ansible.builtin.copy:
+    src: /usr/share/sanoid/sanoid.defaults.conf
+    dest: "{{ proxmox_sanoid_conf_dir }}/sanoid.defaults.conf"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+    force: false
+
+- name: Render sanoid.conf
+  ansible.builtin.template:
+    src: sanoid.conf.j2
+    dest: "{{ proxmox_sanoid_conf_dir }}/sanoid.conf"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable sanoid timer
+  ansible.builtin.systemd:
+    name: sanoid.timer
+    enabled: true
+    state: started

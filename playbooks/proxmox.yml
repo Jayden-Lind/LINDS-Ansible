@@ -1,0 +1,6 @@
+---
+- name: Configure Proxmox storage hosts
+  hosts: proxmox
+  remote_user: root
+  roles:
+    - proxmox

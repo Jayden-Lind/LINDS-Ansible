@@ -1,0 +1,9 @@
+---
+- name: Apply ZFS dataset properties
+  community.general.zfs:
+    name: "{{ item.name }}"
+    state: present
+    extra_zfs_properties: "{{ item.properties }}"
+  loop: "{{ proxmox_zfs_datasets }}"
+  loop_control:
+    label: "{{ item.name }}"

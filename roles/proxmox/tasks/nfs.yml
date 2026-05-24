@@ -1,0 +1,15 @@
+---
+- name: Render /etc/exports
+  ansible.builtin.template:
+    src: exports.j2
+    dest: "{{ proxmox_exports_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload NFS exports
+
+- name: Enable and start NFS server
+  ansible.builtin.systemd:
+    name: nfs-server
+    enabled: true
+    state: started

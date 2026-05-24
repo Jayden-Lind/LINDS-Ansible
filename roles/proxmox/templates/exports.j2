@@ -1,0 +1,5 @@
+# {{ ansible_managed }}
+{% for export in proxmox_nfs_exports %}
+{{ export.path }} {% for net in export.networks %}{{ net }}({{ export.options }}){% if not loop.last %} {% endif %}{% endfor %}
+
+{% endfor %}

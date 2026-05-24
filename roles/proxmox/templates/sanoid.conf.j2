@@ -1,0 +1,18 @@
+## {{ ansible_managed }}
+
+{% for policy in proxmox_sanoid_policies %}
+[{{ policy.dataset }}]
+    use_template = {{ policy.template }}
+{% if policy.recursive | default(false) %}
+    recursive = yes
+{% endif %}
+
+{% endfor %}
+
+{% for name, tpl in proxmox_sanoid_templates.items() %}
+[template_{{ name }}]
+{% for key, value in tpl.items() %}
+    {{ key }} = {{ value }}
+{% endfor %}
+
+{% endfor %}

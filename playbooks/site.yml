@@ -8,6 +8,9 @@
 - name: Include backup
   ansible.builtin.import_playbook: backup.yml
 
+- name: Include proxmox
+  ansible.builtin.import_playbook: proxmox.yml
+
 - name: Include terraform
   ansible.builtin.import_playbook: terraform.yml
 

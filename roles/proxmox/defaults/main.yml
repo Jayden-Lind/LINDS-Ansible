@@ -1,0 +1,39 @@
+---
+# Packages installed for storage role
+proxmox_packages:
+  - nfs-kernel-server
+  - open-iscsi
+  - targetcli-fb
+  - sanoid
+
+# Kernel modules required for iSCSI target
+proxmox_iscsi_kmods:
+  - target_core_mod
+  - iscsi_target_mod
+
+# ZFS dataset properties to enforce (override in inventory)
+proxmox_zfs_datasets: []
+
+# NFS exports (override in inventory)
+proxmox_nfs_exports: []
+
+# iSCSI targets (override in inventory)
+proxmox_iscsi_targets: []
+
+# Sanoid policies (override in inventory)
+proxmox_sanoid_policies: []
+
+# Sanoid retention templates -- shared across hosts
+proxmox_sanoid_templates:
+  ssd_short:
+    hourly: 24
+    daily: 14
+    monthly: 0
+    yearly: 0
+    autosnap: "yes"
+    autoprune: "yes"
+
+# Files
+proxmox_exports_file: /etc/exports
+proxmox_iscsi_saveconfig: /etc/rtslib-fb-target/saveconfig.json
+proxmox_sanoid_conf_dir: /etc/sanoid

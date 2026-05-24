@@ -1,0 +1,8 @@
+---
+- name: Reload NFS exports
+  ansible.builtin.command: exportfs -ra
+  changed_when: true
+
+- name: Reload iSCSI target
+  ansible.builtin.command: targetctl restore
+  changed_when: true
