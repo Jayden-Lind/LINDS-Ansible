@@ -17,9 +17,12 @@ proxmox:
           - name: VM/truenas-nas/minio
             properties:
               recordsize: 1M
-          - name: truenas-hdd
+          - name: HDD-20T/data
             properties:
               mountpoint: /mnt/HDD
+              recordsize: 1M
+              compression: "off"
+              atime: "off"
 
         proxmox_nfs_exports:
           - path: /mnt/NAS
