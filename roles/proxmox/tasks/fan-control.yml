@@ -1,0 +1,25 @@
+---
+- name: Install fan-control script
+  ansible.builtin.copy:
+    src: fan-control.sh
+    dest: /usr/local/sbin/fan-control.sh
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart fan-control
+
+- name: Install fan-control systemd unit
+  ansible.builtin.copy:
+    src: fan-control.service
+    dest: /etc/systemd/system/fan-control.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart fan-control
+
+- name: Enable and start fan-control service
+  ansible.builtin.systemd:
+    name: fan-control
+    enabled: true
+    state: started
+    daemon_reload: true

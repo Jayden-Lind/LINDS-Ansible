@@ -1,0 +1,14 @@
+[Unit]
+Description=Thermal/power-aware BMC fan controller (Lenovo SR655 / EPYC)
+After=multi-user.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/fan-control.sh
+Restart=always
+RestartSec=5
+Nice=-5
+
+[Install]
+WantedBy=multi-user.target

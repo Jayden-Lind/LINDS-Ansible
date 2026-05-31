@@ -16,3 +16,6 @@
 
 - name: Manage LXC containers
   ansible.builtin.import_tasks: lxc.yml
+
+- name: Configure fan control service
+  ansible.builtin.import_tasks: fan-control.yml
