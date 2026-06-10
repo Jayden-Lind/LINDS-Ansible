@@ -1,13 +1,35 @@
 ---
-# IPsec IKEv2 remote-access for mobile clients.
+# IPsec IKEv2 remote-access for mobile clients — route-based via vti10.
 # Pool 10.0.10.0/24 — SNAT to WAN handled by jd_nat.yml rule 15.
 # PKI alias on the box is "ipsec_remote".
+#
+# NOTE (2026-06-10): forced UDP-encapsulation (`encap = yes`) is REQUIRED for the iOS
+# road-warrior, but VyOS exposes no CLI node for `encap` on remote-access connections
+# (only site-to-site has force-udp-encapsulation). It is therefore applied by patching
+# the swanctl RA template from the postconfig-bootup script (last task below).
+# Why it's needed: the cellular path is a stateful firewall that drops raw inbound ESP
+# (IP proto-50) over IPv6 — UDP-encap rides the NAT-T pinhole instead, and the faked
+# NAT detection also stops MOBIKE migrating the live SA onto the WAN IPv6 black hole,
+# so iOS stays on IPv4. RemoteAccessIKE/ESP are GCM-only (current saved state).
 
 - name: PKI — remote-access cert + key
   vyos.vyos.vyos_config:
     lines:
       - set pki certificate ipsec_remote certificate "{{ ipsec_remote_pub }}"
       - set pki certificate ipsec_remote private key "{{ ipsec_remote_priv }}"
+
+- name: VTI vti10 (route-based RA carrier)
+  vyos.vyos.vyos_config:
+    lines:
+      - set interfaces vti vti10 description 'IPsec RA road-warrior (route-based)'
+      - set interfaces vti vti10 mtu 1400
+      - set interfaces vti vti10 ip adjust-mss clamp-mss-to-pmtu
+      - set interfaces vti vti10 ipv6 address no-default-link-local
+
+- name: Static route for RA pool via vti10
+  vyos.vyos.vyos_config:
+    lines:
+      - set protocols static route 10.0.10.0/24 interface vti10
 
 - name: IKE group RemoteAccessIKE
   vyos.vyos.vyos_config:
@@ -16,27 +38,16 @@
       - set vpn ipsec ike-group RemoteAccessIKE dead-peer-detection action restart
       - set vpn ipsec ike-group RemoteAccessIKE dead-peer-detection interval 30
       - set vpn ipsec ike-group RemoteAccessIKE proposal 1 dh-group 14
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 1 encryption aes256ctr
+      - set vpn ipsec ike-group RemoteAccessIKE proposal 1 encryption aes256gcm128
       - set vpn ipsec ike-group RemoteAccessIKE proposal 1 hash sha256
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 2 dh-group 14
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 2 encryption aes256gcm128
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 2 hash sha256
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 3 dh-group 28
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 3 encryption aes256
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 3 hash sha256
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 4 dh-group 14
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 4 encryption aes256
-      - set vpn ipsec ike-group RemoteAccessIKE proposal 4 hash sha256
 
 - name: ESP group RemoteAccessESP
   vyos.vyos.vyos_config:
     lines:
       - set vpn ipsec esp-group RemoteAccessESP lifetime 3600
       - set vpn ipsec esp-group RemoteAccessESP pfs disable
-      - set vpn ipsec esp-group RemoteAccessESP proposal 1 encryption aes128gcm128
-      - set vpn ipsec esp-group RemoteAccessESP proposal 2 encryption aes256gcm128
-      - set vpn ipsec esp-group RemoteAccessESP proposal 3 encryption aes256
-      - set vpn ipsec esp-group RemoteAccessESP proposal 3 hash sha256
+      - set vpn ipsec esp-group RemoteAccessESP proposal 1 encryption aes256gcm128
+      - set vpn ipsec esp-group RemoteAccessESP proposal 1 hash sha256
 
 - name: Remote-access pool MOBILE
   vyos.vyos.vyos_config:
@@ -49,7 +60,10 @@
     lines:
       - set vpn ipsec remote-access connection LINDS_MOBILE ike-group RemoteAccessIKE
       - set vpn ipsec remote-access connection LINDS_MOBILE esp-group RemoteAccessESP
-      - set vpn ipsec remote-access connection LINDS_MOBILE local-address any
+      - set vpn ipsec remote-access connection LINDS_MOBILE bind vti10
+      # dhcp-interface pins the RA to the WAN IPv4 (auto-tracks the DHCP lease) and is
+      # mutually exclusive with local-address — do NOT also set local-address.
+      - set vpn ipsec remote-access connection LINDS_MOBILE dhcp-interface "{{ wan_interface }}"
       - set vpn ipsec remote-access connection LINDS_MOBILE local prefix 0.0.0.0/0
       - set vpn ipsec remote-access connection LINDS_MOBILE pool MOBILE
       - set vpn ipsec remote-access connection LINDS_MOBILE authentication client-mode eap-mschapv2
@@ -64,3 +78,22 @@
       - set vpn ipsec remote-access connection LINDS_MOBILE authentication local-users username "{{ item.user }}" password "{{ item.password }}"
   loop: "{{ ipsec_users }}"
   no_log: true
+
+# VyOS has no CLI node for `encap` on remote-access, so force ESP-in-UDP by patching the
+# swanctl RA template. This appends an idempotent guard to the postconfig-bootup script
+# (the base script is written in main.yml, which runs first and overwrites it, so this
+# append stays single). At boot the guard patches the template + regenerates swanctl.conf.
+# Survives commits, DHCP renews, reboots, and image upgrades. Applies on next boot.
+- name: Force UDP-encap on remote-access (no VyOS CLI node) via postconfig bootup
+  vyos.vyos.vyos_command:
+    commands:
+      - |
+        cat >>/config/scripts/vyos-postconfig-bootup.script <<'EOL'
+
+        # --- Force UDP-encap on IPsec remote-access (VyOS has no RA `encap` CLI node) ---
+        RA_TMPL="/usr/share/vyos/templates/ipsec/swanctl/remote_access.j2"
+        if [ -f "$RA_TMPL" ] && ! grep -q "encap = yes" "$RA_TMPL"; then
+        sed -i '/^        remote_addrs = %any$/a\        encap = yes' "$RA_TMPL"
+        /usr/libexec/vyos/conf_mode/vpn_ipsec.py >/dev/null 2>&1 || true
+        fi
+        EOL

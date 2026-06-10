@@ -21,7 +21,8 @@
   vyos.vyos.vyos_config:
     lines:
       - set vpn ipsec ike-group MyIKEGroup key-exchange ikev2
-      - set vpn ipsec ike-group MyIKEGroup close-action start
+      # close-action removed 2026-06-09: with both ends connection-type initiate it
+      # cascaded duplicate IKE_SAs on every child rekey (uniqueids won't reap them).
       - set vpn ipsec ike-group MyIKEGroup dead-peer-detection action restart
       - set vpn ipsec ike-group MyIKEGroup proposal 1 dh-group 14
       - set vpn ipsec ike-group MyIKEGroup proposal 1 encryption aes256gcm128
@@ -55,7 +56,9 @@
       - set vpn ipsec site-to-site peer LINDS local-address any
       - set vpn ipsec site-to-site peer LINDS remote-address linds-pfsense.linds.com.au
       - set vpn ipsec site-to-site peer LINDS authentication mode x509
-      - set vpn ipsec site-to-site peer LINDS authentication remote-id %any
+      # remote-id pinned to the peer cert DN 2026-06-09 (was %any) as part of the
+      # duplicate-SA fix — far-side VyOS needs the same two changes to fully resolve.
+      - "set vpn ipsec site-to-site peer LINDS authentication remote-id 'C=AU, ST=Victoria, L=Langwarrin, O=LINDS-IPSEC, CN=LINDS-IPSEC'"
       - set vpn ipsec site-to-site peer LINDS authentication use-x509-id
       - set vpn ipsec site-to-site peer LINDS authentication x509 ca-certificate LINDS
       - set vpn ipsec site-to-site peer LINDS authentication x509 certificate IPSEC
