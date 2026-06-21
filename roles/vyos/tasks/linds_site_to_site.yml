@@ -44,7 +44,7 @@
     lines:
       - set interfaces vti vti0 address 10.255.0.2/30
       - set interfaces vti vti0 mtu 1436
-      - set interfaces vti vti0 ip adjust-mss 1396
+      - set interfaces vti vti0 ip adjust-mss clamp-mss-to-pmtu
 
 - name: IPsec — site-to-site peer LINDS (peers JD vyos)
   vyos.vyos.vyos_config:
