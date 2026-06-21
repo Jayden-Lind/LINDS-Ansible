@@ -11,15 +11,29 @@
       - set firewall global-options syn-cookies enable
       - set firewall global-options twa-hazards-protection enable
 
-- name: Default-action accept on all chains (v4 + v6)
+- name: Default-action on all chains (v4 input drop, rest accept)
   vyos.vyos.vyos_config:
     lines:
       - set firewall ipv4 forward filter default-action accept
-      - set firewall ipv4 input filter default-action accept
+      - set firewall ipv4 input filter default-action drop
       - set firewall ipv4 output filter default-action accept
       - set firewall ipv6 forward filter default-action accept
       - set firewall ipv6 input filter default-action accept
       - set firewall ipv6 output filter default-action accept
+
+- name: Input filter — remove dead INPUT rules for DNAT'd services (Plex, Minecraft)
+  vyos.vyos.vyos_config:
+    lines:
+      - delete firewall ipv4 input filter rule 5
+      - delete firewall ipv4 input filter rule 6
+  ignore_errors: true
+
+- name: Input filter — established/related (return traffic)
+  vyos.vyos.vyos_config:
+    lines:
+      - set firewall ipv4 input filter rule 1 action accept
+      - set firewall ipv4 input filter rule 1 state established
+      - set firewall ipv4 input filter rule 1 state related
 
 - name: Forward filter — game server passthrough (27015)
   vyos.vyos.vyos_config:
@@ -45,21 +59,13 @@
       - set firewall ipv4 input filter rule 4 destination port 22
       - set firewall ipv4 input filter rule 4 source group network-group LAN-Addresses
 
-- name: Input filter — Plex (32400)
+- name: Input filter — BGP (LAN only)
   vyos.vyos.vyos_config:
     lines:
-      - set firewall ipv4 input filter rule 5 action accept
-      - set firewall ipv4 input filter rule 5 inbound-interface name "{{ wan_interface }}"
-      - set firewall ipv4 input filter rule 5 protocol tcp_udp
-      - set firewall ipv4 input filter rule 5 destination port 32400
-
-- name: Input filter — Minecraft (25565)
-  vyos.vyos.vyos_config:
-    lines:
-      - set firewall ipv4 input filter rule 6 action accept
-      - set firewall ipv4 input filter rule 6 inbound-interface name "{{ wan_interface }}"
-      - set firewall ipv4 input filter rule 6 protocol tcp_udp
-      - set firewall ipv4 input filter rule 6 destination port 25565
+      - set firewall ipv4 input filter rule 8 action accept
+      - set firewall ipv4 input filter rule 8 protocol tcp
+      - set firewall ipv4 input filter rule 8 destination port 179
+      - set firewall ipv4 input filter rule 8 source group network-group LAN-Addresses
 
 - name: Input filter — DNS (LAN only)
   vyos.vyos.vyos_config:
@@ -84,3 +90,4 @@
       - set firewall ipv4 input filter rule 11 protocol udp
       - set firewall ipv4 input filter rule 11 destination port 123
       - set firewall ipv4 input filter rule 11 source group network-group LAN-Addresses
+
