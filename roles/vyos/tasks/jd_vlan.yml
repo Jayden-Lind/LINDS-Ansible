@@ -41,6 +41,39 @@
       - set service dhcp-server shared-network-name VLAN_ISOLATION subnet 10.0.52.0/24 range 0 start 10.0.52.2
       - set service dhcp-server shared-network-name VLAN_ISOLATION subnet 10.0.52.0/24 range 0 stop 10.0.52.199
 
+- name: Input filter — VLAN52 isolated (allow DHCP to router only)
+  vyos.vyos.vyos_config:
+    lines:
+      - set firewall ipv4 input filter rule 1 action accept
+      - set firewall ipv4 input filter rule 1 inbound-interface name "{{ main_lan_interface }}.52"
+      - set firewall ipv4 input filter rule 1 protocol udp
+      - set firewall ipv4 input filter rule 1 destination port 67
+      - delete firewall ipv4 input filter rule 1 state
+  ignore_errors: true
+
+- name: Input filter — VLAN52 isolated (drop all other router-bound traffic)
+  vyos.vyos.vyos_config:
+    lines:
+      - set firewall ipv4 input filter rule 2 action drop
+      - set firewall ipv4 input filter rule 2 inbound-interface name "{{ main_lan_interface }}.52"
+
+- name: Forward filter — VLAN52 isolated (allow return traffic for inbound connections)
+  vyos.vyos.vyos_config:
+    lines:
+      - set firewall ipv4 forward filter rule 99 action accept
+      - set firewall ipv4 forward filter rule 99 source address 10.0.52.0/24
+      - set firewall ipv4 forward filter rule 99 destination group network-group LAN-Addresses
+      - set firewall ipv4 forward filter rule 99 state established
+      - set firewall ipv4 forward filter rule 99 state related
+
+- name: Forward filter — VLAN52 isolated (block new inter-VLAN connections, allow internet)
+  vyos.vyos.vyos_config:
+    lines:
+      - set firewall ipv4 forward filter rule 100 action drop
+      - set firewall ipv4 forward filter rule 100 source address 10.0.52.0/24
+      - set firewall ipv4 forward filter rule 100 destination group network-group LAN-Addresses
+
+
 # ----- VLAN 53: dev / k8s --------------------------------------------------
 - name: VLAN 53 dev — interface
   vyos.vyos.vyos_config:

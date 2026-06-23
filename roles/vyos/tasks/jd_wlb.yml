@@ -1,0 +1,117 @@
+---
+# WAN load balancing — dual-WAN failover between {{ wan_interface }} (primary,
+# weight 10) and {{ main_lan_interface }}.99 (cell backup, weight 1).
+# wlb-localfix.sh redirects the router's own main-table default during failover
+# (the virtio NIC keeps carrier so the DHCP default never withdraws on its own).
+#
+# Exclusion rules keep VPN and RFC1918 traffic off the LB:
+#   rules 1-3  RFC1918 destinations bypass LB (LAN-to-LAN never goes to WAN)
+#   rule  5    VLAN51 torrent excluded — routes via wg101 tunnel
+#   rule  6    VLAN58 US excluded — routes via wg10 tunnel
+
+- name: WAN LB — deploy wlb-localfix.sh hook script
+  vyos.vyos.vyos_command:
+    commands:
+      - |
+        cat >/config/scripts/wlb-localfix.sh <<'EOL'
+        #!/bin/bash
+        # WLB hook: while the primary WAN (eth2) is FAILED, point the MAIN routing
+        # table's default at the cellular backup (eth1.99); restore when eth2 is back.
+        # Fixes failover for ROUTER-ORIGINATED traffic (the on-box DNS forwarder, etc.)
+        # which follows the main table -- on this VM the virtio NIC keeps carrier, so
+        # eth2's DHCP default never withdraws on its own.
+        #
+        # Wire up with:  set load-balancing wan hook wlb-localfix.sh
+        # WLB provides:  $WLB_INTERFACE_NAME  and  $WLB_INTERFACE_STATE  (ACTIVE|FAILED)
+        # The hook BLOCKS until this returns (no timeout) -- keep it fast, no sleeps/pings.
+
+        PRIMARY="eth2"
+        BACKUP="eth1.99"
+        BACKUP_TABLE="201"
+        DISTANCE="1"
+        STATE_FILE="/run/wlb-localfix.gw"
+        log() { logger -t wlb-localfix -- "$*"; }
+
+        [ "$WLB_INTERFACE_NAME" = "$PRIMARY" ] || exit 0
+
+        case "$WLB_INTERFACE_STATE" in
+        FAILED)
+            GW=$(ip -4 route show table "$BACKUP_TABLE" default 2>/dev/null \
+                    | awk '{for(i=1;i<=NF;i++) if($i=="via"){print $(i+1); exit}}')
+            if [ -z "$GW" ]; then
+                log "$PRIMARY FAILED but no gateway in table $BACKUP_TABLE ($BACKUP down too?) - not redirecting"
+                exit 0
+            fi
+            vtysh -c 'configure terminal' -c "ip route 0.0.0.0/0 $GW $DISTANCE" >/dev/null 2>&1
+            echo "$GW" > "$STATE_FILE"
+            log "$PRIMARY FAILED -> main default redirected to $BACKUP via $GW (distance $DISTANCE)"
+            ;;
+        ACTIVE)
+            if [ -r "$STATE_FILE" ]; then
+                GW=$(cat "$STATE_FILE")
+                vtysh -c 'configure terminal' -c "no ip route 0.0.0.0/0 $GW $DISTANCE" >/dev/null 2>&1
+                rm -f "$STATE_FILE"
+                log "$PRIMARY ACTIVE -> restored main default to $PRIMARY (removed backup default via $GW)"
+            else
+                log "$PRIMARY ACTIVE -> no redirect was active"
+            fi
+            ;;
+        *)
+            log "unhandled state '$WLB_INTERFACE_STATE' for $WLB_INTERFACE_NAME"
+            ;;
+        esac
+        exit 0
+        EOL
+        chmod +x /config/scripts/wlb-localfix.sh
+
+- name: WAN LB — interface health checks
+  vyos.vyos.vyos_config:
+    lines:
+      - set load-balancing wan flush-connections
+      - set load-balancing wan hook /config/scripts/wlb-localfix.sh
+      - set load-balancing wan interface-health "{{ wan_interface }}" nexthop dhcp
+      - set load-balancing wan interface-health "{{ wan_interface }}" failure-count 3
+      - set load-balancing wan interface-health "{{ wan_interface }}" success-count 1
+      - set load-balancing wan interface-health "{{ wan_interface }}" test 10 type ping
+      - set load-balancing wan interface-health "{{ wan_interface }}" test 10 target 1.1.1.1
+      - set load-balancing wan interface-health "{{ wan_interface }}" test 20 type ping
+      - set load-balancing wan interface-health "{{ wan_interface }}" test 20 target 8.8.8.8
+      - set load-balancing wan interface-health "{{ main_lan_interface }}.99" nexthop dhcp
+      - set load-balancing wan interface-health "{{ main_lan_interface }}.99" failure-count 3
+      - set load-balancing wan interface-health "{{ main_lan_interface }}.99" success-count 1
+      - set load-balancing wan interface-health "{{ main_lan_interface }}.99" test 10 type ping
+      - set load-balancing wan interface-health "{{ main_lan_interface }}.99" test 10 target 8.8.4.4
+
+- name: WAN LB — RFC1918 exclusions (LAN traffic bypasses LB)
+  vyos.vyos.vyos_config:
+    lines:
+      - set load-balancing wan rule 1 destination address 10.0.0.0/8
+      - set load-balancing wan rule 1 exclude
+      - set load-balancing wan rule 2 destination address 172.16.0.0/12
+      - set load-balancing wan rule 2 exclude
+      - set load-balancing wan rule 3 destination address 192.168.0.0/16
+      - set load-balancing wan rule 3 exclude
+
+- name: WAN LB — VPN VLAN exclusions (WireGuard VLANs bypass LB)
+  vyos.vyos.vyos_config:
+    lines:
+      - set load-balancing wan rule 5 inbound-interface "{{ main_lan_interface }}.51"
+      - set load-balancing wan rule 5 exclude
+      - set load-balancing wan rule 6 inbound-interface "{{ main_lan_interface }}.58"
+      - set load-balancing wan rule 6 exclude
+
+- name: WAN LB — failover rules (LAN + isolated + dev VLAN)
+  vyos.vyos.vyos_config:
+    lines:
+      - set load-balancing wan rule 10 failover
+      - set load-balancing wan rule 10 inbound-interface "{{ main_lan_interface }}"
+      - set load-balancing wan rule 10 interface "{{ wan_interface }}" weight 10
+      - set load-balancing wan rule 10 interface "{{ main_lan_interface }}.99" weight 1
+      - set load-balancing wan rule 11 failover
+      - set load-balancing wan rule 11 inbound-interface "{{ main_lan_interface }}.53"
+      - set load-balancing wan rule 11 interface "{{ wan_interface }}" weight 10
+      - set load-balancing wan rule 11 interface "{{ main_lan_interface }}.99" weight 1
+      - set load-balancing wan rule 12 failover
+      - set load-balancing wan rule 12 inbound-interface "{{ main_lan_interface }}.52"
+      - set load-balancing wan rule 12 interface "{{ wan_interface }}" weight 10
+      - set load-balancing wan rule 12 interface "{{ main_lan_interface }}.99" weight 1

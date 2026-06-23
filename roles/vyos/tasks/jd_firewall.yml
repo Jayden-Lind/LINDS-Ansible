@@ -28,12 +28,19 @@
       - delete firewall ipv4 input filter rule 6
   ignore_errors: true
 
-- name: Input filter — established/related (return traffic)
+- name: Input filter — established/related (return traffic for router-initiated connections)
   vyos.vyos.vyos_config:
     lines:
-      - set firewall ipv4 input filter rule 1 action accept
-      - set firewall ipv4 input filter rule 1 state established
-      - set firewall ipv4 input filter rule 1 state related
+      - set firewall ipv4 input filter rule 50 action accept
+      - set firewall ipv4 input filter rule 50 state established
+      - set firewall ipv4 input filter rule 50 state related
+
+- name: Input filter — ICMP from WAN (ping to router)
+  vyos.vyos.vyos_config:
+    lines:
+      - set firewall ipv4 input filter rule 51 action accept
+      - set firewall ipv4 input filter rule 51 protocol icmp
+      - set firewall ipv4 input filter rule 51 inbound-interface name "{{ wan_interface }}"
 
 - name: Forward filter — game server passthrough (27015)
   vyos.vyos.vyos_config:

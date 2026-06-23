@@ -30,9 +30,10 @@
       - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 static-mapping {{ item.name }} ip-address {{ item.ip }}
       - set service dhcp-server shared-network-name JD-LAN subnet 10.0.50.0/24 static-mapping {{ item.name }} mac '{{ item.mac }}'
   loop:
-    - { name: bedroom-aircon, ip: 10.0.50.231, mac: '28:2e:89:56:f0:10' }
-    - { name: lounge-aircon,  ip: 10.0.50.230, mac: '28:2e:89:56:f3:d3' }
-    - { name: solar-inverter, ip: 10.0.50.232, mac: 'cc:f9:57:7b:ae:49' }
+    - { name: bedroom-aircon,   ip: 10.0.50.231, mac: '28:2e:89:56:f0:10' }
+    - { name: lounge-aircon,    ip: 10.0.50.230, mac: '28:2e:89:56:f3:d3' }
+    - { name: solar-inverter,   ip: 10.0.50.232, mac: 'cc:f9:57:7b:ae:49' }
+    - { name: sigenergy-battery, ip: 10.0.50.233, mac: 'a8:46:74:ca:a1:90' }
 
 - name: DHCP server — dynamic DNS update
   vyos.vyos.vyos_config:

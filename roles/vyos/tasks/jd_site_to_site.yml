@@ -12,6 +12,7 @@
   vyos.vyos.vyos_config:
     lines:
       - set vpn ipsec interface "{{ wan_interface }}"
+      - set vpn ipsec interface "{{ main_lan_interface }}.99"
       - set vpn ipsec log level 0
       - set vpn ipsec log subsystem asn
       - set vpn ipsec options disable-route-autoinstall

@@ -7,8 +7,7 @@
     lines:
       - set service dns forwarding listen-address 10.0.50.1
       - set service dns forwarding listen-address 10.0.53.1
-      - set service dns forwarding dhcp "{{ main_lan_interface }}"
-      - set service dns forwarding allow-from 10.0.50.0/24
+      - set service dns forwarding listen-address 10.0.52.1
 
 - name: DNS forwarder — domain stubs (linds.com.au + k8s)
   vyos.vyos.vyos_config:

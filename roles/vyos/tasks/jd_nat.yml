@@ -1,21 +1,42 @@
 ---
-# All NAT for jd-vyos. Source NAT (rules 10–100) + WireGuard SNAT
+# All NAT for jd-vyos. Source NAT (rules 10–200) + WireGuard SNAT
 # (rules 9998/9999) + destination NAT / port forwards (rules 20–50).
 #
 # Source-NAT numbering scheme:
-#   10   JD-LAN          → WAN (masq, except LAN-Addresses)
-#   12   VLAN53 dev      → WAN (masq, except LAN-Addresses)
-#   15   IPSEC mobile    → WAN
-#   20   k8s ingress IP  → WAN (single-host masq)
-#   100  WireGuard pool  → WAN
+#   10   JD-LAN          → WAN group (masq, internet only)
+#   12   VLAN52 isolated → WAN group (masq, internet only)
+#   13   VLAN53 dev      → WAN group (masq, internet only)
+#   15   IPSEC mobile    → WAN group (masq)
+#   20   k8s ingress IP  → WAN group (single-host masq)
+#   100  WireGuard pool  → WAN (eth2 only)
+#   101  JD-LAN          → eth1.99 cell backup (masq when failing over)
+#   200  catch-all       → WAN group (safety net)
 #   9998 VLAN58 US       → wg10
 #   9999 VLAN51 torrent  → wg101
+
+# ===== WAN interface group ================================================
+- name: Firewall WAN interface group (eth2 primary + eth1.99 cell backup)
+  vyos.vyos.vyos_config:
+    lines:
+      - set firewall group interface-group WAN interface "{{ wan_interface }}"
+      - set firewall group interface-group WAN interface "{{ main_lan_interface }}.99"
+
+# ===== Source NAT — migrate outbound-interface from name to group ==========
+- name: Source NAT — clean up outbound-interface name (superseded by group WAN)
+  vyos.vyos.vyos_config:
+    lines:
+      - delete nat source rule 10 outbound-interface name
+      - delete nat source rule 12 outbound-interface name
+      - delete nat source rule 13 outbound-interface name
+      - delete nat source rule 15 outbound-interface name
+      - delete nat source rule 20 outbound-interface name
+  ignore_errors: true
 
 # ===== Source NAT =========================================================
 - name: Source NAT — JD-LAN egress
   vyos.vyos.vyos_config:
     lines:
-      - set nat source rule 10 outbound-interface name "{{ wan_interface }}"
+      - set nat source rule 10 outbound-interface group WAN
       - set nat source rule 10 source address 10.0.50.0/24
       - set nat source rule 10 destination group network-group '!LAN-Addresses'
       - set nat source rule 10 translation address masquerade
@@ -23,7 +44,7 @@
 - name: Source NAT — Isolation egress
   vyos.vyos.vyos_config:
     lines:
-      - set nat source rule 12 outbound-interface name "{{ wan_interface }}"
+      - set nat source rule 12 outbound-interface group WAN
       - set nat source rule 12 source address 10.0.52.0/24
       - set nat source rule 12 destination group network-group '!LAN-Addresses'
       - set nat source rule 12 translation address masquerade
@@ -31,7 +52,7 @@
 - name: Source NAT — VLAN53 dev egress
   vyos.vyos.vyos_config:
     lines:
-      - set nat source rule 13 outbound-interface name "{{ wan_interface }}"
+      - set nat source rule 13 outbound-interface group WAN
       - set nat source rule 13 source address 10.0.53.0/24
       - set nat source rule 13 destination group network-group '!LAN-Addresses'
       - set nat source rule 13 translation address masquerade
@@ -39,14 +60,14 @@
 - name: Source NAT — IPSEC mobile pool
   vyos.vyos.vyos_config:
     lines:
-      - set nat source rule 15 outbound-interface name "{{ wan_interface }}"
+      - set nat source rule 15 outbound-interface group WAN
       - set nat source rule 15 source address 10.0.10.0/24
       - set nat source rule 15 translation address masquerade
 
 - name: Source NAT — k8s ingress IP 172.16.1.1
   vyos.vyos.vyos_config:
     lines:
-      - set nat source rule 20 outbound-interface name "{{ wan_interface }}"
+      - set nat source rule 20 outbound-interface group WAN
       - set nat source rule 20 source address 172.16.1.1
       - set nat source rule 20 translation address masquerade
 
@@ -57,6 +78,20 @@
       - set nat source rule 100 outbound-interface name "{{ wan_interface }}"
       - set nat source rule 100 source address 10.100.100.0/24
       - set nat source rule 100 translation address masquerade
+
+- name: Source NAT — JD-LAN via cell backup (eth1.99 failover path)
+  vyos.vyos.vyos_config:
+    lines:
+      - set nat source rule 101 outbound-interface name "{{ main_lan_interface }}.99"
+      - set nat source rule 101 source address 10.0.50.0/24
+      - set nat source rule 101 destination group network-group LAN-Addresses
+      - set nat source rule 101 translation address masquerade
+
+- name: Source NAT — catch-all WAN masquerade
+  vyos.vyos.vyos_config:
+    lines:
+      - set nat source rule 200 outbound-interface group WAN
+      - set nat source rule 200 translation address masquerade
 
 - name: Source NAT — VLAN58 over wg10 (US)
   vyos.vyos.vyos_config:
