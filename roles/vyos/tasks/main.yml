@@ -77,13 +77,20 @@
       - set interfaces ethernet "{{ main_lan_interface }}" offload rps
       - set interfaces ethernet "{{ main_lan_interface }}" offload sg
 
-- name: Enable ethtool offloading on WAN at boot
+- name: Post Boot VyOS script (ethtool + IPsec RA encap)
   vyos.vyos.vyos_command:
     commands:
       - |
         cat >/config/scripts/vyos-postconfig-bootup.script <<EOL
         #!/bin/sh
-        ethtool -K "{{ wan_interface }}" rx on tx on sg on tso on gro on gso on rx-udp-gro-forwarding on
+        ethtool -K "{{ wan_interface }}" rx on tx on sg on tso on gro on gso on
+        ethtool -K "{{ main_lan_interface }}" rx-gro-hw off
+        # --- Force UDP-encap on IPsec remote-access (VyOS has no RA `encap` CLI node) ---
+        RA_TMPL="/usr/share/vyos/templates/ipsec/swanctl/remote_access.j2"
+        if [ -f "$RA_TMPL" ] && ! grep -q "encap = yes" "$RA_TMPL"; then
+        sed -i '/^        remote_addrs = %any$/a\        encap = yes' "$RA_TMPL"
+        /usr/libexec/vyos/conf_mode/vpn_ipsec.py >/dev/null 2>&1 || true
+        fi
         EOL
 
 - name: Firewall LAN-Addresses group
