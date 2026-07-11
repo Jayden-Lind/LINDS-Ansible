@@ -16,6 +16,35 @@
     mode: "0600"
   notify: Reload iSCSI target
 
+# Boot-time race: targetctl restore can run before ZFS zvol /dev links from
+# late-imported pools exist, silently dropping block backstores + LUN mappings
+# (iSCSI login then succeeds but exposes no disk). The drop-in waits for every
+# backstore device referenced in saveconfig.json before restoring.
+- name: Install LIO backstore device wait script
+  ansible.builtin.copy:
+    src: wait-lio-backstore-devs.sh
+    dest: /usr/local/sbin/wait-lio-backstore-devs.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create rtslib-fb-targetctl drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/rtslib-fb-targetctl.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Wait for zvol devices before LIO config restore
+  ansible.builtin.copy:
+    src: rtslib-wait-zvols.conf
+    dest: /etc/systemd/system/rtslib-fb-targetctl.service.d/wait-zvols.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
 - name: Enable and start rtslib-fb-targetctl
   ansible.builtin.systemd:
     name: rtslib-fb-targetctl
