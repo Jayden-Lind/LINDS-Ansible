@@ -134,6 +134,14 @@
       - set nat destination rule 23 translation address 172.16.1.1
       - set nat destination rule 23 log
 
+- name: DNAT 24 — mTLS port forwarding → 172.16.1.12
+  vyos.vyos.vyos_config:
+    lines:
+      - set nat destination rule 24 inbound-interface name "{{ wan_interface }}"
+      - set nat destination rule 24 protocol tcp
+      - set nat destination rule 24 destination port 443
+      - set nat destination rule 24 translation address 172.16.1.12
+
 - name: DNAT 50 — Steam Source/Remote-Play → 10.0.50.164
   vyos.vyos.vyos_config:
     lines:
