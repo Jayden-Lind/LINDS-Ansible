@@ -14,6 +14,32 @@ proxmox_iscsi_kmods:
 # ZFS dataset properties to enforce (override in inventory)
 proxmox_zfs_datasets: []
 
+# ZFS module parameters written to /etc/modprobe.d/zfs.conf. Runtime-writable
+# ones are also pushed to /sys/module/zfs/parameters so a run does not leave the
+# file and the running host disagreeing.
+proxmox_zfs_module_params:
+  - comment: ARC sizing — 64 GiB max, 16 GiB min floor
+    params:
+      zfs_arc_max: 68719476736
+      zfs_arc_min: 17179869184
+  - comment: SSD-friendly vdev queue depths (default 10 each)
+    params:
+      zfs_vdev_sync_read_max_active: 32
+      zfs_vdev_sync_write_max_active: 32
+      zfs_vdev_async_read_max_active: 16
+      zfs_vdev_async_write_max_active: 16
+  - comment: >-
+      Dirty-data throttle. Was 8 GiB / 80% / 60%, which let ~6.4 GiB accumulate
+      before hard backpressure. Neither pool can absorb a flush that size — VM is
+      a 3-wide SATA raidz1, NAS-SSD is 5-wide — so txgs landed as multi-second
+      stalls (47% iowait, z_wr_int threads stacked in D state). Note the kernel
+      clamps zfs_dirty_data_max to the read-only zfs_dirty_data_max_max, 4 GiB
+      here, so the old 8 GiB was never fully honoured anyway.
+    params:
+      zfs_dirty_data_max: 2147483648
+      zfs_vdev_async_write_active_max_dirty_percent: 60
+      zfs_delay_min_dirty_percent: 40
+
 # NFS exports (override in inventory)
 proxmox_nfs_exports: []
 
