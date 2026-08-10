@@ -4,7 +4,9 @@
 **Scope:** VyOS router `10.0.50.1`, Proxmox host `10.0.50.246`, UniFi integration.
 `linds-vyos-01` was explicitly out of scope and was not inspected.
 
-Nothing in this document has been applied. Every command below is a proposal.
+**Status:** the items marked ✅ below were applied to the router and to the
+Ansible role on 2026-08-10 and verified with `--check --diff` (0 drift).
+Everything else remains a proposal. See "Applied" at the end for the full list.
 
 ---
 
@@ -822,3 +824,64 @@ Highest value first, and independent of each other:
    `tcp_low_latency`. Three deletes, no behaviour risk.
 4. **A.10** — IPsec proposals 2–4. Needs a maintenance window on both ends.
 5. **A.11, A.12, A.13, A.6** — small correctness cleanups.
+
+
+---
+
+# Appendix: what was applied, 2026-08-10
+
+Applied to jd-vyos-01 **and** reconciled into the role. `ansible-playbook
+playbooks/vyos.yml --check --diff` reports 0 config changes afterwards.
+
+| # | Change | Verified by |
+|---|---|---|
+| A.5 | dropped `rmem_default` / `wmem_default` | runtime back to 212992 |
+| A.3 | dropped `tcp_low_latency` | runtime 0 (no-op since kernel 4.14 anyway) |
+| A.4 | dropped `tcp_timestamps=0` | runtime 1, PAWS/RTTM restored |
+| A.6 | `netdev_budget_usecs` 8000 → 4000 | runtime 4000 |
+| A.13 | conntrack established 3600 → 7200 | runtime 7200 |
+| A.6 | `system conntrack table-size 524288` | `nf_conntrack_max` now genuinely 524288 |
+| A.8 | deleted the `k8s.linds.com.au` DNS stub | see below |
+| A.11 | `broadcast-ping disable` | `icmp_echo_ignore_broadcasts=1` |
+| A.12 | removed `ipv6 address autoconf` from eth1 | `eth1.accept_ra` 2 → 0, PD address retained |
+| 1.3 | `bgp parameters router-id 10.0.50.1` | router-id no longer the cell WAN's lease |
+| 2.7 | `service lldp interface all` | lldpd now RX+TX on eth1 |
+| 2.4 | offloads gro/gso/sg, +tso on WAN | all on; LRO / rx-gro-hw / esp-hw-offload stay off |
+| 2.5 | eth2 ring-buffer 1024 → 4096 | **overruns 5427 → 0** |
+| A.10 | dropped IKE proposals 2-4 | SHA-1 and null-encryption GMAC no longer offered |
+| P3 | deleted dead config | route 1.0.0.1/32, dangling BGP route-map node, nat source rule 100, empty plaintext-password, DNAT logging on rules 20/23 |
+
+### On the k8s DNS stub
+
+Resolved by querying the cluster (via an SSH tunnel through the router — the API
+is reachable from 10.0.50.1 but not from the client LAN). `kube-dns` is
+**ClusterIP-only** at 10.96.0.10 with no LoadBalancer, so it was never routable
+from the router; queries were leaving via the WAN and timing out.
+
+Nothing needs the stub: external-dns runs with
+`--fqdn-template={{ .Name }}.linds.com.au` and `--provider=rfc2136` pointed at
+`10.0.50.200`, so every Service and Ingress is published into AD DNS as
+`<name>.linds.com.au` — already covered by the existing `linds.com.au` stub.
+Confirmed: `home.linds.com.au` → 172.16.1.11.
+
+To resolve cluster-internal names from the LAN later, expose CoreDNS as a
+LoadBalancer Service in 172.16.1.0/24 and re-add the stub pointing at that IP.
+
+### Not applied
+
+- **A.1 IPv6 firewall** — declined by the site owner.
+- **A.10 PFS / DH group 19** — both require the LINDS end changed in step.
+- **QoS / CAKE shaping** — declined.
+- **nftables flowtable offload** — evaluated and rejected: the router runs at 6 %
+  CPU / 6 % softirq at ~11k pps, so there is ~15× headroom and no measurable
+  gain, against a less-travelled code path and blind spots in firewall counters.
+
+### Caused during this work
+
+`set system conntrack table-size` **reboots the router** — VyOS resizes the
+conntrack hash at boot. This caused an unplanned restart at 21:43 (uptime went
+from 7 days to 0). Everything returned healthy: BGP 5/5, IPsec up, WAN 9.5 ms.
+Schedule it deliberately next time.
+
+Finding 1.4 (UniFi devices cut off from the controller) was **wrong and has been
+retracted** — see that section.
