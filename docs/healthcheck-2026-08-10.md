@@ -876,12 +876,24 @@ LoadBalancer Service in 172.16.1.0/24 and re-add the stub pointing at that IP.
   CPU / 6 % softirq at ~11k pps, so there is ~15× headroom and no measurable
   gain, against a less-travelled code path and blind spots in firewall counters.
 
-### Caused during this work
+### Correction: the 21:43 restart was not caused by this work
 
-`set system conntrack table-size` **reboots the router** — VyOS resizes the
-conntrack hash at boot. This caused an unplanned restart at 21:43 (uptime went
-from 7 days to 0). Everything returned healthy: BGP 5/5, IPsec up, WAN 9.5 ms.
-Schedule it deliberately next time.
+Initially attributed to `set system conntrack table-size`. That was wrong.
+
+The **Proxmox host** booted at 21:42:24 and the VyOS guest at 21:43 — the
+hypervisor went down and took the VM with it. Host logs stop at 21:37:01 with no
+shutdown sequence. Cause unknown and not investigated further at the owner's
+request.
+
+Relevant to the ZFS findings: the BMC watchdog is armed at **150 s with action
+= Hard Reset**, refreshed by `/etc/cron.d/wdt` every minute. A host that stalls
+long enough on I/O will be hard-reset by the BMC. That is not proof of what
+happened here, but it means the ZFS write-stall behaviour has a stability
+consequence, not just a latency one — and it makes `cache=writeback` on
+JD-DC-01 and JD-FS-01 a data-integrity risk rather than a theoretical one.
+
+`system conntrack table-size` may still require a reboot to resize the hash;
+it simply was not what restarted the router.
 
 Finding 1.4 (UniFi devices cut off from the controller) was **wrong and has been
 retracted** — see that section.
