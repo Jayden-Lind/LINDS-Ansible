@@ -465,3 +465,346 @@ with `when: inventory_hostname == ...`.
 shared `main.yml` used to supply so this work cannot change it, with one
 deliberate exception noted in that file: its NTP client ACL is no longer
 `0.0.0.0/0`, which had been leaving it an open NTP reflector.
+
+---
+
+# Appendix: config option audit
+
+Second pass, 2026-08-10 — reviewing the VyOS *settings themselves* for
+correctness, performance value and compatibility, rather than drift.
+
+Verdict up front: nothing here is dangerous to forwarding, and the box performs
+fine. But a large share of the tuning block is **inert on a router**, two
+settings are actively counterproductive, one is a no-op on this kernel, and
+IPv6 has no firewall at all.
+
+## A.1 IPv6 is completely unfiltered
+
+This is the most significant finding in the whole review.
+
+```
+chain VYOS_IPV6_FORWARD_filter {
+    type filter hook forward priority filter; policy accept;
+    counter packets 137072814 bytes 157125574833 accept comment "FWD-filter default-action accept"
+}
+```
+
+**Zero rules. 137 million packets, 157 GB forwarded.** The IPv4 forward chain
+has 3 rules; the IPv6 one has none. `ipv6 input filter` is `accept` too, where
+IPv4 input is `drop`.
+
+Meanwhile the router hands out real, globally-routable addresses:
+
+```
+net.ipv6.conf.all.forwarding = 1
+eth1     2001:8003:dc51:bc00::/64   (delegated, sla-id 0)
+eth1.52  2001:8003:dc51:bc01::/64   (delegated, sla-id 1)
+```
+
+~163 devices currently hold a GUA, spread across several prefixes the ISP has
+rotated through:
+
+```
+113  2001:8003:dc90:e600
+ 43  2001:8003:dc51:bc00
+  2  2001:8003:dd7a:cb00
+  ...
+```
+
+IPv4 is protected by NAT plus `input drop`. IPv6 has neither — every one of
+those devices is directly addressable from the internet, including the cameras
+and UniFi gear on VLAN 52, which the IPv4 policy goes to some trouble to
+isolate. The VLAN 52 isolation rules are IPv4-only, so IPv6 bypasses them
+entirely.
+
+Minimum viable fix — stateful inbound, mirroring what NAT gives you on v4:
+
+```
+set firewall ipv6 forward filter default-action drop
+set firewall ipv6 forward filter rule 10 action accept
+set firewall ipv6 forward filter rule 10 state established
+set firewall ipv6 forward filter rule 10 state related
+set firewall ipv6 forward filter rule 20 action accept
+set firewall ipv6 forward filter rule 20 inbound-interface name eth1
+set firewall ipv6 forward filter rule 30 action accept
+set firewall ipv6 forward filter rule 30 protocol icmpv6
+
+set firewall ipv6 input filter default-action drop
+set firewall ipv6 input filter rule 10 action accept
+set firewall ipv6 input filter rule 10 state established
+set firewall ipv6 input filter rule 10 state related
+set firewall ipv6 input filter rule 20 action accept
+set firewall ipv6 input filter rule 20 protocol icmpv6
+set firewall ipv6 input filter rule 30 action accept
+set firewall ipv6 input filter rule 30 source address fe80::/10
+set firewall ipv6 input filter rule 40 action accept
+set firewall ipv6 input filter rule 40 destination port 546
+set firewall ipv6 input filter rule 40 protocol udp
+```
+
+Do not skip the ICMPv6 rules — IPv6 breaks without PMTUD, NDP and RA.
+Stage this with `commit-confirm` since a mistake locks you out over v6.
+
+## A.2 Most of the TCP sysctl block does nothing on this box
+
+Forwarded packets never touch the local TCP stack. Socket buffers, congestion
+control, timestamps, SACK, keepalives and Fast Open apply **only** to sockets
+terminating on the router — SSH, BGP, IKE, the DDNS client. That is a rounding
+error next to the ~1 TB/day this box forwards.
+
+Inert for forwarding (harmless, but they buy nothing):
+
+```
+net.ipv4.tcp_fastopen, tcp_mtu_probing, tcp_tw_reuse, tcp_syn_retries,
+tcp_slow_start_after_idle, tcp_no_metrics_save, tcp_notsent_lowat,
+tcp_keepalive_*, tcp_rmem, tcp_wmem
+```
+
+They read like they came from a web-server tuning guide. Keeping them is fine;
+just don't expect throughput from them.
+
+What *does* affect forwarding: `netdev_budget*`, `netdev_max_backlog`, the
+conntrack settings, offloads, and MTU/MSS.
+
+## A.3 `tcp_low_latency` is a no-op on this kernel
+
+```
+net.ipv4.tcp_low_latency = 1     # kernel 6.18-vyos
+```
+
+The TCP prequeue this controlled was **removed in Linux 4.14**. The knob still
+accepts a write and does nothing. Worth noting that the repo's own
+`jd_system.yml` carried a comment saying exactly this — "removed in kernel 4.14,
+no-op" — and claimed the setting was omitted, while `main.yml` set it anyway.
+The refactor consolidated it and preserved the live value; it can just go.
+
+## A.4 `tcp_timestamps 0` — remove this one
+
+```
+net.ipv4.tcp_timestamps = 0
+```
+
+Disabling timestamps turns off **PAWS** (protection against wrapped sequence
+numbers) and **RTTM** (accurate RTT measurement, which congestion control
+depends on). The usual motive is hiding uptime, but Linux has used randomised
+per-connection offsets since 4.10, so there is nothing left to hide.
+
+Impact is bounded — router-terminated TCP only, so BGP and SSH — but it is a
+straight downgrade with no upside. Default is `1`.
+
+## A.5 `rmem_default` / `wmem_default` at 25 MB is the wrong knob
+
+```
+net.core.rmem_default = 26214400     # 25 MB   (kernel default: 212992 / 208 KB)
+net.core.wmem_default = 26214400     # 25 MB
+net.core.rmem_max     = 26214400     # 25 MB   ← this one is correct
+```
+
+`*_max` is a ceiling — raising it is right, and lets TCP autotune up when a fat
+path justifies it. `*_default` is the buffer **every socket starts with**. At
+25 MB, every UDP socket the router opens — and pdns-recursor opens a lot —
+reserves an enormous receive queue. For UDP there is no autotuning to walk it
+back, so it is both wasteful and a bufferbloat risk under load.
+
+Leave the defaults alone and keep the max high:
+
+```
+delete system sysctl parameter net.core.rmem_default
+delete system sysctl parameter net.core.wmem_default
+```
+
+## A.6 `netdev_budget_usecs` is 4× the default
+
+```
+net.core.netdev_budget       = 600     (default 300)
+net.core.netdev_budget_usecs = 8000    (default 2000)
+```
+
+8 ms is a long time to let one softirq poll loop hold a core. On a 4-vCPU guest
+with 4 queues that adds latency jitter for everything else scheduled on that
+CPU. Raising `netdev_budget` is reasonable; `budget_usecs` at 4000 would be a
+more balanced pairing.
+
+## A.7 Two systems own the same sysctls
+
+```
+/etc/tuned/active_profile: network-throughput
+```
+
+`set system option performance network-throughput` activates a tuned profile
+that sets `net.core.rmem_max`, `wmem_max` and the `tcp_*mem` triples — the same
+knobs the explicit `system sysctl parameter` lines set. Right now VyOS's sysctl
+wins (`rmem_max` is 26214400, not tuned's 16 MB), so the outcome is fine, but
+the ownership is ambiguous and load-order dependent. Pick one.
+
+## A.8 The k8s DNS stub points at an unroutable address
+
+```
+set service dns forwarding domain k8s.linds.com.au name-server 10.96.0.10
+```
+
+`10.96.0.10` is the CoreDNS **ClusterIP**. It is not in the routing table:
+
+```
+$ ip route get 10.96.0.10
+10.96.0.10 via 1.159.127.254 dev eth2      ← out the WAN
+$ show ip route 10.96.0.12
+% Network not in table
+```
+
+Cilium advertises the pod CIDRs (`10.244.x`) and the LB range (`172.16.1.x`)
+over BGP, but not the service CIDR. So every `k8s.linds.com.au` query is sent
+to the internet, where it dies. The recursor's counters agree:
+
+```
+outgoing-timeouts  14196
+servfail-answers   14414
+unreachables        2233
+```
+
+Those numbers track each other almost exactly. Also a small outbound leak of
+internal query names.
+
+Point the stub at something reachable — a CoreDNS Service of type LoadBalancer
+in `172.16.1.0/24`, which *is* advertised — or drop the stub.
+
+The `K8S-SVC` prefix-list (`10.96.0.0/12`) already exists for this, but it is
+only referenced by `RM-EXPORT-IPSEC`, which is attached to nothing (see P3).
+
+## A.9 DNS cache is sized 7000× larger than it uses
+
+```
+set service dns forwarding cache-size '1000000'
+```
+
+```
+cache-entries       142          negcache-entries  45
+cache-hits       52254          cache-misses    623704     →  7.7 % hit rate
+packetcache-hits 102687          misses          675961     → 13 % hit rate
+nxdomain-answers 181384          of 764k total   → 24 % NXDOMAIN
+```
+
+Allocation is lazy so the oversize is harmless, but a 7.7 % hit rate on a
+caching resolver is worth a look. The 24 % NXDOMAIN share and the servfail
+count from A.8 are the obvious contributors — fixing the k8s stub should move
+this on its own.
+
+## A.10 IPsec: PFS is off, and the fallback proposals offer SHA-1 and null encryption
+
+The negotiated SA is strong:
+
+```
+LINDS-vti: INSTALLED, TUNNEL, ESP:AES_GCM_16-256
+```
+
+Proposal 1 wins in practice. But look at the full offer strongSwan sends:
+
+```
+proposals = aes256gcm128-sha256-modp2048-noesn,
+            aes256gcm128-sha256-modp2048,
+            aes256-sha1-modp2048-noesn,        ← SHA-1
+            aes256-sha1-modp2048,              ← SHA-1
+            aes256ccm128-sha1-modp2048-noesn,  ← SHA-1
+            aes256ccm128-sha1-modp2048,        ← SHA-1
+            aes256gmac-sha1-modp2048-noesn,    ← GMAC = authentication only
+            aes256gmac-sha1-modp2048           ← no confidentiality
+```
+
+Proposals 2–4 set no `hash`, so they inherit SHA-1. `aes256gmac` is
+`ENCR_NULL_AUTH_AES_GMAC` — it authenticates without encrypting. Both ends are
+yours and proposal 1 always wins, so this is downgrade *surface* rather than an
+active exposure, but proposals 2–4 buy nothing against a peer you control:
+
+```
+delete vpn ipsec ike-group MyIKEGroup proposal 2
+delete vpn ipsec ike-group MyIKEGroup proposal 3
+delete vpn ipsec ike-group MyIKEGroup proposal 4
+```
+
+Two more, both needing the far end changed in step:
+
+- **PFS is disabled** on both ESP groups. The child SAs carry no DH group
+  (`aes256gcm128-sha1-noesn` — no `modp`), so a compromise of the IKE keying
+  material exposes past and future child SAs. `set vpn ipsec esp-group
+  MyESPGroup pfs enable`.
+- **DH group 14 (modp2048) only.** Group 19 (ECP-256) is both faster and
+  stronger, and pfSense and VyOS have supported it for years. Add it as
+  proposal 1's `dh-group 19` and keep 14 as the fallback during cutover.
+
+## A.11 `broadcast-ping enable` makes the router an on-LAN amplifier
+
+```
+set firewall global-options broadcast-ping 'enable'
+→ net.ipv4.icmp_echo_ignore_broadcasts = 0
+```
+
+The router answers ICMP echo sent to broadcast addresses, so a single spoofed
+packet draws a reply — the classic smurf pattern. Confined to the LAN and
+largely historical, but there is no reason to leave it on. Default is disable.
+`all-ping enable` is fine and is what input rule 51 relies on.
+
+## A.12 `accept_ra = 2` on the LAN interface
+
+```
+net.ipv6.conf.eth1.accept_ra = 2      ← LAN
+net.ipv6.conf.eth2.accept_ra = 2      ← WAN, correct
+```
+
+`set interfaces ethernet eth1 ipv6 address autoconf` forces this. But eth1 is
+where *this router* sends RAs (`service router-advert interface eth1`) — it
+should not also be listening to them. A rogue or misconfigured RA source on the
+LAN could install a default route on the router.
+
+Addressing on eth1 comes from `dhcpv6-options pd 0 interface eth1 sla-id 0`, so
+`autoconf` is not doing anything useful:
+
+```
+delete interfaces ethernet eth1 ipv6 address autoconf
+```
+
+## A.13 Conntrack established timeout is aggressive
+
+```
+net.netfilter.nf_conntrack_tcp_timeout_established = 3600     (1 hour)
+```
+
+The 5-day kernel default is far too long, so trimming it is right. But 1 hour
+applies to **forwarded** flows, and clients that idle longer — SSH sessions,
+RDP, IMAP — lose their conntrack entry and the connection breaks. The
+`tcp_keepalive_*` settings do not help here; they govern the router's own
+sockets, not transit traffic.
+
+Current table usage is 650 of 262144, so there is no pressure justifying it.
+7200–86400 would be safer.
+
+## A.14 Things that are correct and worth keeping
+
+- **MSS clamping** (`clamp-mss-to-pmtu`) on WAN, LAN and both VTIs — correct,
+  and what keeps the tunnels working despite the reduced MTUs.
+- **Tunnel MTUs** — vti0 1436, vti10 1400, wg 1420. vti0 is tight for
+  AES-GCM-256 but has ~64 bytes of headroom without NAT-T, and MSS clamping
+  covers TCP regardless.
+- **`source-validation loose`** — the right choice for asymmetric dual-WAN;
+  `strict` would break the failover path.
+- **`disable-flow-control` on eth2** — correct for a router; 802.3x pause
+  frames cause head-of-line blocking.
+- **`interrupt-coalescing adaptive-rx/tx` + `cqe-mode-rx/tx`** — well-matched to
+  the ConnectX-4 Lx VF, and mlx5 supports all four.
+- **4 virtio queues against 4 vCPUs** on eth1 — correctly matched.
+- **`protocols failover` design** — health-checking only the primary, with the
+  check targets pinned out that interface via /32 statics, is genuinely good.
+  The reasoning in the role comments is sound.
+- **`disable-mitigations`** — consistent with the matching CPU flags on the
+  Proxmox side. A deliberate, coherent tradeoff.
+- **`ip_local_port_range 10240 65535`** — fine.
+
+## A.15 Suggested order
+
+Highest value first, and independent of each other:
+
+1. **A.1** — IPv6 firewall. Everything else is a rounding error next to this.
+2. **A.8** — k8s DNS stub; removes ~14k timeouts and the query leak.
+3. **A.5, A.4, A.3** — drop `rmem_default`/`wmem_default`, `tcp_timestamps`,
+   `tcp_low_latency`. Three deletes, no behaviour risk.
+4. **A.10** — IPsec proposals 2–4. Needs a maintenance window on both ends.
+5. **A.11, A.12, A.13, A.6** — small correctness cleanups.
