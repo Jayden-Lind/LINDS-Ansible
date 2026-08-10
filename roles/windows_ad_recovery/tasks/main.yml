@@ -1,0 +1,44 @@
+---
+- name: Enable the AD Recycle Bin
+  ansible.windows.win_powershell:
+    script: |
+      Import-Module ActiveDirectory
+      $Ansible.Changed = $false
+      $rb = Get-ADOptionalFeature -Filter { Name -like 'Recycle Bin Feature' }
+      if (@($rb.EnabledScopes).Count -eq 0) {
+        Enable-ADOptionalFeature -Identity 'Recycle Bin Feature' `
+          -Scope ForestOrConfigurationSet -Target (Get-ADForest).RootDomain -Confirm:$false
+        $Ansible.Changed = $true
+      }
+  when: enable_ad_recycle_bin | bool
+
+- name: Place FSMO roles
+  ansible.windows.win_powershell:
+    parameters:
+      Placement: "{{ fsmo_placement }}"
+    script: |
+      param([hashtable]$Placement)
+      Import-Module ActiveDirectory
+      $Ansible.Changed = $false
+
+      $current = @{}
+      $d = Get-ADDomain; $f = Get-ADForest
+      $current['PDCEmulator']          = $d.PDCEmulator
+      $current['RIDMaster']            = $d.RIDMaster
+      $current['InfrastructureMaster'] = $d.InfrastructureMaster
+      $current['SchemaMaster']         = $f.SchemaMaster
+      $current['DomainNamingMaster']   = $f.DomainNamingMaster
+
+      # Transfer one role at a time. Requesting several in a single call can
+      # fail with "the server is unwilling to process the request" even when
+      # each transfer succeeds individually.
+      foreach ($role in $Placement.Keys) {
+        $want = $Placement[$role]
+        if ($current[$role].ToLower() -ne $want.ToLower()) {
+          Move-ADDirectoryServerOperationMasterRole -Identity ($want -split '\.')[0] `
+            -OperationMasterRole $role -Confirm:$false
+          $Ansible.Changed = $true
+          Start-Sleep -Seconds 5
+        }
+      }
+  run_once: true

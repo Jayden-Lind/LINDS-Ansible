@@ -1,0 +1,41 @@
+---
+# ZFS module parameters (/etc/modprobe.d/zfs.conf).
+#
+# These only take effect when the zfs module loads, so the file alone is not
+# enough — anything already running keeps the old value until reboot. The
+# writable ones are therefore also pushed to /sys/module/zfs/parameters so the
+# running host matches the file immediately.
+#
+# Not every parameter is runtime-writable: some are 0444 (read-only after load,
+# e.g. zfs_dirty_data_max_max). Those are skipped and only apply after a reboot.
+
+- name: ZFS module parameters
+  ansible.builtin.template:
+    src: zfs-modprobe.conf.j2
+    dest: /etc/modprobe.d/zfs.conf
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  notify: Update initramfs
+
+- name: Collect runtime-writable ZFS parameters
+  ansible.builtin.stat:
+    path: "/sys/module/zfs/parameters/{{ item.key }}"
+  loop: "{{ proxmox_zfs_module_params | map(attribute='params') | map('dict2items') | flatten }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: proxmox_zfs_param_stat
+
+- name: Apply runtime-writable ZFS parameters
+  ansible.builtin.copy:
+    content: "{{ item.item.value }}"
+    dest: "/sys/module/zfs/parameters/{{ item.item.key }}"
+    mode: "0644"
+  loop: "{{ proxmox_zfs_param_stat.results }}"
+  loop_control:
+    label: "{{ item.item.key }} = {{ item.item.value }}"
+  when:
+    - item.stat.exists
+    - item.stat.writeable
+  changed_when: false

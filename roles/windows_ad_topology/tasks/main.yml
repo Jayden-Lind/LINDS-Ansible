@@ -1,0 +1,86 @@
+---
+# Runs against a single DC - site topology is forest-wide, so applying it on
+# every DC would just race. Target with `--limit` or run_once.
+
+- name: Ensure AD sites exist
+  ansible.windows.win_powershell:
+    parameters:
+      SiteNames: "{{ ad_sites }}"
+    script: |
+      param([string[]]$SiteNames)
+      Import-Module ActiveDirectory
+      $Ansible.Changed = $false
+      foreach ($name in $SiteNames) {
+        if (-not (Get-ADReplicationSite -Filter { Name -eq $name } -ErrorAction SilentlyContinue)) {
+          New-ADReplicationSite -Name $name | Out-Null
+          $Ansible.Changed = $true
+        }
+      }
+
+- name: Place each domain controller in its site
+  ansible.windows.win_powershell:
+    parameters:
+      Placement: "{{ dict(groups['windows_dc'] | map('extract', hostvars, 'ansible_host') | zip(groups['windows_dc'] | map('extract', hostvars, 'ad_site'))) }}"
+    script: |
+      param([hashtable]$Placement)
+      Import-Module ActiveDirectory
+      $Ansible.Changed = $false
+      foreach ($dc in Get-ADDomainController -Filter *) {
+        $want = $Placement[$dc.IPv4Address]
+        if ($want -and $dc.Site -ne $want) {
+          Move-ADDirectoryServer -Identity $dc.Name -Site $want -Confirm:$false
+          $Ansible.Changed = $true
+        }
+      }
+
+- name: Ensure subnets exist and map to the right site
+  ansible.windows.win_powershell:
+    parameters:
+      Subnets: "{{ ad_subnets }}"
+    script: |
+      param([object[]]$Subnets)
+      Import-Module ActiveDirectory
+      $Ansible.Changed = $false
+      foreach ($s in $Subnets) {
+        # AD -Filter script blocks cannot dereference object properties.
+        $net = $s.name; $site = $s.site
+        $existing = Get-ADReplicationSubnet -Filter { Name -eq $net } `
+                      -Properties Site -ErrorAction SilentlyContinue
+        if (-not $existing) {
+          New-ADReplicationSubnet -Name $net -Site $site -Description $s.description | Out-Null
+          $Ansible.Changed = $true
+        }
+        else {
+          $current = ($existing.Site -split ',')[0] -replace '^CN='
+          if ($current -ne $site) {
+            Set-ADReplicationSubnet -Identity $existing.DistinguishedName -Site $site
+            $Ansible.Changed = $true
+          }
+        }
+      }
+
+- name: Ensure the site link spans both sites at the right frequency
+  ansible.windows.win_powershell:
+    parameters:
+      LinkName: "{{ ad_site_link.name }}"
+      Sites: "{{ ad_site_link.sites }}"
+      Cost: "{{ ad_site_link.cost }}"
+      Freq: "{{ ad_site_link.replication_frequency_minutes }}"
+    script: |
+      param([string]$LinkName, [string[]]$Sites, [int]$Cost, [int]$Freq)
+      Import-Module ActiveDirectory
+      $Ansible.Changed = $false
+      $link = Get-ADReplicationSiteLink -Identity $LinkName `
+                -Properties SitesIncluded, Cost, ReplicationFrequencyInMinutes
+      $have = @($link.SitesIncluded | ForEach-Object { ($_ -split ',')[0] -replace '^CN=' })
+      foreach ($s in $Sites) {
+        if ($have -notcontains $s) {
+          Set-ADReplicationSiteLink -Identity $LinkName -SitesIncluded @{Add=$s}
+          $Ansible.Changed = $true
+        }
+      }
+      if ($link.Cost -ne $Cost -or $link.ReplicationFrequencyInMinutes -ne $Freq) {
+        Set-ADReplicationSiteLink -Identity $LinkName `
+          -Cost $Cost -ReplicationFrequencyInMinutes $Freq
+        $Ansible.Changed = $true
+      }

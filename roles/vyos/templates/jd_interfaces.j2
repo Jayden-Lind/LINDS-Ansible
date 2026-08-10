@@ -1,0 +1,61 @@
+{#
+  jd-vyos-01 physical + VLAN interfaces.
+
+    {{ wan_interface }}          — primary WAN (ConnectX-4 Lx VF, DHCP)
+    {{ main_lan_interface }}          — LAN trunk, carries every VLAN
+    {{ main_lan_interface }}.{{ vyos_backup_wan_vif }}       — cellular backup WAN (DHCP)
+
+  Neither WAN installs a default route: `protocols failover` owns it (see
+  jd_routing.yml), so DHCP must not fight it for the same prefix.
+#}
+{% set wan = "set interfaces ethernet " ~ wan_interface %}
+{{ wan }} description 'WAN'
+{{ wan }} address 'dhcp'
+{{ wan }} address 'dhcpv6'
+{{ wan }} dhcp-options no-default-route
+{{ wan }} ip adjust-mss 'clamp-mss-to-pmtu'
+{{ wan }} ipv6 address autoconf
+{{ wan }} ipv6 adjust-mss 'clamp-mss-to-pmtu'
+{% for setting in vyos_wan_extra_settings | default([]) %}
+{{ wan }} {{ setting }}
+{% endfor %}
+{% for offload in vyos_wan_offload | default([]) %}
+{{ wan }} offload {{ offload }}
+{% endfor %}
+{% if vyos_wan_ring_buffer is defined %}
+{{ wan }} ring-buffer rx '{{ vyos_wan_ring_buffer.rx }}'
+{{ wan }} ring-buffer tx '{{ vyos_wan_ring_buffer.tx }}'
+{% endif %}
+
+{# DHCPv6-PD: /56 from the ISP, split into /64s for the LAN and VLAN52. #}
+{{ wan }} dhcpv6-options pd 0 length '{{ vyos_pd_length }}'
+{% for d in vyos_pd_delegations %}
+{{ wan }} dhcpv6-options pd 0 interface {{ d.interface }} sla-id '{{ d.sla_id }}'
+{% endfor %}
+
+{% set lan = "set interfaces ethernet " ~ main_lan_interface %}
+{{ lan }} address '{{ vyos_lan_address }}'
+{{ lan }} mtu '1500'
+{{ lan }} ip adjust-mss 'clamp-mss-to-pmtu'
+{# No `ipv6 address autoconf` here: it forces accept_ra=2 on the interface this
+   router sends RAs on, so a rogue RA on the LAN could install a default route
+   on the router itself. The LAN prefix comes from DHCPv6-PD above. #}
+{{ lan }} ipv6 adjust-mss 'clamp-mss-to-pmtu'
+{{ lan }} ipv6 dup-addr-detect-transmits '1'
+{% for offload in vyos_lan_offload | default([]) %}
+{{ lan }} offload {{ offload }}
+{% endfor %}
+
+{# ----- VLAN sub-interfaces ----- #}
+{% for v in vyos_vlans %}
+{{ lan }} vif {{ v.id }} address '{{ v.address }}'
+{{ lan }} vif {{ v.id }} description '{{ v.description }}'
+{% endfor %}
+
+{# ----- Cellular backup WAN ----- #}
+{% set bak = lan ~ " vif " ~ vyos_backup_wan_vif %}
+{{ bak }} description 'WAN Cell Backup'
+{{ bak }} address 'dhcp'
+{{ bak }} address 'dhcpv6'
+{{ bak }} dhcp-options no-default-route
+{{ bak }} ip enable-arp-accept

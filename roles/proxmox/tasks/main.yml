@@ -2,6 +2,9 @@
 - name: Install storage packages
   ansible.builtin.import_tasks: packages.yml
 
+- name: Configure ZFS module parameters
+  ansible.builtin.import_tasks: zfs-tunables.yml
+
 - name: Enforce ZFS dataset properties
   ansible.builtin.import_tasks: zfs.yml
 

@@ -1,0 +1,11 @@
+{#- Renders /etc/modprobe.d/zfs.conf from proxmox_zfs_module_params. -#}
+{{ ansible_managed | comment }}
+{% for section in proxmox_zfs_module_params %}
+
+{% if section.comment is defined %}
+{{ section.comment | wordwrap(76) | comment }}
+{% endif %}
+{% for key, value in section.params.items() %}
+options zfs {{ key }}={{ value }}
+{% endfor %}
+{% endfor %}

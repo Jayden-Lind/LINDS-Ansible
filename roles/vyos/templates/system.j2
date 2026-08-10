@@ -1,0 +1,63 @@
+{#
+  Emits the hostname-agnostic `set system ...` / `set service ...` lines that
+  every VyOS router shares. All values come from role defaults + group_vars.
+#}
+set system host-name '{{ vyos_hostname }}'
+set system domain-name '{{ vyos_domain }}'
+set system domain-search '{{ vyos_domain }}'
+set system time-zone '{{ vyos_timezone }}'
+set system console device ttyS0 speed '{{ vyos_console_speed }}'
+set system config-management commit-revisions '{{ vyos_commit_revisions }}'
+set system update-check auto-check
+set system update-check url '{{ vyos_update_check_url }}'
+{% for ns in vyos_name_servers %}
+set system name-server '{{ ns }}'
+{% endfor %}
+{% for opt in vyos_system_options %}
+set system option {{ opt }}
+{% endfor %}
+{% for facility, level in vyos_syslog.items() %}
+set system syslog local facility {{ facility }} level '{{ level }}'
+{% endfor %}
+
+{# ----- Conntrack ----- #}
+set system conntrack hash-size '{{ vyos_conntrack_hash_size }}'
+{% for mod in vyos_conntrack_modules %}
+set system conntrack modules {{ mod }}
+{% endfor %}
+{% if vyos_conntrack_table_size is defined %}
+set system conntrack table-size '{{ vyos_conntrack_table_size }}'
+{% endif %}
+
+{# ----- Sysctl ----- #}
+{% for key, value in vyos_sysctl.items() %}
+set system sysctl parameter {{ key }} value '{{ value }}'
+{% endfor %}
+
+{# ----- DNS forwarder (common) ----- #}
+set service dns forwarding cache-size '{{ vyos_dns_cache_size }}'
+set service dns forwarding negative-ttl '{{ vyos_dns_negative_ttl }}'
+set service dns forwarding dnssec '{{ vyos_dns_dnssec }}'
+{% for net in vyos_dns_allow_from %}
+set service dns forwarding allow-from '{{ net }}'
+{% endfor %}
+{% for ns in vyos_dns_forwarders %}
+set service dns forwarding name-server {{ ns }}
+{% endfor %}
+
+{# ----- NTP ----- #}
+{% for server in vyos_ntp_servers %}
+set service ntp server {{ server }}
+{% endfor %}
+{% for net in vyos_ntp_allow_clients %}
+set service ntp allow-client address '{{ net }}'
+{% endfor %}
+
+{# ----- LLDP ----- #}
+set service lldp snmp
+{% for proto in vyos_lldp_legacy_protocols | default([]) %}
+set service lldp legacy-protocols {{ proto }}
+{% endfor %}
+{% for iface in vyos_lldp_interfaces | default([]) %}
+set service lldp interface {{ iface }}
+{% endfor %}

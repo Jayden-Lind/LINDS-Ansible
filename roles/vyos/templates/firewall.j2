@@ -1,0 +1,52 @@
+{#
+  Emits `set firewall ...` lines: global options, per-chain default actions,
+  and the input/forward rule tables from vyos_firewall_*_rules.
+#}
+{% for key, value in vyos_firewall_global_options.items() | sort %}
+set firewall global-options {{ key }} '{{ value }}'
+{% endfor %}
+{% if vyos_firewall_source_validation is defined %}
+set firewall global-options source-validation '{{ vyos_firewall_source_validation }}'
+{% endif %}
+{% for family, chains in vyos_firewall_defaults.items() | sort %}
+{% for chain, action in chains.items() | sort %}
+set firewall {{ family }} {{ chain }} filter default-action '{{ action }}'
+{% endfor %}
+{% endfor %}
+{% for chain, rules in [('input', vyos_firewall_input_rules | default([])),
+                        ('forward', vyos_firewall_forward_rules | default([]))] %}
+{% for r in rules %}
+{% set p = "set firewall ipv4 " ~ chain ~ " filter rule " ~ r.n %}
+{{ p }} action '{{ r.action }}'
+{% if r.description is defined %}
+{{ p }} description '{{ r.description }}'
+{% endif %}
+{% if r.protocol is defined %}
+{{ p }} protocol '{{ r.protocol }}'
+{% endif %}
+{% if r.dport is defined %}
+{{ p }} destination port '{{ r.dport }}'
+{% endif %}
+{% if r.dst is defined %}
+{{ p }} destination address '{{ r.dst }}'
+{% endif %}
+{% if r.dst_group is defined %}
+{{ p }} destination group network-group '{{ r.dst_group }}'
+{% endif %}
+{% if r.src is defined %}
+{{ p }} source address '{{ r.src }}'
+{% endif %}
+{% if r.src_group is defined %}
+{{ p }} source group network-group '{{ r.src_group }}'
+{% endif %}
+{% if r.in_iface is defined %}
+{{ p }} inbound-interface name '{{ r.in_iface }}'
+{% endif %}
+{% for s in r.state | default([]) %}
+{{ p }} state '{{ s }}'
+{% endfor %}
+{% if r.log | default(false) %}
+{{ p }} log
+{% endif %}
+{% endfor %}
+{% endfor %}

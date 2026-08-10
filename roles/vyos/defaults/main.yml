@@ -1,0 +1,120 @@
+---
+# Shared defaults for every VyOS router. Anything that differs between the JD
+# and LINDS routers is overridden in group_vars/{jd,linds}_vyos.yml — this file
+# only holds values that are genuinely identical on both boxes.
+#
+# Rule of thumb: if you find yourself adding a `delete` to a per-site task file
+# to undo something set here, the value belongs in group_vars instead.
+
+# ----- System --------------------------------------------------------------
+vyos_timezone: Australia/Melbourne
+vyos_domain: linds.com.au
+vyos_console_speed: 115200
+vyos_commit_revisions: 100
+vyos_update_check_url: >-
+  https://raw.githubusercontent.com/vyos/vyos-nightly-build/refs/heads/rolling/version.json
+
+# Resolvers the router itself uses.
+vyos_name_servers:
+  - 1.1.1.1
+  - 1.0.0.1
+  - 2606:4700:4700::1111
+  - 2606:4700:4700::1001
+
+vyos_syslog:
+  all: info
+  local7: debug
+
+# ----- Address groups ------------------------------------------------------
+# RFC1918 space, used by the LAN-Addresses network-group, the DNS forwarder
+# allow-from list and the NTP client ACL.
+vyos_rfc1918:
+  - 192.168.0.0/16
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+
+# ----- Conntrack -----------------------------------------------------------
+# Per-site: JD trimmed h323/sip, LINDS still carries them.
+vyos_conntrack_modules: [ftp, h323, nfs, pptp, sip, sqlnet, tftp]
+vyos_conntrack_hash_size: 131072
+# Set through the VyOS node, not the raw sysctl — VyOS owns nf_conntrack_max
+# and silently overwrites `system sysctl parameter net.netfilter.nf_conntrack_max`.
+vyos_conntrack_table_size: 524288
+
+# ----- NTP -----------------------------------------------------------------
+vyos_ntp_servers: [0.au.pool.ntp.org]
+# Who may query this router for time. Left deliberately narrow — an NTP server
+# reachable from the internet is a reflection/amplification vector.
+vyos_ntp_allow_clients: "{{ vyos_rfc1918 }}"
+
+# ----- DNS forwarder -------------------------------------------------------
+vyos_dns_cache_size: 1000000
+vyos_dns_negative_ttl: 60
+vyos_dns_dnssec: 'off'
+vyos_dns_allow_from: "{{ vyos_rfc1918 }}"
+vyos_dns_forwarders: "{{ vyos_name_servers }}"
+
+# ----- Interface offloads --------------------------------------------------
+# Empty list == "do not manage offloads on this router". JD runs with the VyOS
+# defaults (see group_vars/jd_vyos.yml); LINDS keeps the explicit list.
+vyos_wan_offload: []
+vyos_lan_offload: []
+
+# ----- Firewall ------------------------------------------------------------
+vyos_firewall_global_options:
+  all-ping: enable
+  broadcast-ping: disable
+  log-martians: enable
+  syn-cookies: enable
+  twa-hazards-protection: enable
+
+# ----- Kernel / sysctl -----------------------------------------------------
+vyos_system_options:
+  - performance network-throughput
+  - kernel disable-mitigations
+
+# Every sysctl override lives here so there is exactly one place to look.
+vyos_sysctl:
+  # Socket buffer ceilings, 25 MB. Only the *_max knobs are set on purpose:
+  # rmem_default/wmem_default size EVERY socket at creation, so raising them
+  # makes each UDP socket reserve 25 MB up front with no autotuning to walk it
+  # back. TCP autotunes up to _max on its own.
+  net.core.rmem_max: '26214400'
+  net.core.wmem_max: '26214400'
+  net.core.optmem_max: '65536'
+  # TCP per-socket buffers: min / default / max.
+  net.ipv4.tcp_rmem: '4096 87380 26214400'
+  net.ipv4.tcp_wmem: '4096 87380 26214400'
+  # NIC receive queue and softirq batch — headroom for GRO bursts.
+  net.core.netdev_max_backlog: '5000'
+  net.core.netdev_budget: '600'
+  net.core.netdev_budget_usecs: '4000'
+  # TCP Fast Open, client + server.
+  net.ipv4.tcp_fastopen: '3'
+  # Black-hole detection for the router's own TCP (BGP over VTI, SSH).
+  net.ipv4.tcp_mtu_probing: '1'
+  # Expand the NAT port range (~55k ports vs ~28k default).
+  net.ipv4.ip_local_port_range: '10240 65535'
+  net.ipv4.tcp_tw_reuse: '1'
+  # Fail outbound SYN faster — speeds up BGP reconvergence.
+  net.ipv4.tcp_syn_retries: '3'
+  # Don't return to slow-start after idle: HTTP/2, streaming, SSH all benefit.
+  net.ipv4.tcp_slow_start_after_idle: '0'
+  # Don't poison fresh connections with cached metrics from prior bad RTTs.
+  net.ipv4.tcp_no_metrics_save: '1'
+  # Cap unsent buffered data per socket to reduce HTTP/2 head-of-line blocking.
+  net.ipv4.tcp_notsent_lowat: '131072'
+  # Keepalive — detect dead peers in ~12 min rather than 2+ hours.
+  net.ipv4.tcp_keepalive_time: '600'
+  net.ipv4.tcp_keepalive_intvl: '30'
+  net.ipv4.tcp_keepalive_probes: '5'
+  net.ipv4.tcp_sack: '1'
+  # Conntrack: replace the 5-day kernel default with sensible timeouts.
+  net.netfilter.nf_conntrack_tcp_timeout_established: '7200'
+  net.netfilter.nf_conntrack_tcp_timeout_close: '10'
+  net.netfilter.nf_conntrack_tcp_timeout_close_wait: '60'
+  net.netfilter.nf_conntrack_tcp_timeout_fin_wait: '30'
+  net.netfilter.nf_conntrack_tcp_timeout_syn_recv: '30'
+  net.netfilter.nf_conntrack_tcp_timeout_time_wait: '30'
+  # QUIC / HTTP3 idle resume — a 5-minute grace period for UDP streams.
+  net.netfilter.nf_conntrack_udp_timeout_stream: '300'

@@ -1,0 +1,51 @@
+---
+# WAN/LAN base config, firewall global-options and the post-boot script.
+#
+# These used to live in the shared main.yml. They moved here verbatim when the
+# JD router was reconciled against its running config, so that the JD-side
+# changes could not alter this router. Nothing here has been verified against
+# linds-vyos-01's live state.
+
+- name: WAN interface base config
+  vyos.vyos.vyos_config:
+    lines: >-
+      {{ ['set interfaces ethernet ' ~ wan_interface ~ ' address dhcp',
+          'set interfaces ethernet ' ~ wan_interface ~ ' address dhcpv6',
+          'set interfaces ethernet ' ~ wan_interface ~ ' description WAN',
+          'set interfaces ethernet ' ~ wan_interface ~ ' ip adjust-mss clamp-mss-to-pmtu',
+          'set interfaces ethernet ' ~ wan_interface ~ ' ipv6 address autoconf',
+          'set interfaces ethernet ' ~ wan_interface ~ ' ipv6 adjust-mss clamp-mss-to-pmtu']
+         + vyos_wan_offload
+           | map('regex_replace', '^',
+                 'set interfaces ethernet ' ~ wan_interface ~ ' offload ')
+           | list }}
+
+- name: LAN interface base config
+  vyos.vyos.vyos_config:
+    lines: >-
+      {{ ['set interfaces ethernet ' ~ main_lan_interface ~ ' ip adjust-mss clamp-mss-to-pmtu',
+          'set interfaces ethernet ' ~ main_lan_interface ~ ' mtu 1500']
+         + vyos_lan_offload
+           | map('regex_replace', '^',
+                 'set interfaces ethernet ' ~ main_lan_interface ~ ' offload ')
+           | list }}
+
+- name: Firewall global-options hardening
+  vyos.vyos.vyos_config:
+    lines:
+      - set firewall global-options all-ping enable
+      - set firewall global-options broadcast-ping enable
+      - set firewall global-options log-martians enable
+      - set firewall global-options syn-cookies enable
+      - set firewall global-options twa-hazards-protection enable
+
+- name: Post-boot script (ethtool)
+  vyos.vyos.vyos_command:
+    commands:
+      - |
+        cat >/config/scripts/vyos-postconfig-bootup.script <<'EOL'
+        #!/bin/sh
+        ethtool -K "{{ wan_interface }}" rx on tx on sg on tso on gro on gso on
+        ethtool -K "{{ main_lan_interface }}" rx-gro-hw off
+        EOL
+  changed_when: false

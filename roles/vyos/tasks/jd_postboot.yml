@@ -1,0 +1,39 @@
+---
+# /config/scripts/vyos-postconfig-bootup.script
+#
+# Two things VyOS has no CLI node for, written in one pass so the file is
+# authoritative rather than appended to (the previous split between main.yml
+# and jd_remote_access.yml meant re-running the role could duplicate the second
+# half into the script).
+#
+#   1. ethtool offload settings on the WAN. NOTE: these are re-applied by VyOS
+#      on every commit that touches the interface, so anything set here is lost
+#      until the next reboot. Prefer `set interfaces ethernet <if> offload ...`
+#      (vyos_wan_offload / vyos_lan_offload) — this block only survives because
+#      nothing else manages it.
+#
+#   2. Forced UDP-encapsulation on the IPsec remote-access connection. Required
+#      for the iOS road-warrior: the cellular path drops raw inbound ESP
+#      (IP proto-50) over IPv6, so the SA has to ride the NAT-T pinhole. The
+#      faked NAT detection also stops MOBIKE migrating a live SA onto the WAN
+#      IPv6 black hole, keeping iOS on IPv4. VyOS exposes `encap` only on
+#      site-to-site, so the swanctl template is patched instead. The guard makes
+#      it idempotent, and it survives commits, DHCP renews and image upgrades.
+
+- name: Post-boot script (ethtool offloads + IPsec RA UDP-encap)
+  vyos.vyos.vyos_command:
+    commands:
+      - |
+        cat >/config/scripts/vyos-postconfig-bootup.script <<'EOL'
+        #!/bin/sh
+        ethtool -K "{{ wan_interface }}" rx on tx on sg on tso on gro on gso on
+        ethtool -K "{{ main_lan_interface }}" rx-gro-hw off
+
+        # --- Force UDP-encap on IPsec remote-access (no VyOS CLI node for it) ---
+        RA_TMPL="/usr/share/vyos/templates/ipsec/swanctl/remote_access.j2"
+        if [ -f "$RA_TMPL" ] && ! grep -q "encap = yes" "$RA_TMPL"; then
+        sed -i '/^        remote_addrs = %any$/a\        encap = yes' "$RA_TMPL"
+        /usr/libexec/vyos/conf_mode/vpn_ipsec.py >/dev/null 2>&1 || true
+        fi
+        EOL
+  changed_when: false
