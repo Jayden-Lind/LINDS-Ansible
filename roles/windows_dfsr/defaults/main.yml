@@ -1,0 +1,43 @@
+---
+# Desired state of the NAS replication group.
+#
+# These objects live in AD, so the role runs once against a single DC rather
+# than per member.
+
+dfsr_group: NAS
+
+dfsr_folders:
+  - business doc
+  - Cheryls Files
+  - holiday videos
+  - Jayden
+  - Personal Files
+  - Photos
+  - Zoe
+
+# Content path root per member. The folder name is appended to it, so the two
+# members' differing drive letters are the only thing that has to be stated.
+dfsr_members:
+  JD-FS-01: 'D:'
+  LINDS-DC: 'E:'
+
+# Replication is bidirectional: every member both sends and receives.
+dfsr_connections:
+  - { source: JD-FS-01, destination: LINDS-DC }
+  - { source: LINDS-DC, destination: JD-FS-01 }
+
+# Staging holds a marshalled copy of each file in flight. Undersized staging is
+# the usual cause of slow replication, because files are evicted and re-staged
+# repeatedly. Microsoft's guidance is the combined size of the 32 largest files
+# in the folder; this set includes raw photos and video, so it is set well above
+# the 4 GB default.
+dfsr_staging_quota_mb: 102400
+
+# Conflict and Deleted holds the losing copy of a conflict and recently deleted
+# files. Once the quota is reached the oldest entries are purged, so this is the
+# window in which a conflict can still be recovered by hand.
+dfsr_conflict_quota_mb: 102400
+
+# Remote Differential Compression sends only the changed blocks of a file. The
+# two sites are joined by a VPN tunnel, so this stays on.
+dfsr_rdc_enabled: true

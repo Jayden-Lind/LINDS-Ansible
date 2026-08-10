@@ -37,6 +37,9 @@ vyos_rfc1918:
 # Per-site: JD trimmed h323/sip, LINDS still carries them.
 vyos_conntrack_modules: [ftp, h323, nfs, pptp, sip, sqlnet, tftp]
 vyos_conntrack_hash_size: 131072
+# Set through the VyOS node, not the raw sysctl — VyOS owns nf_conntrack_max
+# and silently overwrites `system sysctl parameter net.netfilter.nf_conntrack_max`.
+vyos_conntrack_table_size: 524288
 
 # ----- NTP -----------------------------------------------------------------
 vyos_ntp_servers: [0.au.pool.ntp.org]
@@ -60,7 +63,7 @@ vyos_lan_offload: []
 # ----- Firewall ------------------------------------------------------------
 vyos_firewall_global_options:
   all-ping: enable
-  broadcast-ping: enable
+  broadcast-ping: disable
   log-martians: enable
   syn-cookies: enable
   twa-hazards-protection: enable
@@ -72,10 +75,11 @@ vyos_system_options:
 
 # Every sysctl override lives here so there is exactly one place to look.
 vyos_sysctl:
-  # Socket buffers — read and write matched at 25 MB.
-  net.core.rmem_default: '26214400'
+  # Socket buffer ceilings, 25 MB. Only the *_max knobs are set on purpose:
+  # rmem_default/wmem_default size EVERY socket at creation, so raising them
+  # makes each UDP socket reserve 25 MB up front with no autotuning to walk it
+  # back. TCP autotunes up to _max on its own.
   net.core.rmem_max: '26214400'
-  net.core.wmem_default: '26214400'
   net.core.wmem_max: '26214400'
   net.core.optmem_max: '65536'
   # TCP per-socket buffers: min / default / max.
@@ -84,7 +88,7 @@ vyos_sysctl:
   # NIC receive queue and softirq batch — headroom for GRO bursts.
   net.core.netdev_max_backlog: '5000'
   net.core.netdev_budget: '600'
-  net.core.netdev_budget_usecs: '8000'
+  net.core.netdev_budget_usecs: '4000'
   # TCP Fast Open, client + server.
   net.ipv4.tcp_fastopen: '3'
   # Black-hole detection for the router's own TCP (BGP over VTI, SSH).
@@ -104,11 +108,9 @@ vyos_sysctl:
   net.ipv4.tcp_keepalive_time: '600'
   net.ipv4.tcp_keepalive_intvl: '30'
   net.ipv4.tcp_keepalive_probes: '5'
-  net.ipv4.tcp_low_latency: '1'
   net.ipv4.tcp_sack: '1'
-  net.ipv4.tcp_timestamps: '0'
   # Conntrack: replace the 5-day kernel default with sensible timeouts.
-  net.netfilter.nf_conntrack_tcp_timeout_established: '3600'
+  net.netfilter.nf_conntrack_tcp_timeout_established: '7200'
   net.netfilter.nf_conntrack_tcp_timeout_close: '10'
   net.netfilter.nf_conntrack_tcp_timeout_close_wait: '60'
   net.netfilter.nf_conntrack_tcp_timeout_fin_wait: '30'
@@ -116,7 +118,3 @@ vyos_sysctl:
   net.netfilter.nf_conntrack_tcp_timeout_time_wait: '30'
   # QUIC / HTTP3 idle resume — a 5-minute grace period for UDP streams.
   net.netfilter.nf_conntrack_udp_timeout_stream: '300'
-  # NOTE: this does NOT take effect. VyOS owns nf_conntrack_max via
-  # `set system conntrack table-size`; the running value is 262144. Set
-  # vyos_conntrack_table_size below if you want to raise it for real.
-  net.netfilter.nf_conntrack_max: '524288'

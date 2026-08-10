@@ -1,0 +1,24 @@
+---
+# Windows domain: linds.com.au
+#
+# Hosts are FQDNs so Kerberos SPNs match. Authentication is Kerberos against
+# the operator's ticket cache - run `make kinit` first. No credentials here.
+windows:
+  children:
+    windows_dc:
+      hosts:
+        jd-dc-01.linds.com.au:
+          ansible_host: 10.0.50.200
+          ad_site: JD
+        linds-dc.linds.com.au:
+          ansible_host: 10.3.1.200
+          ad_site: LINDS
+        linds-dc2.linds.com.au:
+          ansible_host: 10.3.1.201
+          ad_site: LINDS
+
+    windows_fileserver:
+      hosts:
+        jd-fs-01.linds.com.au:
+          ansible_host: 10.0.50.201
+          ad_site: JD

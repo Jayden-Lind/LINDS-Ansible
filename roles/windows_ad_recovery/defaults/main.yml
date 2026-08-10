@@ -1,0 +1,23 @@
+---
+# Recoverability baseline.
+#
+# FSMO roles cannot be made highly available - they are single-master by
+# design, and forcing a role onto a second DC while the original lives causes
+# split-brain. What you can do is spread them so no single DC failure takes
+# all five, and keep another DC ready to seize.
+#
+# Only the PDC emulator matters day to day (domain time authority, password
+# chaining, account lockout, default GPO edit target), so it goes on the
+# best-connected DC at the site with the compute. Infrastructure master is a
+# genuine no-op here: single domain, and all three DCs are global catalogs.
+
+fsmo_placement:
+  PDCEmulator: jd-dc-01.linds.com.au
+  RIDMaster: jd-dc-01.linds.com.au
+  SchemaMaster: linds-dc.linds.com.au
+  DomainNamingMaster: linds-dc.linds.com.au
+  InfrastructureMaster: linds-dc.linds.com.au
+
+# Enabling the AD Recycle Bin is IRREVERSIBLE. Accepted deliberately - without
+# it an accidental deletion is unrecoverable without a restore.
+enable_ad_recycle_bin: true

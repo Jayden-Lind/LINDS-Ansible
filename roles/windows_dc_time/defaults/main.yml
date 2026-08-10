@@ -1,0 +1,16 @@
+---
+# Domain time hierarchy.
+#
+# Exactly one DC - whichever holds the PDC emulator role - syncs to external
+# NTP and is flagged reliable. Every other DC follows the domain hierarchy
+# (NT5DS). Getting this wrong is a slow-burn fault: Kerberos rejects a skew
+# over five minutes, so drift shows up as authentication failures rather than
+# as anything obviously clock-related.
+#
+# This role reads the current PDC from AD rather than taking it as a variable,
+# so moving the role automatically moves the time authority with it.
+
+ntp_servers:
+  - 0.au.pool.ntp.org
+  - 1.au.pool.ntp.org
+  - 2.au.pool.ntp.org

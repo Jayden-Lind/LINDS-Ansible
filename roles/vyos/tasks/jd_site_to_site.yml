@@ -25,15 +25,14 @@
       # close-action removed 2026-06-09: with both ends connection-type initiate it
       # cascaded duplicate IKE_SAs on every child rekey (uniqueids won't reap them).
       - set vpn ipsec ike-group MyIKEGroup dead-peer-detection action restart
+      # Single proposal. The fallbacks that used to sit at 2-4 set no `hash`, so
+      # they inherited SHA-1, and proposal 4 was aes256gmac — ENCR_NULL_AUTH_AES_GMAC,
+      # which authenticates without encrypting. strongSwan was offering all of
+      # them on the wire. The peer has always selected proposal 1
+      # (aes256gcm128-sha256-modp2048), so the rest were downgrade surface only.
       - set vpn ipsec ike-group MyIKEGroup proposal 1 dh-group 14
       - set vpn ipsec ike-group MyIKEGroup proposal 1 encryption aes256gcm128
       - set vpn ipsec ike-group MyIKEGroup proposal 1 hash sha256
-      - set vpn ipsec ike-group MyIKEGroup proposal 2 dh-group 14
-      - set vpn ipsec ike-group MyIKEGroup proposal 2 encryption aes256
-      - set vpn ipsec ike-group MyIKEGroup proposal 3 dh-group 14
-      - set vpn ipsec ike-group MyIKEGroup proposal 3 encryption aes256ccm128
-      - set vpn ipsec ike-group MyIKEGroup proposal 4 dh-group 14
-      - set vpn ipsec ike-group MyIKEGroup proposal 4 encryption aes256gmac
 
 - name: IPsec — ESP group MyESPGroup
   vyos.vyos.vyos_config:

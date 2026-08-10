@@ -1,0 +1,32 @@
+---
+# AD site topology for linds.com.au.
+#
+# Before this was applied there was a single site "LINDS" holding all three
+# DCs, with 10.3.1.0/24 (where two of them live) not defined at all. DC
+# locator therefore treated every DC as equally close and clients
+# authenticated across the IPsec tunnel roughly two thirds of the time, which
+# is what made logons intermittently slow.
+
+ad_sites:
+  - JD
+  - LINDS
+
+ad_subnets:
+  - { name: "10.0.50.0/24", site: JD, description: "JD servers / VLAN 50" }
+  - { name: "10.0.53.0/24", site: JD, description: "JD Talos / storage VLAN 53" }
+  - { name: "10.3.1.0/24", site: LINDS, description: "LINDS servers" }
+  - { name: "192.168.6.0/24", site: LINDS, description: "LINDS LAN" }
+  - { name: "10.0.80.0/24", site: LINDS, description: "LINDS cameras / IoT" }
+
+# 10.0.51.0/24 is deliberately absent: it has no DNS records and no observed
+# hosts, so which site it belongs to is unknown. It is currently mapped to
+# LINDS by an older manual entry. Leaving it alone beats guessing - add it
+# here once its purpose is established.
+
+ad_site_link:
+  name: LINDS-SITELINK
+  cost: 100
+  # Was 180 minutes, which meant a GPO edit could take three hours to reach
+  # the other site.
+  replication_frequency_minutes: 15
+  sites: [JD, LINDS]

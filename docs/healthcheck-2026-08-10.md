@@ -15,8 +15,8 @@ no failed units. The findings are concentrated in three places:
 
 1. **The torrent VLAN (51) has no working egress and no LAN access.** Two
    independent faults, both long-standing.
-2. **Every UniFi switch and AP at the JD site is cut off from the UniFi
-   controller** by the VLAN 52 isolation policy.
+2. ~~Every UniFi switch and AP is cut off from the controller.~~ **Retracted —
+   see 1.4.** The controller is inside VLAN 52 with the devices; this was wrong.
 3. **The Proxmox host has no VM backups and no VM snapshots** — including the
    domain controller and the file server.
 
@@ -85,34 +85,46 @@ peer) reset.
 set protocols bgp parameters router-id 10.0.50.1
 ```
 
-### 1.4 UniFi gear cannot reach the UniFi controller
+### 1.4 ~~UniFi gear cannot reach the UniFi controller~~ — RETRACTED
 
-The controller lives at `10.0.80.4` (LINDS VLAN 80). From the router it is
-perfectly reachable — 14 ms over the IPsec tunnel, 8080 and 8443 both open.
+**This finding was wrong.** Corrected 2026-08-10 after the site owner pointed out
+that `10.0.80.4` is the controller at the *LINDS* site, not this one.
 
-But every UniFi device sits in VLAN 52, and forward rule 100 drops
-`10.0.52.0/24 → LAN-Addresses`, which contains `10.0.80.0/24`:
-
-```
-100  drop  91704 packets  5581348 bytes   ip daddr @N_LAN-Addresses ip saddr 10.0.52.0/24
-```
-
-Confirmed by conntrack: there is **not one flow** from any `10.0.52.x` device to
-`10.0.80.4`. The devices are falling back to Ubiquiti's cloud (`10.0.52.2` holds
-an MQTT session to `54.69.74.211:8883`).
-
-Affected: `uswenterprise24poe` (.3), `uswenterprise8poe` (.7), APs at .10/.11,
-and the cameras.
+The JD controller is **10.0.52.2**, inside VLAN 52 with every switch, AP and
+camera. Confirmed by probing from the Proxmox host, which can reach that VLAN:
 
 ```
-set firewall ipv4 forward filter rule 95 action accept
-set firewall ipv4 forward filter rule 95 source address 10.0.52.0/24
-set firewall ipv4 forward filter rule 95 destination address 10.0.80.4
-set firewall ipv4 forward filter rule 95 description 'UniFi devices → controller'
+10.0.52.2    open: 22 443 8080 8443 8880     ← controller
+10.0.52.3    open: 22                        ← usw-enterprise-24-poe
+10.0.52.7    open: 22                        ← usw-enterprise-8-poe
+10.0.52.10   open: 22                        ← AP
+10.0.52.11   open: 22                        ← AP
 ```
 
-Rule 95 lands ahead of the rule-100 drop. Narrow it further with
-`destination port 8080,8443,6789,10001` if you want least privilege.
+Controller and devices share an L2 segment, so adoption and inform traffic never
+enters the router's forward chain. Nothing was broken and nothing needed fixing.
+
+**What led me astray.** Probing those hosts *from the router* showed every port
+closed, which I read as "blocked". The real cause is input filter rule 2:
+
+```
+rule 2  drop  all   iifname "eth1.52"
+rule 50 accept all  ct state { established, related }
+```
+
+Rule 2 sorts before rule 50, so return traffic for router-originated connections
+into VLAN 52 is dropped along with everything else. The router can transmit into
+that VLAN but can never complete a handshake — it is one-way by construction.
+For an isolated VLAN that is a reasonable design, and it matches the stated
+intent, but it does mean the router cannot ping, poll or monitor anything in
+VLAN 52.
+
+The 91,704 packets counted by rule 100 are the isolated VLAN attempting other
+inter-VLAN traffic — the rule doing its job, not a symptom.
+
+A forward rule 95 permitting `10.0.52.0/24 → 10.0.80.4` was briefly added and
+has been removed; it granted the isolated VLAN a path to a LINDS host for no
+reason.
 
 ### 1.5 Proxmox has no VM backups and no VM snapshots
 
@@ -373,7 +385,8 @@ peer-group.
 
 ## UniFi-specific
 
-Beyond 1.4 (the controller being unreachable) and 2.7 (LLDP):
+Beyond 2.7 (LLDP). Note 1.4 has been retracted — the controller is local to
+VLAN 52 and adoption was never broken:
 
 **No mDNS repeater.** The router sees mDNS (`224.0.0.251`) and SSDP
 (`239.255.255.250`) groups on `eth1` only. Cameras and APs are in VLAN 52,
@@ -385,10 +398,11 @@ set service mdns repeater interface eth1
 set service mdns repeater interface eth1.52
 ```
 
-(Requires the firewall to permit the answering traffic, so pair it with 1.4.)
+(Requires the firewall to permit the answering traffic across the two VLANs.)
 
-**L3 adoption has no discovery path.** With the controller across the IPsec
-tunnel, devices cannot find it by broadcast. This VyOS build has **no**
+**L3 adoption is not in play** — controller and devices share VLAN 52, so
+discovery happens by broadcast on the local segment. The note below applies only
+if the controller is ever moved off that VLAN. This VyOS build has **no**
 `vendor-option ubiquiti unifi-controller` node (I checked the template tree), so
 DHCP option 43 is not available through the CLI. The workable options are:
 

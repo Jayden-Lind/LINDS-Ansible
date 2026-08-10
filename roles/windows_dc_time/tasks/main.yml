@@ -1,0 +1,41 @@
+---
+- name: Determine whether this DC holds the PDC emulator role
+  ansible.windows.win_powershell:
+    script: |
+      Import-Module ActiveDirectory
+      $Ansible.Changed = $false
+      $pdc = (Get-ADDomain).PDCEmulator
+      "$env:COMPUTERNAME.$env:USERDNSDOMAIN".ToLower() -eq $pdc.ToLower()
+  changed_when: false
+  register: pdc_check
+
+- name: Configure the PDC emulator as the domain's external time source
+  ansible.windows.win_powershell:
+    parameters:
+      Peers: "{{ ntp_servers | map('regex_replace', '$', ',0x8') | join(' ') }}"
+    script: |
+      param([string]$Peers)
+      $Ansible.Changed = $false
+      $p = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\W32Time\Parameters'
+      if ($p.Type -ne 'NTP' -or $p.NtpServer -ne $Peers) {
+        w32tm /config /manualpeerlist:"$Peers" /syncfromflags:manual /reliable:yes /update | Out-Null
+        Restart-Service w32time -Force
+        Start-Sleep -Seconds 5
+        w32tm /resync /force | Out-Null
+        $Ansible.Changed = $true
+      }
+  when: pdc_check.output[0] | bool
+
+- name: Configure non-PDC DCs to follow the domain hierarchy
+  ansible.windows.win_powershell:
+    script: |
+      $Ansible.Changed = $false
+      $p = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\W32Time\Parameters'
+      if ($p.Type -ne 'NT5DS') {
+        w32tm /config /syncfromflags:domhier /reliable:no /update | Out-Null
+        Restart-Service w32time -Force
+        Start-Sleep -Seconds 5
+        w32tm /resync /force | Out-Null
+        $Ansible.Changed = $true
+      }
+  when: not (pdc_check.output[0] | bool)

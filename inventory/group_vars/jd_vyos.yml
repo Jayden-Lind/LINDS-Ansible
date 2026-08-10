@@ -35,6 +35,18 @@ vyos_pd_delegations:
 
 # ConnectX-4 Lx VF. Flow control off (the NBN handoff does not use it) and
 # adaptive interrupt coalescing with CQE mode for lower latency at low rates.
+# VyOS disables offloads unless these nodes are set, and the post-boot ethtool
+# script is wiped by any commit touching the interface. rfs/rps are deliberately
+# absent (software steering, a loss on a 4-vCPU guest with 4 queues already) and
+# so is hw-tc-offload (meaningless on virtio, unsupported on the VF).
+vyos_lan_offload: [gro, gso, sg]
+vyos_wan_offload: [gro, gso, sg, tso]
+
+# eth2 was dropping frames at the ring: 5427 overruns. Hardware max is 8192.
+vyos_wan_ring_buffer:
+  rx: 4096
+  tx: 4096
+
 vyos_wan_extra_settings:
   - disable-flow-control
   - interrupt-coalescing adaptive-rx
@@ -155,11 +167,16 @@ vyos_dhcp_ddns:
 # ----- DNS forwarder -------------------------------------------------------
 vyos_dns_listen_addresses: [10.0.50.1, 10.0.53.1, 10.0.52.1]
 vyos_dns_learn_hosts_from: eth1
+# No k8s.linds.com.au stub. CoreDNS is authoritative for that zone inside the
+# cluster, but kube-dns is a ClusterIP-only Service (10.96.0.10) with no
+# LoadBalancer, so it is unroutable from here — queries were going out the WAN
+# and timing out (~14k outgoing-timeouts, matching servfails). Nothing on the
+# LAN needs it either: external-dns publishes every Service and Ingress as
+# <name>.linds.com.au straight into AD DNS over RFC2136, which the stub below
+# already covers. Re-add only if CoreDNS is exposed on a routable address.
 vyos_dns_domains:
   - name: linds.com.au
     servers: [10.0.50.200, 10.3.1.200, 10.3.1.201, 192.168.6.1]
-  - name: k8s.linds.com.au
-    servers: [10.96.0.10]
 
 # ----- Services ------------------------------------------------------------
 vyos_ssh_listen_addresses: [10.0.50.1]
@@ -167,6 +184,7 @@ vyos_snmp_listen:
   - {address: 10.0.50.1, port: 161}
   - {address: 10.0.53.1}
 vyos_lldp_legacy_protocols: [cdp, edp, fdp, sonmp]
+vyos_lldp_interfaces: [all]
 vyos_snmp_community: public
 vyos_router_advert:
   default-lifetime: 3600
@@ -203,6 +221,9 @@ vyos_firewall_forward_rules:
   - {n: 99, action: accept, src: 10.0.52.0/24, dst_group: LAN-Addresses,
      state: [established, related],
      comment: 'VLAN52 return traffic for LAN-initiated flows'}
+  # No controller exception needed here: the UniFi controller (10.0.52.2) lives
+  # in VLAN 52 alongside the switches, APs and cameras, so adoption and inform
+  # traffic stays on the L2 segment and never reaches this chain.
   - {n: 100, action: drop, src: 10.0.52.0/24, dst_group: LAN-Addresses,
      comment: 'VLAN52 gets internet but no new inter-VLAN sessions'}
 
@@ -219,8 +240,8 @@ vyos_nat_source_rules:
      comment: 'IPsec remote-access pool'}
   - {n: 20, src: 172.16.1.1, out_group: WAN,
      comment: 'k8s ingress VIP'}
-  - {n: 100, src: 10.100.100.0/24, out_iface: eth2,
-     description: 'NAT WireGuard ➜ WAN'}
+  # (rule 100 removed 2026-08-10: SNAT for a 10.100.100.0/24 WireGuard pool that
+  #  no longer exists anywhere in the config. It had passed 0 packets.)
   - {n: 101, src: 10.0.50.0/24, out_iface: eth1.99, dst_group: LAN-Addresses,
      comment: 'JD-LAN over the cellular backup during failover'}
   - {n: 200, out_group: WAN, comment: 'Catch-all masquerade'}
@@ -229,16 +250,18 @@ vyos_nat_source_rules:
 
 # Destination NAT (port forwards). All arrive on the primary WAN.
 vyos_nat_destination_rules:
-  - {n: 20, dport: '25565', protocol: tcp_udp, to: 172.16.1.25, log: true,
-     comment: Minecraft}
+  - {n: 20, dport: '25565', protocol: tcp_udp, to: 172.16.1.25, comment: Minecraft}
   - {n: 21, dport: '32400', protocol: tcp_udp, to: 172.16.1.50, comment: Plex}
-  - {n: 23, dport: '7777', protocol: tcp, to: 172.16.1.1, log: true}
+  - {n: 23, dport: '7777', protocol: tcp, to: 172.16.1.1}
   - {n: 24, dport: '443', protocol: tcp_udp, to: 172.16.1.12, comment: 'mTLS ingress'}
   - {n: 50, dport: '27015,27016,33540,27031-27036,33540', protocol: tcp_udp,
      to: 10.0.50.164, comment: 'Steam remote play'}
 
 # ----- Routing / BGP -------------------------------------------------------
 vyos_bgp_asn: 64550
+# Pinned. Left unset, FRR picked 192.168.0.46 — the *cellular backup* WAN's DHCP
+# address — so a lease change would have reset every BGP session.
+vyos_bgp_router_id: 10.0.50.1
 vyos_bgp_networks:
   - 10.0.10.0/24
   - 10.0.50.0/24

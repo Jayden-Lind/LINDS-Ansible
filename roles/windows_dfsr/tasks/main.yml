@@ -1,0 +1,137 @@
+---
+# Declares the NAS replication group: group, folders, members, content paths,
+# quotas and connections.
+#
+# PrimaryMember is deliberately not declared. It is a one-shot initial-sync
+# flag that DFSR clears itself once a member has built its database; asserting
+# it here would re-arm an initial sync on every run.
+
+- name: Ensure the replication group exists
+  ansible.windows.win_powershell:
+    parameters:
+      Group: "{{ dfsr_group }}"
+    script: |
+      param([string]$Group)
+      $ErrorActionPreference = 'Stop'
+      Import-Module DFSR
+      $Ansible.Changed = $false
+
+      if (-not (Get-DfsReplicationGroup -GroupName $Group -ErrorAction SilentlyContinue)) {
+          New-DfsReplicationGroup -GroupName $Group | Out-Null
+          $Ansible.Changed = $true
+      }
+
+- name: Ensure the replicated folders exist
+  ansible.windows.win_powershell:
+    parameters:
+      Group: "{{ dfsr_group }}"
+      Folders: "{{ dfsr_folders }}"
+    script: |
+      param([string]$Group, [string[]]$Folders)
+      $ErrorActionPreference = 'Stop'
+      Import-Module DFSR
+      $Ansible.Changed = $false
+
+      $existing = @(Get-DfsReplicatedFolder -GroupName $Group -ErrorAction SilentlyContinue |
+                    ForEach-Object { $_.FolderName })
+      foreach ($f in $Folders) {
+          if ($existing -notcontains $f) {
+              New-DfsReplicatedFolder -GroupName $Group -FolderName $f | Out-Null
+              $Ansible.Result += "created folder $f"
+              $Ansible.Changed = $true
+          }
+      }
+
+- name: Ensure the members exist
+  ansible.windows.win_powershell:
+    parameters:
+      Group: "{{ dfsr_group }}"
+      Members: "{{ dfsr_members.keys() | list }}"
+    script: |
+      param([string]$Group, [string[]]$Members)
+      $ErrorActionPreference = 'Stop'
+      Import-Module DFSR
+      $Ansible.Changed = $false
+
+      $existing = @(Get-DfsrMember -GroupName $Group -ErrorAction SilentlyContinue |
+                    ForEach-Object { $_.ComputerName })
+      foreach ($m in $Members) {
+          if ($existing -notcontains $m) {
+              Add-DfsrMember -GroupName $Group -ComputerName $m | Out-Null
+              $Ansible.Result += "added member $m"
+              $Ansible.Changed = $true
+          }
+      }
+
+- name: Ensure content paths and quotas match
+  ansible.windows.win_powershell:
+    parameters:
+      Group: "{{ dfsr_group }}"
+      Folders: "{{ dfsr_folders }}"
+      MemberRoots: "{{ dfsr_members }}"
+      StagingQuota: "{{ dfsr_staging_quota_mb | int }}"
+      ConflictQuota: "{{ dfsr_conflict_quota_mb | int }}"
+    script: |
+      param([string]$Group, [string[]]$Folders, [hashtable]$MemberRoots,
+            [int]$StagingQuota, [int]$ConflictQuota)
+      $ErrorActionPreference = 'Stop'
+      Import-Module DFSR
+      $Ansible.Changed = $false
+
+      foreach ($member in $MemberRoots.Keys) {
+          $root = $MemberRoots[$member]
+          foreach ($f in $Folders) {
+              $want = "$root\$f"
+              $have = Get-DfsrMembership -GroupName $Group -FolderName $f `
+                        -ComputerName $member -ErrorAction Stop
+
+              # Not $args - that is an automatic variable, and splatting it
+              # would not refer to this hashtable.
+              $set = @{}
+              if ($have.ContentPath -ne $want)                          { $set.ContentPath = $want }
+              if ($have.StagingPathQuotaInMB -ne $StagingQuota)         { $set.StagingPathQuotaInMB = $StagingQuota }
+              if ($have.ConflictAndDeletedQuotaInMB -ne $ConflictQuota) { $set.ConflictAndDeletedQuotaInMB = $ConflictQuota }
+              if (-not $have.Enabled)                                   { $set.DisableMembership = $false }
+
+              if ($set.Count) {
+                  Set-DfsrMembership -GroupName $Group -FolderName $f -ComputerName $member `
+                      @set -Force | Out-Null
+                  $Ansible.Result += "$member/$f -> $($set.Keys -join ',')"
+                  $Ansible.Changed = $true
+              }
+          }
+      }
+
+- name: Ensure connections exist and are enabled
+  ansible.windows.win_powershell:
+    parameters:
+      Group: "{{ dfsr_group }}"
+      Connections: "{{ dfsr_connections }}"
+      Rdc: "{{ dfsr_rdc_enabled | bool }}"
+    script: |
+      param([string]$Group, [object[]]$Connections, [bool]$Rdc)
+      $ErrorActionPreference = 'Stop'
+      Import-Module DFSR
+      $Ansible.Changed = $false
+
+      foreach ($c in $Connections) {
+          $existing = Get-DfsrConnection -GroupName $Group `
+                        -SourceComputerName $c.source `
+                        -DestinationComputerName $c.destination -ErrorAction SilentlyContinue
+
+          if (-not $existing) {
+              Add-DfsrConnection -GroupName $Group `
+                  -SourceComputerName $c.source -DestinationComputerName $c.destination | Out-Null
+              $Ansible.Result += "created $($c.source) -> $($c.destination)"
+              $Ansible.Changed = $true
+              continue
+          }
+
+          if (-not $existing.Enabled -or $existing.RdcEnabled -ne $Rdc) {
+              Set-DfsrConnection -GroupName $Group `
+                  -SourceComputerName $c.source -DestinationComputerName $c.destination `
+                  -DisableConnection $false -DisableRDC (-not $Rdc) | Out-Null
+              $Ansible.Result += "updated $($c.source) -> $($c.destination)"
+              $Ansible.Changed = $true
+          }
+      }

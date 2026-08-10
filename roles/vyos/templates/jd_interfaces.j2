@@ -22,6 +22,10 @@
 {% for offload in vyos_wan_offload | default([]) %}
 {{ wan }} offload {{ offload }}
 {% endfor %}
+{% if vyos_wan_ring_buffer is defined %}
+{{ wan }} ring-buffer rx '{{ vyos_wan_ring_buffer.rx }}'
+{{ wan }} ring-buffer tx '{{ vyos_wan_ring_buffer.tx }}'
+{% endif %}
 
 {# DHCPv6-PD: /56 from the ISP, split into /64s for the LAN and VLAN52. #}
 {{ wan }} dhcpv6-options pd 0 length '{{ vyos_pd_length }}'
@@ -33,7 +37,9 @@
 {{ lan }} address '{{ vyos_lan_address }}'
 {{ lan }} mtu '1500'
 {{ lan }} ip adjust-mss 'clamp-mss-to-pmtu'
-{{ lan }} ipv6 address autoconf
+{# No `ipv6 address autoconf` here: it forces accept_ra=2 on the interface this
+   router sends RAs on, so a rogue RA on the LAN could install a default route
+   on the router itself. The LAN prefix comes from DHCPv6-PD above. #}
 {{ lan }} ipv6 adjust-mss 'clamp-mss-to-pmtu'
 {{ lan }} ipv6 dup-addr-detect-transmits '1'
 {% for offload in vyos_lan_offload | default([]) %}
