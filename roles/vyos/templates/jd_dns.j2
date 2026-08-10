@@ -1,0 +1,17 @@
+{#
+  JD-specific DNS forwarder settings. The shared bits (cache size, allow-from,
+  upstream resolvers, dnssec, negative-ttl) are in system.j2.
+
+  `addnta` adds a negative trust anchor so the stub domains resolve even though
+  they are unsigned — required because these are internal AD zones.
+#}
+{% for addr in vyos_dns_listen_addresses %}
+set service dns forwarding listen-address '{{ addr }}'
+{% endfor %}
+set service dns forwarding dhcp '{{ vyos_dns_learn_hosts_from }}'
+{% for domain in vyos_dns_domains %}
+set service dns forwarding domain {{ domain.name }} addnta
+{% for server in domain.servers %}
+set service dns forwarding domain {{ domain.name }} name-server {{ server }}
+{% endfor %}
+{% endfor %}

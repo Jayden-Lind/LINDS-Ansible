@@ -1,6 +1,14 @@
 ---
-# Common configuration applied to every VyOS router (jd + linds).
-# Per-router specifics live in jd.yml / linds.yml and the jd_*.yml includes.
+# Configuration common to every VyOS router.
+#
+# Everything here is driven from role defaults + group_vars, so this file holds
+# no site-specific values and never sets something a site file has to delete
+# again. Per-site configuration lives in jd.yml / linds.yml, selected by the
+# `vyos_site` group var.
+#
+# Repetitive `set` blocks are rendered from templates/*.j2 — the data lives in
+# group_vars, the CLI syntax lives in the template, and the task list stays
+# short enough to read in one screen.
 
 - name: Install LINDS-CA into PKI
   vyos.vyos.vyos_config:
@@ -8,40 +16,9 @@
       - set pki ca LINDS certificate {{ item }}
   with_file: linds-ca.cer
 
-- name: System base (hostname-agnostic)
+- name: System, conntrack, sysctl, DNS forwarder, NTP and LLDP base
   vyos.vyos.vyos_config:
-    lines:
-      # Locale + DNS resolvers used by the router itself
-      - set system time-zone Australia/Melbourne
-      - set system domain-search linds.com.au
-      - set system name-server 1.1.1.1
-      - set system name-server 1.0.0.1
-      - set system name-server 2606:4700:4700::1111
-      - set system name-server 2606:4700:4700::1001
-      # Forwarding/throughput tuning
-      - set system option performance network-throughput
-      - set system option kernel disable-mitigations
-      - set system sysctl parameter net.core.rmem_default value 26214400
-      - set system sysctl parameter net.core.rmem_max value 26214400
-      - set system sysctl parameter net.ipv4.tcp_low_latency value 1
-      - set system sysctl parameter net.ipv4.tcp_sack value 1
-      - set system sysctl parameter net.ipv4.tcp_timestamps value 0
-      # Conntrack helpers
-      - set system conntrack modules ftp
-      - set system conntrack modules h323
-      - set system conntrack modules nfs
-      - set system conntrack modules pptp
-      - set system conntrack modules sip
-      - set system conntrack modules sqlnet
-      - set system conntrack modules tftp
-      # Console + commit history + auto-update
-      - set system console device ttyS0 speed 115200
-      - set system config-management commit-revisions 100
-      - set system update-check auto-check
-      - set system update-check url 'https://raw.githubusercontent.com/vyos/vyos-rolling-nightly-builds/main/version.json'
-      # Syslog
-      - set system syslog local facility all level info
-      - set system syslog local facility local7 level debug
+    lines: "{{ lookup('template', 'system.j2').splitlines() | select | list }}"
 
 - name: Set vyos user password hash
   vyos.vyos.vyos_config:
@@ -49,85 +26,14 @@
       - set system login user vyos authentication encrypted-password '{{ vyos_user_password_hash }}'
   when: vyos_user_password_hash is defined
 
-- name: WAN interface base config
+- name: Firewall LAN-Addresses network-group
   vyos.vyos.vyos_config:
-    lines:
-      - set interfaces ethernet "{{ wan_interface }}" address dhcp
-      - set interfaces ethernet "{{ wan_interface }}" address dhcpv6
-      - set interfaces ethernet "{{ wan_interface }}" description WAN
-      - set interfaces ethernet "{{ wan_interface }}" ip adjust-mss clamp-mss-to-pmtu
-      - set interfaces ethernet "{{ wan_interface }}" ipv6 address autoconf
-      - set interfaces ethernet "{{ wan_interface }}" ipv6 adjust-mss clamp-mss-to-pmtu
-      - set interfaces ethernet "{{ wan_interface }}" offload hw-tc-offload
-      - set interfaces ethernet "{{ wan_interface }}" offload gro
-      - set interfaces ethernet "{{ wan_interface }}" offload gso
-      - set interfaces ethernet "{{ wan_interface }}" offload rfs
-      - set interfaces ethernet "{{ wan_interface }}" offload rps
-      - set interfaces ethernet "{{ wan_interface }}" offload sg
-
-- name: LAN interface base config
-  vyos.vyos.vyos_config:
-    lines:
-      - set interfaces ethernet "{{ main_lan_interface }}" ip adjust-mss clamp-mss-to-pmtu
-      - set interfaces ethernet "{{ main_lan_interface }}" mtu 1500
-      - set interfaces ethernet "{{ main_lan_interface }}" offload hw-tc-offload
-      - set interfaces ethernet "{{ main_lan_interface }}" offload gro
-      - set interfaces ethernet "{{ main_lan_interface }}" offload gso
-      - set interfaces ethernet "{{ main_lan_interface }}" offload rfs
-      - set interfaces ethernet "{{ main_lan_interface }}" offload rps
-      - set interfaces ethernet "{{ main_lan_interface }}" offload sg
-
-- name: Post Boot VyOS script (ethtool + IPsec RA encap)
-  vyos.vyos.vyos_command:
-    commands:
-      - |
-        cat >/config/scripts/vyos-postconfig-bootup.script <<EOL
-        #!/bin/sh
-        ethtool -K "{{ wan_interface }}" rx on tx on sg on tso on gro on gso on
-        ethtool -K "{{ main_lan_interface }}" rx-gro-hw off
-        # --- Force UDP-encap on IPsec remote-access (VyOS has no RA `encap` CLI node) ---
-        RA_TMPL="/usr/share/vyos/templates/ipsec/swanctl/remote_access.j2"
-        if [ -f "$RA_TMPL" ] && ! grep -q "encap = yes" "$RA_TMPL"; then
-        sed -i '/^        remote_addrs = %any$/a\        encap = yes' "$RA_TMPL"
-        /usr/libexec/vyos/conf_mode/vpn_ipsec.py >/dev/null 2>&1 || true
-        fi
-        EOL
-
-- name: Firewall LAN-Addresses group
-  vyos.vyos.vyos_firewall_global:
-    config:
-      group:
-        network_group:
-          - name: LAN-Addresses
-            description: LAN Networks
-            members:
-              - address: 192.168.0.0/16
-              - address: 10.0.0.0/8
-              - address: 172.16.0.0/12
-    state: merged
-
-- name: Firewall global-options hardening
-  vyos.vyos.vyos_config:
-    lines:
-      - set firewall global-options all-ping enable
-      - set firewall global-options broadcast-ping enable
-      - set firewall global-options log-martians enable
-      - set firewall global-options syn-cookies enable
-      - set firewall global-options twa-hazards-protection enable
-
-- name: DNS forwarder common config
-  vyos.vyos.vyos_config:
-    lines:
-      - set service dns forwarding cache-size 1000000
-      - set service dns forwarding negative-ttl 60
-      - set service dns forwarding dnssec off
-      - set service dns forwarding allow-from 10.0.0.0/8
-      - set service dns forwarding allow-from 172.16.0.0/12
-      - set service dns forwarding allow-from 192.168.0.0/16
-      - set service dns forwarding name-server 1.1.1.1
-      - set service dns forwarding name-server 1.0.0.1
-      - set service dns forwarding name-server 2606:4700:4700::1111
-      - set service dns forwarding name-server 2606:4700:4700::1001
+    lines: >-
+      {{ ["set firewall group network-group LAN-Addresses description 'LAN Networks'"]
+         + vyos_rfc1918
+           | map('regex_replace', '^(.*)$',
+                 "set firewall group network-group LAN-Addresses network '\1'")
+           | list }}
 
 - name: Cloudflare dynamic DNS
   vyos.vyos.vyos_config:
@@ -140,19 +46,6 @@
       - set service dns dynamic name service-Cloudflare-{{ wan_interface }} host-name "{{ dyn_host }}"
       - set service dns dynamic name service-Cloudflare-{{ wan_interface }} zone "{{ cf_dyn_dns_zone }}"
 
-- name: NTP servers + client policy
-  vyos.vyos.vyos_config:
-    lines:
-      - set service ntp server 0.au.pool.ntp.org
-      - set service ntp allow-client address 0.0.0.0/0
-      - set service ntp allow-client address ::/0
-
-- name: Run JD VyOS
+- name: Site configuration
   ansible.builtin.include_tasks:
-    file: jd.yml
-  when: inventory_hostname == "10.0.50.1"
-
-- name: Run LINDS VyOS
-  ansible.builtin.include_tasks:
-    file: linds.yml
-  when: inventory_hostname == "192.168.6.1"
+    file: "{{ vyos_site }}.yml"

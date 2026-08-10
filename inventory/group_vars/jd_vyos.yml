@@ -1,0 +1,320 @@
+---
+# jd-vyos-01 (10.0.50.1). Values here reflect the router's running config —
+# it is the source of truth. Anything shared with LINDS lives in the role's
+# defaults/main.yml.
+
+vyos_hostname: jd-vyos-01
+vyos_site: jd
+
+# ----- Overrides of role defaults -----------------------------------------
+# h323 and sip helpers are deliberately off: both mangle payloads and neither
+# is used here.
+vyos_conntrack_modules: [ftp, nfs, pptp, sqlnet, tftp]
+
+vyos_ntp_servers:
+  - 0.au.pool.ntp.org
+  - time1.vyos.net
+  - time2.vyos.net
+  - time3.vyos.net
+
+# RFC3704 loose reverse-path filtering — safe with asymmetric dual-WAN.
+vyos_firewall_source_validation: loose
+
+# The DNS forwarder also answers on the main LAN subnet directly.
+vyos_dns_allow_from: "{{ vyos_rfc1918 + ['10.0.50.0/24'] }}"
+
+# ----- Interfaces ----------------------------------------------------------
+vyos_lan_address: 10.0.50.1/24
+vyos_backup_wan_vif: 99
+
+# DHCPv6 prefix delegation: a /56 from the ISP carved into /64s.
+vyos_pd_length: 56
+vyos_pd_delegations:
+  - {interface: eth1, sla_id: 0}
+  - {interface: eth1.52, sla_id: 1}
+
+# ConnectX-4 Lx VF. Flow control off (the NBN handoff does not use it) and
+# adaptive interrupt coalescing with CQE mode for lower latency at low rates.
+vyos_wan_extra_settings:
+  - disable-flow-control
+  - interrupt-coalescing adaptive-rx
+  - interrupt-coalescing adaptive-tx
+  - interrupt-coalescing cqe-mode-rx
+  - interrupt-coalescing cqe-mode-tx
+
+# ----- Dual-WAN failover ---------------------------------------------------
+# DHCP-assigned gateways. Stable in practice, but hard-coded because
+# `protocols failover` cannot learn them while no-default-route is set.
+vyos_wan_gateway: 1.159.127.254
+vyos_backup_gateway: 192.168.0.1
+vyos_failover_check_targets: [8.8.8.8, 8.8.4.4]
+
+# ----- VLANs ---------------------------------------------------------------
+vyos_vlans:
+  - id: 51
+    address: 10.0.51.1/24
+    description: vlan-51-torrent
+  - id: 52
+    address: 10.0.52.1/24
+    description: vlan-52-isolated
+  - id: 53
+    address: 10.0.53.1/24
+    description: vlan-53-dev
+  - id: 58
+    address: 10.0.58.1/24
+    description: vlan-58-us
+
+# ----- DHCP ----------------------------------------------------------------
+vyos_dhcp_shared_networks:
+  - name: JD-LAN
+    description: Main LAN
+    options:
+      domain-name: linds.com.au
+      domain-search: linds.com.au
+      name-server: [10.0.50.1]
+    subnets:
+      - prefix: 10.0.50.0/24
+        subnet_id: 1
+        lease: 3600
+        range: {start: 10.0.50.2, stop: 10.0.50.199}
+        options:
+          default-router: 10.0.50.1
+          domain-name: linds.com.au
+          domain-search: linds.com.au
+          name-server: [10.0.50.1, 10.0.50.200]
+          time-zone: Australia/Melbourne
+        static_mappings:
+          - {name: bedroom-aircon, ip: 10.0.50.231, mac: '28:2e:89:56:f0:10'}
+          - {name: lounge-aircon, ip: 10.0.50.230, mac: '28:2e:89:56:f3:d3'}
+          - {name: sigenergy-battery, ip: 10.0.50.233, mac: 'a8:46:74:ca:a1:90'}
+          - {name: solar-inverter, ip: 10.0.50.232, mac: 'cc:f9:57:7b:ae:49'}
+
+  - name: VLAN_DEV
+    options:
+      domain-name: linds.com.au
+      domain-search: linds.com.au
+      name-server: [10.0.53.1]
+    subnets:
+      - prefix: 10.0.53.0/24
+        subnet_id: 2
+        range: {start: 10.0.53.2, stop: 10.0.53.50}
+        exclude: [10.0.53.20, 10.0.53.50]
+        options:
+          default-router: 10.0.53.1
+          domain-name: linds.com.au
+          domain-search: linds.com.au
+          name-server: [10.0.53.1]
+        static_mappings:
+          - {name: jd-kube-01, ip: 10.0.53.11, mac: 'bc:24:11:32:93:c4'}
+          - {name: talos-cp, ip: 10.0.53.200, mac: 'BC:24:11:D4:F3:C1'}
+          - {name: talos-worker-01, ip: 10.0.53.201, mac: '02:24:11:d4:f3:d1'}
+          - {name: talos-worker-02, ip: 10.0.53.202, mac: '02:24:11:d4:f3:d2'}
+          - {name: talos-worker-03, ip: 10.0.53.203, mac: '02:24:11:d4:f3:d3'}
+
+  - name: VLAN_ISOLATION
+    options:
+      name-server: [1.1.1.1]
+    subnets:
+      - prefix: 10.0.52.0/24
+        subnet_id: 5
+        range: {start: 10.0.52.2, stop: 10.0.52.199}
+        options:
+          default-router: 10.0.52.1
+          name-server: [1.1.1.1]
+
+  - name: torrent-lan
+    options:
+      name-server: [1.1.1.1]
+    subnets:
+      - prefix: 10.0.51.0/24
+        subnet_id: 3
+        range: {start: 10.0.51.2, stop: 10.0.51.199}
+        options:
+          default-router: 10.0.51.1
+          name-server: [1.1.1.1]
+
+  - name: us-lan
+    options:
+      name-server: [103.86.96.100]
+    subnets:
+      - prefix: 10.0.58.0/24
+        subnet_id: 4
+        range: {start: 10.0.58.2, stop: 10.0.58.199}
+        options:
+          default-router: 10.0.58.1
+          name-server: [103.86.96.100]
+
+# Leases are pushed into AD DNS on the DC pair.
+vyos_dhcp_ddns:
+  qualifying_suffix: linds.com.au.
+  forward_domain: linds.com.au.
+  dns_servers:
+    - {index: 1, address: 10.0.50.200}
+    - {index: 2, address: 10.3.1.200}
+
+# ----- DNS forwarder -------------------------------------------------------
+vyos_dns_listen_addresses: [10.0.50.1, 10.0.53.1, 10.0.52.1]
+vyos_dns_learn_hosts_from: eth1
+vyos_dns_domains:
+  - name: linds.com.au
+    servers: [10.0.50.200, 10.3.1.200, 10.3.1.201, 192.168.6.1]
+  - name: k8s.linds.com.au
+    servers: [10.96.0.10]
+
+# ----- Services ------------------------------------------------------------
+vyos_ssh_listen_addresses: [10.0.50.1]
+vyos_snmp_listen:
+  - {address: 10.0.50.1, port: 161}
+  - {address: 10.0.53.1}
+vyos_lldp_legacy_protocols: [cdp, edp, fdp, sonmp]
+vyos_snmp_community: public
+vyos_router_advert:
+  default-lifetime: 3600
+  default-preference: high
+
+# ----- Firewall ------------------------------------------------------------
+vyos_firewall_defaults:
+  ipv4: {forward: accept, input: drop, output: accept}
+  ipv6: {forward: accept, input: accept, output: accept}
+
+# Router-bound traffic (INPUT chain), lowest rule number first.
+vyos_firewall_input_rules:
+  - {n: 1, action: accept, protocol: udp, dport: '67', in_iface: eth1.52,
+     comment: 'VLAN52 may only talk DHCP to the router'}
+  - {n: 2, action: drop, in_iface: eth1.52,
+     comment: 'VLAN52 is otherwise fully isolated from the router'}
+  - {n: 3, action: accept, protocol: tcp_udp, dport: '500,4500', in_iface: eth2,
+     comment: 'IPsec IKE + NAT-T for road warriors'}
+  - {n: 4, action: accept, protocol: tcp, dport: '22', src_group: LAN-Addresses}
+  - {n: 8, action: accept, protocol: tcp, dport: '179', src_group: LAN-Addresses,
+     comment: 'BGP'}
+  - {n: 9, action: accept, protocol: tcp_udp, dport: '53', src_group: LAN-Addresses}
+  - {n: 10, action: accept, protocol: udp, dport: '161', src_group: LAN-Addresses,
+     comment: 'SNMP'}
+  - {n: 11, action: accept, protocol: udp, dport: '123', src_group: LAN-Addresses,
+     comment: 'NTP'}
+  - {n: 50, action: accept, state: [established, related]}
+  - {n: 51, action: accept, protocol: icmp, in_iface: eth2}
+
+# Transit traffic (FORWARD chain).
+vyos_firewall_forward_rules:
+  - {n: 50, action: accept, protocol: tcp_udp, dport: '27015', in_iface: eth2,
+     comment: 'Source-engine game server passthrough'}
+  - {n: 99, action: accept, src: 10.0.52.0/24, dst_group: LAN-Addresses,
+     state: [established, related],
+     comment: 'VLAN52 return traffic for LAN-initiated flows'}
+  - {n: 100, action: drop, src: 10.0.52.0/24, dst_group: LAN-Addresses,
+     comment: 'VLAN52 gets internet but no new inter-VLAN sessions'}
+
+# ----- NAT -----------------------------------------------------------------
+# Source NAT. `out_group: WAN` covers eth2 + the eth1.99 cellular backup.
+vyos_nat_source_rules:
+  - {n: 10, src: 10.0.50.0/24, out_group: WAN, dst_group: '!LAN-Addresses',
+     comment: 'JD-LAN egress'}
+  - {n: 12, src: 10.0.52.0/24, out_group: WAN, dst_group: '!LAN-Addresses',
+     comment: 'VLAN52 isolated egress'}
+  - {n: 13, src: 10.0.53.0/24, out_group: WAN, dst_group: '!LAN-Addresses',
+     comment: 'VLAN53 dev egress'}
+  - {n: 15, src: 10.0.10.0/24, out_group: WAN,
+     comment: 'IPsec remote-access pool'}
+  - {n: 20, src: 172.16.1.1, out_group: WAN,
+     comment: 'k8s ingress VIP'}
+  - {n: 100, src: 10.100.100.0/24, out_iface: eth2,
+     description: 'NAT WireGuard ➜ WAN'}
+  - {n: 101, src: 10.0.50.0/24, out_iface: eth1.99, dst_group: LAN-Addresses,
+     comment: 'JD-LAN over the cellular backup during failover'}
+  - {n: 200, out_group: WAN, comment: 'Catch-all masquerade'}
+  - {n: 9998, src: 10.0.58.0/24, out_iface: wg10, comment: 'VLAN58 → US tunnel'}
+  - {n: 9999, src: 10.0.51.0/24, out_iface: wg101, comment: 'VLAN51 → torrent tunnel'}
+
+# Destination NAT (port forwards). All arrive on the primary WAN.
+vyos_nat_destination_rules:
+  - {n: 20, dport: '25565', protocol: tcp_udp, to: 172.16.1.25, log: true,
+     comment: Minecraft}
+  - {n: 21, dport: '32400', protocol: tcp_udp, to: 172.16.1.50, comment: Plex}
+  - {n: 23, dport: '7777', protocol: tcp, to: 172.16.1.1, log: true}
+  - {n: 24, dport: '443', protocol: tcp_udp, to: 172.16.1.12, comment: 'mTLS ingress'}
+  - {n: 50, dport: '27015,27016,33540,27031-27036,33540', protocol: tcp_udp,
+     to: 10.0.50.164, comment: 'Steam remote play'}
+
+# ----- Routing / BGP -------------------------------------------------------
+vyos_bgp_asn: 64550
+vyos_bgp_networks:
+  - 10.0.10.0/24
+  - 10.0.50.0/24
+  - 10.0.51.0/24
+  - 10.0.53.0/24
+  - 10.0.58.0/24
+vyos_bgp_neighbors:
+  - {address: 10.255.0.2, remote_as: 64551, update_source: vti0}
+vyos_bgp_listen_ranges:
+  - {prefix: 10.0.53.0/24, peer_group: k8s}
+vyos_bgp_peer_groups:
+  - {name: k8s, remote_as: 64512, export_route_map: RM-NO-ADVERTISE}
+
+vyos_prefix_lists:
+  - {name: K8S-EXT, rule: 10, action: permit, prefix: 172.16.1.0/24}
+  - {name: K8S-PODS, rule: 10, action: permit, prefix: 10.244.0.0/16}
+  - {name: K8S-SVC, rule: 10, action: permit, prefix: 10.96.0.0/12}
+  - {name: NO-ADVERTISE, rule: 10, action: deny, prefix: 0.0.0.0/0}
+
+vyos_route_maps:
+  - name: RM-EXPORT-IPSEC
+    rules:
+      - {n: 10, action: permit, match_prefix_list: K8S-PODS}
+      - {n: 20, action: permit, match_prefix_list: K8S-SVC}
+      - {n: 30, action: permit, match_prefix_list: K8S-EXT}
+      - {n: 100, action: deny}
+  - name: RM-NO-ADVERTISE
+    rules:
+      - {n: 10, action: deny, match_prefix_list: NO-ADVERTISE}
+
+vyos_static_routes:
+  - {prefix: 192.168.6.0/24, next_hop: 10.255.0.2}
+  - {prefix: 10.0.10.0/24, interface: vti10}
+
+# ----- WireGuard egress tunnels -------------------------------------------
+# NordVPN. Each tunnel owns a routing table; PBR steers a VLAN into it.
+vyos_wireguard_tunnels:
+  # VLAN 58 (US egress). Healthy: endpoint given as a host-name, so
+  # vyos-domain-resolver re-resolves it when NordVPN rotates the server.
+  - name: wg10
+    address: 10.5.0.2/32
+    mtu: 1420
+    table: 90
+    private_key: "{{ wg_us_priv_key }}"
+    peer:
+      name: nordvpn
+      host_name: "{{ wg_us_host }}"
+      public_key: "{{ wg_us_pub_key }}"
+    pbr:
+      policy: NordVPNUS
+      interface: eth1.58
+      source: 10.0.58.0/24
+      bypass_rule: 9
+      default_rule: 10
+
+  # VLAN 51 (torrent egress).
+  #
+  # Two known problems, both preserved here because this file mirrors the
+  # running config — see the healthcheck notes before changing either:
+  #   * the peer is pinned to a literal address, which NordVPN has since
+  #     rotated; the tunnel has not handshaked in days and SNAT rule 9999 has
+  #     passed zero packets.
+  #   * there is no bypass_rule, so rule 100 matches 0.0.0.0/0 first and VLAN 51
+  #     has no route to the LAN either. The old `policy route VPN` was meant to
+  #     provide that bypass but, being a second policy on the same interface,
+  #     never matched a packet.
+  - name: wg101
+    address: 10.5.0.2/32
+    mtu: 1420
+    table: 100
+    private_key: "{{ wg_priv_key }}"
+    peer:
+      name: nordvpn
+      address: "{{ wg_host }}"
+      public_key: "{{ wg_pub_key }}"
+    pbr:
+      policy: NordVPN
+      interface: eth1.51
+      default_rule: 100

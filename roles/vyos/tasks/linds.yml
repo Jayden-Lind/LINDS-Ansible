@@ -3,6 +3,10 @@
 # All configuration lives in the linds_*.yml include files below,
 # parallel to the JD layout in jd.yml.
 
+- name: Base interfaces, firewall global-options, post-boot script
+  ansible.builtin.include_tasks:
+    file: linds_base.yml
+
 - name: System (hostname, login, etc.)
   ansible.builtin.include_tasks:
     file: linds_system.yml

@@ -1,0 +1,54 @@
+{#
+  Emits `set service dhcp-server ...` lines from vyos_dhcp_shared_networks.
+  Structure mirrors the VyOS CLI tree, so the data reads like the config:
+
+    shared-network -> [options] -> subnet -> [options|range|exclude|static-mapping]
+#}
+{% macro options(prefix, opts) %}
+{% for key, value in (opts | default({})).items() | sort %}
+{% for v in (value if value is sequence and value is not string else [value]) %}
+{{ prefix }} option {{ key }} '{{ v }}'
+{% endfor %}
+{% endfor %}
+{% endmacro %}
+set service dhcp-server hostfile-update
+{% for net in vyos_dhcp_shared_networks %}
+{% set sn = "set service dhcp-server shared-network-name " ~ net.name %}
+{% if net.description is defined %}
+{{ sn }} description '{{ net.description }}'
+{% endif %}
+{{ options(sn, net.options) }}
+{% for subnet in net.subnets %}
+{% set sub = sn ~ " subnet " ~ subnet.prefix %}
+{{ sub }} subnet-id '{{ subnet.subnet_id }}'
+{% if subnet.lease is defined %}
+{{ sub }} lease '{{ subnet.lease }}'
+{% endif %}
+{{ options(sub, subnet.options) }}
+{% if subnet.range is defined %}
+{{ sub }} range 0 start '{{ subnet.range.start }}'
+{{ sub }} range 0 stop '{{ subnet.range.stop }}'
+{% endif %}
+{% for addr in subnet.exclude | default([]) %}
+{{ sub }} exclude '{{ addr }}'
+{% endfor %}
+{% for m in subnet.static_mappings | default([]) %}
+{{ sub }} static-mapping {{ m.name }} ip-address '{{ m.ip }}'
+{{ sub }} static-mapping {{ m.name }} mac '{{ m.mac }}'
+{% endfor %}
+{% endfor %}
+{% endfor %}
+{% if vyos_dhcp_ddns is defined %}
+{% set d = "set service dhcp-server dynamic-dns-update" %}
+{{ d }} send-updates 'enable'
+{{ d }} update-on-renew 'enable'
+{{ d }} override-client-update 'enable'
+{{ d }} override-no-update 'enable'
+{% if vyos_dhcp_ddns.conflict_resolution | default(false) %}
+{{ d }} conflict-resolution 'enable'
+{% endif %}
+{{ d }} qualifying-suffix '{{ vyos_dhcp_ddns.qualifying_suffix }}'
+{% for s in vyos_dhcp_ddns.dns_servers %}
+{{ d }} forward-domain {{ vyos_dhcp_ddns.forward_domain }} dns-server {{ s.index }} address '{{ s.address }}'
+{% endfor %}
+{% endif %}

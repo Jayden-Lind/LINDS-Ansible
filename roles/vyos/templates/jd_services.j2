@@ -1,0 +1,22 @@
+{#
+  SSH, SNMP and IPv6 router advertisements.
+  LLDP and NTP are shared and rendered by system.j2.
+#}
+{% for addr in vyos_ssh_listen_addresses %}
+set service ssh listen-address '{{ addr }}'
+{% endfor %}
+
+set service snmp community {{ vyos_snmp_community }} authorization 'ro'
+{% for listener in vyos_snmp_listen %}
+{% if listener.port is defined %}
+set service snmp listen-address {{ listener.address }} port '{{ listener.port }}'
+{% else %}
+set service snmp listen-address {{ listener.address }}
+{% endif %}
+{% endfor %}
+
+{% set ra = "set service router-advert interface " ~ main_lan_interface %}
+{% for key, value in vyos_router_advert.items() %}
+{{ ra }} {{ key }} '{{ value }}'
+{% endfor %}
+{{ ra }} prefix ::/64

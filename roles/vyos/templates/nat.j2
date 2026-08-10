@@ -1,0 +1,37 @@
+{#
+  Emits `set nat ...` lines from vyos_nat_source_rules / vyos_nat_destination_rules.
+  `comment` keys in the data are documentation only and are not rendered —
+  use `description` when you want the text on the box.
+#}
+{% for r in vyos_nat_source_rules | default([]) %}
+{% set p = "set nat source rule " ~ r.n %}
+{% if r.description is defined %}
+{{ p }} description '{{ r.description }}'
+{% endif %}
+{% if r.src is defined %}
+{{ p }} source address '{{ r.src }}'
+{% endif %}
+{% if r.dst_group is defined %}
+{{ p }} destination group network-group '{{ r.dst_group }}'
+{% endif %}
+{% if r.out_group is defined %}
+{{ p }} outbound-interface group '{{ r.out_group }}'
+{% endif %}
+{% if r.out_iface is defined %}
+{{ p }} outbound-interface name '{{ r.out_iface }}'
+{% endif %}
+{{ p }} translation address '{{ r.translation | default("masquerade") }}'
+{% endfor %}
+{% for r in vyos_nat_destination_rules | default([]) %}
+{% set p = "set nat destination rule " ~ r.n %}
+{% if r.description is defined %}
+{{ p }} description '{{ r.description }}'
+{% endif %}
+{{ p }} inbound-interface name '{{ r.in_iface | default(wan_interface) }}'
+{{ p }} protocol '{{ r.protocol }}'
+{{ p }} destination port '{{ r.dport }}'
+{{ p }} translation address '{{ r.to }}'
+{% if r.log | default(false) %}
+{{ p }} log
+{% endif %}
+{% endfor %}

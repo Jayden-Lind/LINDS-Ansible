@@ -1,0 +1,16 @@
+---
+# Static routes, dual-WAN failover and BGP. These were three files (jd_bgp,
+# jd_wlb and the static routes scattered through jd_wireguard); they are one
+# concern — what the routing table ends up looking like — so they live together.
+#
+# AS 64550 peers with:
+#   * LINDS pfsense over IPsec VTI vti0 (10.255.0.2 / AS 64551)
+#   * k8s nodes inside VLAN53 via a listen-range (AS 64512)
+#
+# The historical `load-balancing wan` setup this replaced load-balanced
+# router-originated traffic — including the on-box DNS forwarder — across both
+# WANs by weight, and broke connectivity whenever the cellular backup flapped.
+
+- name: Routing — static routes, dual-WAN failover, BGP, prefix-lists, route-maps
+  vyos.vyos.vyos_config:
+    lines: "{{ lookup('template', 'jd_routing.j2').splitlines() | select | list }}"

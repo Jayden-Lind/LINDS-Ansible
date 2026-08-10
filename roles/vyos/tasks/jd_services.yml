@@ -1,41 +1,7 @@
 ---
-- name: SSH listen-address
-  vyos.vyos.vyos_config:
-    lines:
-      - set service ssh listen-address 10.0.50.1
+# SSH, SNMP and IPv6 router advertisements. LLDP and NTP are shared and live
+# in templates/system.j2.
 
-- name: SNMP
+- name: SSH, SNMP and router advertisements
   vyos.vyos.vyos_config:
-    lines:
-      - set service snmp community public authorization ro
-      - set service snmp listen-address 10.0.50.1 port 161
-      - set service snmp listen-address 10.0.53.1
-
-- name: LLDP (with legacy protocol passthrough)
-  vyos.vyos.vyos_config:
-    lines:
-      - set service lldp legacy-protocols cdp
-      - set service lldp legacy-protocols edp
-      - set service lldp legacy-protocols fdp
-      - set service lldp legacy-protocols sonmp
-      - set service lldp snmp
-
-- name: NTP servers + restrict clients to RFC1918 only
-  vyos.vyos.vyos_config:
-    lines:
-      - set service ntp server 0.au.pool.ntp.org
-      - set service ntp server time1.vyos.net
-      - set service ntp server time2.vyos.net
-      - set service ntp server time3.vyos.net
-      - delete service ntp allow-client address 0.0.0.0/0
-      - delete service ntp allow-client address ::/0
-      - set service ntp allow-client address 10.0.0.0/8
-      - set service ntp allow-client address 172.16.0.0/12
-      - set service ntp allow-client address 192.168.0.0/16
-
-- name: IPv6 router advertisements on LAN
-  vyos.vyos.vyos_config:
-    lines:
-      - set service router-advert interface "{{ main_lan_interface }}" default-lifetime 3600
-      - set service router-advert interface "{{ main_lan_interface }}" default-preference high
-      - set service router-advert interface "{{ main_lan_interface }}" prefix ::/64
+    lines: "{{ lookup('template', 'jd_services.j2').splitlines() | select | list }}"

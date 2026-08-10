@@ -1,0 +1,30 @@
+---
+# linds-vyos-01 (192.168.6.1).
+#
+# NOT VERIFIED AGAINST THE RUNNING CONFIG. Only the JD router was reconciled
+# against its live state; the values here were lifted from the pre-refactor
+# task files so this router keeps emitting exactly what it emitted before.
+# Treat it as "known to be unchanged", not "known to be correct".
+#
+# The linds_*.yml task files are likewise left as they were.
+
+vyos_hostname: linds-vyos-01
+vyos_site: linds
+
+# Previously set unconditionally in the shared main.yml; pinned here so the
+# JD-side cleanups do not silently change this router.
+vyos_conntrack_modules: [ftp, h323, nfs, pptp, sip, sqlnet, tftp]
+vyos_ntp_servers: [0.au.pool.ntp.org]
+
+# The old shared main.yml applied these offloads to both routers.
+vyos_wan_offload: [hw-tc-offload, gro, gso, rfs, rps, sg]
+vyos_lan_offload: [hw-tc-offload, gro, gso, rfs, rps, sg]
+
+vyos_lldp_legacy_protocols: [cdp, edp, fdp, sonmp]
+vyos_snmp_community: public
+
+# NOTE: the previous shared main.yml set `ntp allow-client 0.0.0.0/0` and `::/0`
+# and only the JD router deleted them again — meaning this router has been
+# answering NTP from the whole internet, which is a reflection/amplification
+# vector. The role default (RFC1918 only) now applies here too. If that breaks
+# something, override vyos_ntp_allow_clients rather than reverting the default.

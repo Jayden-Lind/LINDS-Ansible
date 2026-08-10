@@ -1,0 +1,47 @@
+{#
+  NordVPN WireGuard egress tunnels.
+
+  Each tunnel owns a routing table holding a default route out the tunnel, and
+  a policy route steers one VLAN's traffic into that table.
+
+  Rule ordering matters. VyOS evaluates policy-route rules in numeric order and
+  `return`s on the first match, so a LAN-bypass rule only works if its number is
+  LOWER than the catch-all default rule. Setting `pbr.bypass_rule` emits the
+  bypass; omitting it means every packet arriving on the bound interface goes
+  into the tunnel, including inter-VLAN traffic.
+#}
+{% for t in vyos_wireguard_tunnels %}
+{% set wg = "set interfaces wireguard " ~ t.name %}
+{{ wg }} address '{{ t.address }}'
+{{ wg }} mtu '{{ t.mtu }}'
+{{ wg }} ip adjust-mss 'clamp-mss-to-pmtu'
+{{ wg }} private-key '{{ t.private_key }}'
+{% if t.peer.host_name is defined %}
+{# host-name lets vyos-domain-resolver re-resolve the endpoint when the provider
+   rotates it. A hard-coded address silently stops handshaking at that point. #}
+{{ wg }} peer {{ t.peer.name }} host-name '{{ t.peer.host_name }}'
+{% else %}
+{{ wg }} peer {{ t.peer.name }} address '{{ t.peer.address }}'
+{% endif %}
+{{ wg }} peer {{ t.peer.name }} public-key '{{ t.peer.public_key }}'
+{{ wg }} peer {{ t.peer.name }} allowed-ips '0.0.0.0/0'
+{{ wg }} peer {{ t.peer.name }} port '{{ t.peer.port | default(51820) }}'
+{{ wg }} peer {{ t.peer.name }} persistent-keepalive '{{ t.peer.keepalive | default(25) }}'
+
+set protocols static table {{ t.table }} route 0.0.0.0/0 interface {{ t.name }}
+
+{% set pbr = "set policy route " ~ t.pbr.policy %}
+{{ pbr }} interface '{{ t.pbr.interface }}'
+{% if t.pbr.bypass_rule is defined %}
+{{ pbr }} rule {{ t.pbr.bypass_rule }} destination group network-group 'LAN-Addresses'
+{% if t.pbr.source is defined %}
+{{ pbr }} rule {{ t.pbr.bypass_rule }} source address '{{ t.pbr.source }}'
+{% endif %}
+{{ pbr }} rule {{ t.pbr.bypass_rule }} set table 'main'
+{% endif %}
+{{ pbr }} rule {{ t.pbr.default_rule }} destination address '0.0.0.0/0'
+{% if t.pbr.source is defined %}
+{{ pbr }} rule {{ t.pbr.default_rule }} source address '{{ t.pbr.source }}'
+{% endif %}
+{{ pbr }} rule {{ t.pbr.default_rule }} set table '{{ t.table }}'
+{% endfor %}

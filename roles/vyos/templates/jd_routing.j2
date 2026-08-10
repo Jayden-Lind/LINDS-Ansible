@@ -1,0 +1,85 @@
+{#
+  Static routes, dual-WAN failover, and BGP.
+
+  Dual-WAN design
+  ---------------
+  Only the primary WAN is health-checked. While it can reach the internet the
+  default route rides it at metric 1; when it cannot, the default swings to the
+  cellular backup at metric 10. The backup's check pings only its own gateway,
+  never the internet, so a dead or flapping backup can never influence the
+  primary path.
+
+  Both WANs run `no-default-route` (see jd_interfaces.j2) so `protocols
+  failover` owns the default outright and DHCP never fights it for the prefix.
+
+  The failover daemon runs `ping -I <wan> <target>`, which still needs a route
+  to the target — hence the /32 statics pinning the check targets out the
+  primary. Without them the check deadlocks at cold start: no default route ->
+  no route to target -> check fails -> no default route. Non-DNS addresses are
+  used as targets so a primary outage never blackholes the DNS forwarder's
+  own upstreams.
+#}
+{% for route in vyos_static_routes %}
+{% if route.next_hop is defined %}
+set protocols static route {{ route.prefix }} next-hop {{ route.next_hop }}
+{% else %}
+set protocols static route {{ route.prefix }} interface {{ route.interface }}
+{% endif %}
+{% endfor %}
+
+{# Health-check targets pinned out the primary WAN. #}
+{% for target in vyos_failover_check_targets %}
+set protocols static route {{ target }}/32 next-hop {{ vyos_wan_gateway }}
+{% endfor %}
+
+{% set fo = "set protocols failover route 0.0.0.0/0 next-hop" %}
+{{ fo }} {{ vyos_wan_gateway }} interface '{{ wan_interface }}'
+{{ fo }} {{ vyos_wan_gateway }} metric '1'
+{{ fo }} {{ vyos_wan_gateway }} check type 'icmp'
+{% for target in vyos_failover_check_targets %}
+{{ fo }} {{ vyos_wan_gateway }} check target {{ target }}
+{% endfor %}
+{{ fo }} {{ vyos_backup_gateway }} interface '{{ main_lan_interface }}.{{ vyos_backup_wan_vif }}'
+{{ fo }} {{ vyos_backup_gateway }} metric '10'
+{{ fo }} {{ vyos_backup_gateway }} check type 'icmp'
+{{ fo }} {{ vyos_backup_gateway }} check target {{ vyos_backup_gateway }}
+
+{# ----- BGP ----- #}
+set protocols bgp system-as '{{ vyos_bgp_asn }}'
+set protocols bgp parameters bestpath as-path multipath-relax
+{% if vyos_bgp_router_id is defined %}
+set protocols bgp parameters router-id '{{ vyos_bgp_router_id }}'
+{% endif %}
+{% for net in vyos_bgp_networks %}
+set protocols bgp address-family ipv4-unicast network {{ net }}
+{% endfor %}
+{% for n in vyos_bgp_neighbors %}
+set protocols bgp neighbor {{ n.address }} remote-as '{{ n.remote_as }}'
+set protocols bgp neighbor {{ n.address }} update-source '{{ n.update_source }}'
+{% if n.export_route_map is defined %}
+set protocols bgp neighbor {{ n.address }} address-family ipv4-unicast route-map export '{{ n.export_route_map }}'
+{% endif %}
+{% endfor %}
+{% for r in vyos_bgp_listen_ranges %}
+set protocols bgp listen range {{ r.prefix }} peer-group '{{ r.peer_group }}'
+{% endfor %}
+{% for g in vyos_bgp_peer_groups %}
+set protocols bgp peer-group {{ g.name }} remote-as '{{ g.remote_as }}'
+{% if g.export_route_map is defined %}
+set protocols bgp peer-group {{ g.name }} address-family ipv4-unicast route-map export '{{ g.export_route_map }}'
+{% endif %}
+{% endfor %}
+
+{# ----- Policy ----- #}
+{% for pl in vyos_prefix_lists %}
+set policy prefix-list {{ pl.name }} rule {{ pl.rule }} action '{{ pl.action }}'
+set policy prefix-list {{ pl.name }} rule {{ pl.rule }} prefix '{{ pl.prefix }}'
+{% endfor %}
+{% for rm in vyos_route_maps %}
+{% for r in rm.rules %}
+set policy route-map {{ rm.name }} rule {{ r.n }} action '{{ r.action }}'
+{% if r.match_prefix_list is defined %}
+set policy route-map {{ rm.name }} rule {{ r.n }} match ip address prefix-list '{{ r.match_prefix_list }}'
+{% endif %}
+{% endfor %}
+{% endfor %}
