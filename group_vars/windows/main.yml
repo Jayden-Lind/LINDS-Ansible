@@ -1,0 +1,24 @@
+---
+# WinRM over Kerberos. Nothing secret lives here - authentication comes from
+# the operator's ticket cache (`make kinit`).
+#
+# Two constraints, both learned the hard way:
+#
+#   * The venv must be built against /usr/bin/python3, not the nix Python.
+#     pykerberos links against the system MIT krb5 and will not load under
+#     nix's glibc (`libgssapi_krb5.so.2: cannot open shared object file`).
+#
+#   * Kerberos delegation is REQUIRED, not optional. The GPMC cmdlets make an
+#     onward LDAP bind and fail with LDAP_OPERATIONS_ERROR (0x80072020)
+#     without a forwarded ticket. CredSSP is the usual workaround and is
+#     deliberately rejected here because it weakens the servers.
+ansible_connection: winrm
+ansible_port: 5985
+ansible_winrm_transport: kerberos
+ansible_winrm_kerberos_delegation: true
+ansible_winrm_message_encryption: always
+ansible_winrm_read_timeout_sec: 900
+ansible_winrm_operation_timeout_sec: 840
+
+# Port 5985 is plaintext HTTP at the transport layer, but Kerberos message
+# encryption is enforced above it, so payloads are never on the wire in clear.

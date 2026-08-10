@@ -3,3 +3,4 @@
 /roles/clara*
 vault_password
 /.idea/
+/.venv

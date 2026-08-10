@@ -1,0 +1,23 @@
+---
+# Windows domain baseline for linds.com.au.
+#
+# Requires a Kerberos ticket - run `make kinit` first. Nothing here stores a
+# credential.
+#
+# Forest-wide state (site topology, FSMO placement, Recycle Bin) is applied
+# from a single DC; per-host state (time hierarchy) runs everywhere.
+
+- name: AD forest topology and recoverability
+  hosts: windows_dc[0]
+  gather_facts: false
+  roles:
+    - windows_ad_topology
+    - windows_ad_recovery
+    - windows_dfsr
+
+- name: Per-DC configuration
+  hosts: windows_dc
+  gather_facts: false
+  roles:
+    - windows_dc_time
+

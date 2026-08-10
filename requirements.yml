@@ -15,3 +15,6 @@ collections:
   - name: vyos.vyos
   - name: community.crypto
   - name: community.vmware
+  - name: ansible.windows
+  - name: community.windows
+  - name: microsoft.ad
