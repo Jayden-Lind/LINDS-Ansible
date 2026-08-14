@@ -39,6 +39,24 @@ proxmox_zfs_module_params:
       zfs_dirty_data_max: 2147483648
       zfs_vdev_async_write_active_max_dirty_percent: 60
       zfs_delay_min_dirty_percent: 40
+  - comment: >-
+      Inline TRIM floor, raised from the 32 KiB default to 1 MiB. The NAS-SSD
+      870 EVOs advertise "Data Set Management TRIM supported" but not
+      SEND/RECV FPDMA QUEUED, so TRIM is not queueable: the kernel drains all
+      outstanding NCQ commands, issues the TRIM, then refills. Under load that
+      is a pipeline stall per command, and it showed up as 3-6 ms trim_wait in
+      zpool iostat -l. The trim request-size histogram put sub-1 MiB extents at
+      ~87% of the ~1.54M TRIM commands issued since boot but only ~34% of the
+      bytes, so this floor drops ~87% of the queue drains while still trimming
+      ~66% of the bytes inline. Caveats: the parameter is module-wide, not
+      per-pool, and it gates manual zpool trim as well as autotrim — sub-1 MiB
+      ranges are skipped by both. Manual trim walks each metaslab's coalesced
+      free map, where contiguous runs are much larger, so its coverage is far
+      less affected than the raw histogram suggests. Only NAS-SSD is affected
+      in practice: the VM pool members report discard_max_bytes=0 through the
+      Adaptec Series 8 and cannot be trimmed at all, and HDD-20T is rust.
+    params:
+      zfs_trim_extent_bytes_min: 1048576
 
 # NFS exports (override in inventory)
 proxmox_nfs_exports: []

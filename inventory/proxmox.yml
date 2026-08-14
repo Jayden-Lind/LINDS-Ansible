@@ -7,6 +7,17 @@ proxmox:
           ansible_host: 10.0.50.246
       vars:
         proxmox_zfs_datasets:
+          # Pool root, not a data dataset. /usr/lib/zfs-linux/trim reads this
+          # user property off the root dataset to decide what the monthly cron
+          # trims; unset it defaults to "auto", which only trims NVMe-only
+          # pools and so silently skipped this SATA pool. Pairs with the
+          # zfs_trim_extent_bytes_min floor in the proxmox role defaults: the
+          # floor keeps inline autotrim off the hot path, this makes the
+          # periodic full trim actually run. Not set on VM — those disks
+          # present discard_max_bytes=0 via the Adaptec and reject trim.
+          - name: NAS-SSD
+            properties:
+              org.debian:periodic-trim: enable
           - name: VM/truenas-nas
             properties:
               mountpoint: /mnt/NAS
