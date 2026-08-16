@@ -167,16 +167,25 @@ vyos_dhcp_ddns:
 # ----- DNS forwarder -------------------------------------------------------
 vyos_dns_listen_addresses: [10.0.50.1, 10.0.53.1, 10.0.52.1]
 vyos_dns_learn_hosts_from: eth1
-# No k8s.linds.com.au stub. CoreDNS is authoritative for that zone inside the
-# cluster, but kube-dns is a ClusterIP-only Service (10.96.0.10) with no
-# LoadBalancer, so it is unroutable from here — queries were going out the WAN
-# and timing out (~14k outgoing-timeouts, matching servfails). Nothing on the
-# LAN needs it either: external-dns publishes every Service and Ingress as
-# <name>.linds.com.au straight into AD DNS over RFC2136, which the stub below
-# already covers. Re-add only if CoreDNS is exposed on a routable address.
+# The k8s.linds.com.au stub was previously removed here: kube-dns is a
+# ClusterIP-only Service (10.96.0.10), which used to be unroutable off-cluster,
+# so queries leaked out the WAN and timed out (~14k outgoing-timeouts, matching
+# servfails). Cilium now advertises ClusterIPs over BGP (LINDS-Terraform
+# proxmox/cilium.tf), so 10.96.0.10 is a real route on this router and the stub
+# is back.
+#
+# This is what makes <svc>.<ns>.svc.k8s.linds.com.au resolvable LAN-wide — a
+# superset of the <name>.linds.com.au records external-dns publishes into AD,
+# which only cover Services with an Ingress or a LoadBalancer.
+#
+# It depends on that BGP advertisement. If ClusterIP is ever dropped from the
+# Service advertisement, drop this stub in the same change or DNS for the zone
+# goes back to timing out rather than failing fast.
 vyos_dns_domains:
   - name: linds.com.au
     servers: [10.0.50.200, 10.3.1.200, 10.3.1.201, 192.168.6.1]
+  - name: k8s.linds.com.au
+    servers: [10.96.0.10]
 
 # ----- Services ------------------------------------------------------------
 vyos_ssh_listen_addresses: [10.0.50.1]

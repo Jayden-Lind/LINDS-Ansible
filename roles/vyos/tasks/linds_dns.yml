@@ -12,6 +12,12 @@
       - set service dns forwarding listen-address 10.3.1.1
       - set service dns forwarding dhcp "{{ main_lan_interface }}"
 
+# The k8s.linds.com.au stub points at the kube-dns ClusterIP (10.96.0.10).
+# That address only became routable off-cluster when Cilium started advertising
+# ClusterIPs over BGP (LINDS-Terraform proxmox/cilium.tf) — before that this
+# stub was a black hole and queries for the zone timed out. JD carries the same
+# stub via vyos_dns_domains in inventory/group_vars/jd_vyos.yml; if ClusterIP is
+# ever dropped from the Service advertisement, remove both in the same change.
 - name: DNS forwarder — domain stubs (linds.com.au + k8s)
   vyos.vyos.vyos_config:
     lines:
