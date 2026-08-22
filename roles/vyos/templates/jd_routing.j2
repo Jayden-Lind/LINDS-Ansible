@@ -12,12 +12,19 @@
   Both WANs run `no-default-route` (see jd_interfaces.j2) so `protocols
   failover` owns the default outright and DHCP never fights it for the prefix.
 
+  The primary next-hop is installed `onlink`: the ISP lease carries no router
+  option and the bridge-mode modem proxy-ARPs for any address, so the gateway
+  IP is a label rather than something that must sit inside the current DHCP
+  prefix (see vyos_wan_gateway in group_vars). Without `onlink` the kernel
+  rejects the route the day the ISP moves the lease to another block.
+
   The failover daemon runs `ping -I <wan> <target>`, which still needs a route
   to the target — hence the /32 statics pinning the check targets out the
-  primary. Without them the check deadlocks at cold start: no default route ->
-  no route to target -> check fails -> no default route. Non-DNS addresses are
-  used as targets so a primary outage never blackholes the DNS forwarder's
-  own upstreams.
+  primary. They are pinned to the *interface*, not a gateway address, for the
+  same reason as above. Without them the check deadlocks at cold start: no
+  default route -> no route to target -> check fails -> no default route.
+  Non-DNS addresses are used as targets so a primary outage never blackholes
+  the DNS forwarder's own upstreams.
 #}
 {% for route in vyos_static_routes %}
 {% if route.next_hop is defined %}
@@ -29,13 +36,17 @@ set protocols static route {{ route.prefix }} interface {{ route.interface }}
 
 {# Health-check targets pinned out the primary WAN. #}
 {% for target in vyos_failover_check_targets %}
-set protocols static route {{ target }}/32 next-hop {{ vyos_wan_gateway }}
+set protocols static route {{ target }}/32 interface {{ wan_interface }}
 {% endfor %}
 
 {% set fo = "set protocols failover route 0.0.0.0/0 next-hop" %}
 {{ fo }} {{ vyos_wan_gateway }} interface '{{ wan_interface }}'
 {{ fo }} {{ vyos_wan_gateway }} metric '1'
+{% if vyos_wan_gateway_onlink | default(false) %}
+{{ fo }} {{ vyos_wan_gateway }} onlink
+{% endif %}
 {{ fo }} {{ vyos_wan_gateway }} check type 'icmp'
+{{ fo }} {{ vyos_wan_gateway }} check policy '{{ vyos_failover_check_policy | default("any-available") }}'
 {% for target in vyos_failover_check_targets %}
 {{ fo }} {{ vyos_wan_gateway }} check target {{ target }}
 {% endfor %}

@@ -55,9 +55,18 @@ vyos_wan_extra_settings:
   - interrupt-coalescing cqe-mode-tx
 
 # ----- Dual-WAN failover ---------------------------------------------------
-# DHCP-assigned gateways. Stable in practice, but hard-coded because
-# `protocols failover` cannot learn them while no-default-route is set.
-vyos_wan_gateway: 1.159.127.254
+# Telstra's DHCP lease on eth2 carries NO `routers` option
+# (/run/dhclient/dhclient_eth2.lease: new_routers=''), so there is no gateway
+# to learn and `protocols failover ... dhcp-interface eth2` silently does
+# nothing. The bridge-mode Sagemcom modem proxy-ARPs for every address
+# instead, so the primary next-hop is just a label: with `onlink` (see
+# jd_routing.j2) the kernel ARPs for it on eth2 whatever /20 Telstra hands out
+# that day. The previous 1.159.127.254 (no onlink) broke on 2026-08-21 when
+# the lease moved to 121.221.64.0/20 — the kernel refused the route and the
+# router rebooted onto the cellular backup.
+vyos_wan_gateway: 121.221.64.1
+vyos_wan_gateway_onlink: true
+# Cellular backup: a real on-link address on the modem's 192.168.0.0/24.
 vyos_backup_gateway: 192.168.0.1
 vyos_failover_check_targets: [8.8.8.8, 8.8.4.4]
 
@@ -87,7 +96,11 @@ vyos_dhcp_shared_networks:
     subnets:
       - prefix: 10.0.50.0/24
         subnet_id: 1
-        lease: 3600
+        # 24h (was 1h). Every lease commit — renewals at half-lease included —
+        # makes vyos-hostsd reload the DNS forwarder's zones, which wipes its
+        # entire cache (see vyos_dns_* in roles/vyos/defaults/main.yml).
+        # ~25 clients on 1h leases was ~40 cache wipes an hour.
+        lease: 86400
         range: {start: 10.0.50.2, stop: 10.0.50.199}
         options:
           default-router: 10.0.50.1
@@ -166,7 +179,9 @@ vyos_dhcp_ddns:
 
 # ----- DNS forwarder -------------------------------------------------------
 vyos_dns_listen_addresses: [10.0.50.1, 10.0.53.1, 10.0.52.1]
-vyos_dns_learn_hosts_from: eth1
+# vyos_dns_learn_hosts_from is deliberately unset: it used to name eth1, which
+# is static and so contributed nothing, and pointing it at the WAN would put
+# Telstra's resolvers into the catch-all forwarder pool next to Cloudflare.
 # The k8s.linds.com.au stub was previously removed here: kube-dns is a
 # ClusterIP-only Service (10.96.0.10), which used to be unroutable off-cluster,
 # so queries leaked out the WAN and timed out (~14k outgoing-timeouts, matching
@@ -181,9 +196,14 @@ vyos_dns_learn_hosts_from: eth1
 # It depends on that BGP advertisement. If ClusterIP is ever dropped from the
 # Service advertisement, drop this stub in the same change or DNS for the zone
 # goes back to timing out rather than failing fast.
+# linds.com.au: the local DC (0.3 ms) plus one LINDS DC over the IPsec VTI as
+# backup. pdns orders forwarders by measured speed, so the backup only sees
+# traffic when 10.0.50.200 is slow or down. 10.3.1.201 and 192.168.6.1 were
+# dropped 2026-08-22: with vti0 down after a reboot the three tunnel-side
+# servers were 82% of all outgoing timeouts (1.5 s stalls on internal lookups).
 vyos_dns_domains:
   - name: linds.com.au
-    servers: [10.0.50.200, 10.3.1.200, 10.3.1.201, 192.168.6.1]
+    servers: [10.0.50.200, 10.3.1.200]
   - name: k8s.linds.com.au
     servers: [10.96.0.10]
 

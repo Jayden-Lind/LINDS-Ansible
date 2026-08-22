@@ -1,6 +1,10 @@
 {#
   JD-specific DNS forwarder settings. The shared bits (cache size, allow-from,
-  upstream resolvers, dnssec, negative-ttl) are in system.j2.
+  upstream resolvers, dnssec, TTL/cache tuning) are in system.j2.
+
+  `dhcp <iface>` adds the resolvers learned by that interface's DHCP client to
+  the catch-all forwarder pool. Only emitted when vyos_dns_learn_hosts_from is
+  set; JD leaves it unset (see group_vars).
 
   `addnta` adds a negative trust anchor so the stub domains resolve even though
   they are unsigned — required because these are internal AD zones.
@@ -8,7 +12,9 @@
 {% for addr in vyos_dns_listen_addresses %}
 set service dns forwarding listen-address '{{ addr }}'
 {% endfor %}
+{% if vyos_dns_learn_hosts_from is defined %}
 set service dns forwarding dhcp '{{ vyos_dns_learn_hosts_from }}'
+{% endif %}
 {% for domain in vyos_dns_domains %}
 set service dns forwarding domain {{ domain.name }} addnta
 {% for server in domain.servers %}

@@ -37,6 +37,9 @@ set system sysctl parameter {{ key }} value '{{ value }}'
 {# ----- DNS forwarder (common) ----- #}
 set service dns forwarding cache-size '{{ vyos_dns_cache_size }}'
 set service dns forwarding negative-ttl '{{ vyos_dns_negative_ttl }}'
+set service dns forwarding minimum-ttl-override '{{ vyos_dns_minimum_ttl_override }}'
+set service dns forwarding ttl-percent '{{ vyos_dns_ttl_percent }}'
+set service dns forwarding serve-stale-extension '{{ vyos_dns_serve_stale_extension }}'
 set service dns forwarding dnssec '{{ vyos_dns_dnssec }}'
 {% for net in vyos_dns_allow_from %}
 set service dns forwarding allow-from '{{ net }}'

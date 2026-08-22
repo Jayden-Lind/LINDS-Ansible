@@ -48,8 +48,33 @@ vyos_ntp_servers: [0.au.pool.ntp.org]
 vyos_ntp_allow_clients: "{{ vyos_rfc1918 }}"
 
 # ----- DNS forwarder -------------------------------------------------------
+# VyOS drives pdns-recursor (4.8.x). Tuned 2026-08-22 after measuring jd-vyos-01
+# at ~19% served-from-cache (17.7k queries, 13.3k sent upstream) with ~50 live
+# entries on a 1,000,000-entry budget. Two causes:
+#   * `service dhcp-server hostfile-update` makes vyos-hostsd run
+#     `rec_control reload-zones` on EVERY lease commit (renewals included), and
+#     because the catch-all `.` forward zone is reloaded too, pdns wipes the
+#     whole record + packet + negative cache each time (~40x/hour on 1h leases).
+#     Mitigated with 24h leases — see vyos_dhcp_shared_networks in
+#     group_vars/jd_vyos.yml. Dropping hostfile-update would stop it entirely
+#     but loses <dhcp-host>.linds.com.au resolution, which AD does not provide.
+#   * Tiny TTLs (AD answers TTL 0, Netflix 4s, Akamai 20s) plus a 60s
+#     negative-ttl meant almost nothing survived long enough to be re-used.
 vyos_dns_cache_size: 1000000
-vyos_dns_negative_ttl: 60
+# pdns default 3600. 300 keeps the search-domain NXDOMAIN churn
+# (host.linds.com.au.linds.com.au, *.svc.cluster.local.linds.com.au — the top
+# queries on the box) cached, while a newly created internal name that was
+# already looked up is hidden for at most 5 minutes.
+vyos_dns_negative_ttl: 300
+# Floor every TTL at 60s. pdns: "technically an RFC violation, but might improve
+# performance a lot". Cost: a changed AD record can take up to 60s to show.
+vyos_dns_minimum_ttl_override: 60
+# Refetch a record in the background once <=10% of its TTL is left, so hot
+# names never take a cache miss on the client's request path. pdns default 0.
+vyos_dns_ttl_percent: 10
+# When upstream cannot be reached, keep answering with expired records,
+# extended 30s at a time up to 1440 times (12h). pdns default 0 = off.
+vyos_dns_serve_stale_extension: 1440
 vyos_dns_dnssec: 'off'
 vyos_dns_allow_from: "{{ vyos_rfc1918 }}"
 vyos_dns_forwarders: "{{ vyos_name_servers }}"
