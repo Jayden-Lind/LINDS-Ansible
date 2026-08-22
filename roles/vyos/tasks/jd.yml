@@ -17,6 +17,9 @@
 - name: Services (SSH, SNMP, router-advert)
   ansible.builtin.include_tasks: jd_services.yml
 
+- name: Suricata IDS + EVE log shipping to Loki
+  ansible.builtin.include_tasks: jd_suricata.yml
+
 - name: Firewall
   ansible.builtin.include_tasks: jd_firewall.yml
 

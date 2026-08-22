@@ -1,0 +1,66 @@
+{#
+  Suricata IDS (detection-only, af-packet copy mode — never in the forwarding
+  path) on the LAN trunk, with EVE JSON shipped to Grafana Loki via syslog.
+
+  Pipeline: eve (filetype syslog) -> journald -> rsyslog -> RFC5424 over TCP
+  with octet-counted framing -> Alloy syslog LoadBalancer in the k8s cluster
+  -> Loki. Receiving side: LINDS-Kubernetes applications/monitoring-loki.yaml;
+  dashboard: base/monitoring/suricata-dashboard.yaml.
+
+  Capture is the PARENT interface only, never its VLAN subinterfaces: the
+  parent already sees every VLAN tagged, so adding subinterfaces captures each
+  packet twice and splits flows across capture threads (constant "STREAM pkt
+  seen on wrong thread" plus silently failed app-layer parsing).
+
+  Group names render into suricata.yaml vars (home-net -> $HOME_NET). ET Open
+  references the whole standard var set, so every group below must exist or
+  rule loading fails.
+#}
+set service suricata interface {{ main_lan_interface }}
+
+{% for net in vyos_suricata_home_nets %}
+set service suricata address-group home-net address {{ net }}
+{% endfor %}
+set service suricata address-group external-net group !home-net
+{% for grp in ['http-servers', 'smtp-servers', 'sql-servers', 'dns-servers',
+               'telnet-servers', 'dc-servers', 'dnp3-server', 'dnp3-client',
+               'modbus-server', 'modbus-client', 'enip-server', 'enip-client'] %}
+set service suricata address-group {{ grp }} group home-net
+{% endfor %}
+set service suricata address-group aim-servers group external-net
+
+set service suricata port-group http-ports port 80
+set service suricata port-group http-ports port 8080
+set service suricata port-group shellcode-ports group !http-ports
+set service suricata port-group oracle-ports port 1521
+set service suricata port-group ssh-ports port 22
+set service suricata port-group dnp3-ports port 20000
+set service suricata port-group modbus-ports port 502
+set service suricata port-group file-data-ports group http-ports
+set service suricata port-group file-data-ports port 110
+set service suricata port-group file-data-ports port 143
+set service suricata port-group ftp-ports port 21
+set service suricata port-group geneve-ports port 6081
+set service suricata port-group vxlan-ports port 4789
+set service suricata port-group teredo-ports port 3544
+
+{# EVE via syslog: no eve.json to fill the disk. Local copies are bounded —
+   rsyslog caps /var/log/messages at 1M x 10 and the post-boot script caps
+   journald at 300M. flow/netflow types are deliberately absent (volume). #}
+set service suricata log eve filetype syslog
+{% for t in vyos_suricata_eve_types %}
+set service suricata log eve type {{ t }}
+{% endfor %}
+
+{# All facilities at info -> Alloy. include-timezone selects rsyslog's RFC5424
+   template — Alloy's TCP listener parses strict RFC5424 and silently drops
+   anything else — and octet-counted matches its framing. #}
+set system syslog remote {{ vyos_syslog_remote_host }} port {{ vyos_syslog_remote_port }}
+set system syslog remote {{ vyos_syslog_remote_host }} protocol tcp
+set system syslog remote {{ vyos_syslog_remote_host }} format octet-counted
+set system syslog remote {{ vyos_syslog_remote_host }} format include-timezone
+set system syslog remote {{ vyos_syslog_remote_host }} facility all level info
+
+{# ET Open refresh, Mondays 04:00 (update_suricata.sh also restarts the daemon). #}
+set system task-scheduler task suricata-update crontab-spec '0 4 * * 1'
+set system task-scheduler task suricata-update executable path /usr/libexec/vyos/op_mode/update_suricata.sh

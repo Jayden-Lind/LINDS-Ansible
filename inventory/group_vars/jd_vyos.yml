@@ -370,3 +370,17 @@ vyos_wireguard_tunnels:
       policy: NordVPN
       interface: eth1.51
       default_rule: 100
+
+# ----- Suricata IDS -> Grafana (Loki) --------------------------------------
+# Detection-only IDS on the LAN trunk; EVE events ride syslog to the Alloy
+# LoadBalancer in the k8s cluster. Pipeline notes in the role's
+# jd_suricata.j2; the receiving side and dashboard live in LINDS-Kubernetes.
+vyos_suricata_home_nets: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+vyos_suricata_eve_types: [alert, dns, tls, http, dhcp, ssh]
+# 2210059 "STREAM pkt seen on wrong thread": a router's capture sees both the
+# rx and tx copy of every routed flow, and kernel fanout cannot keep both
+# directions on one capture thread — a permanent false positive here
+# (~1000 alerts / 5 min before it was disabled).
+vyos_suricata_disabled_sids: [2210059]
+vyos_syslog_remote_host: 172.16.1.23   # alloy-podlogs LoadBalancer (k8s)
+vyos_syslog_remote_port: 1515          # its strict-RFC5424 TCP listener
