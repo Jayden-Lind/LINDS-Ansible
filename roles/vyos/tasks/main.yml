@@ -10,11 +10,24 @@
 # group_vars, the CLI syntax lives in the template, and the task list stays
 # short enough to read in one screen.
 
+# Cert/key blobs exceed the network_cli terminal width (512); the fetched
+# running config is corrupted at each wrap point, so vyos_config can never
+# see these lines as present and reports phantom drift on every run. Gate the
+# PKI tasks on a prefix match instead (first 400 chars arrive intact) — they
+# still fire when a cert is missing or rotated.
+- name: Read PKI state (long lines defeat vyos_config's diff — see README)
+  vyos.vyos.vyos_command:
+    commands:
+      - show configuration commands | match "set pki"
+  register: vyos_pki_running
+  changed_when: false
+
 - name: Install LINDS-CA into PKI
   vyos.vyos.vyos_config:
     lines:
-      - set pki ca LINDS certificate {{ item }}
+      - set pki ca LINDS certificate '{{ item }}'
   with_file: linds-ca.cer
+  when: lookup('file', 'linds-ca.cer')[:400] not in vyos_pki_running.stdout[0]
 
 - name: System, conntrack, sysctl, DNS forwarder, NTP and LLDP base
   vyos.vyos.vyos_config:
@@ -38,13 +51,13 @@
 - name: Cloudflare dynamic DNS
   vyos.vyos.vyos_config:
     lines:
-      - set service dns dynamic name service-Cloudflare-{{ wan_interface }} address interface "{{ wan_interface }}"
+      - set service dns dynamic name service-Cloudflare-{{ wan_interface }} address interface '{{ wan_interface }}'
       - set service dns dynamic name service-Cloudflare-{{ wan_interface }} protocol cloudflare
       - set service dns dynamic name service-Cloudflare-{{ wan_interface }} username token
-      - set service dns dynamic name service-Cloudflare-{{ wan_interface }} password "{{ cf_dyn_dns_key }}"
+      - set service dns dynamic name service-Cloudflare-{{ wan_interface }} password '{{ cf_dyn_dns_key }}'
       - set service dns dynamic name service-Cloudflare-{{ wan_interface }} ip-version both
-      - set service dns dynamic name service-Cloudflare-{{ wan_interface }} host-name "{{ dyn_host }}"
-      - set service dns dynamic name service-Cloudflare-{{ wan_interface }} zone "{{ cf_dyn_dns_zone }}"
+      - set service dns dynamic name service-Cloudflare-{{ wan_interface }} host-name '{{ dyn_host }}'
+      - set service dns dynamic name service-Cloudflare-{{ wan_interface }} zone '{{ cf_dyn_dns_zone }}'
 
 - name: Site configuration
   ansible.builtin.include_tasks:

@@ -40,7 +40,9 @@ vyos_pd_delegations:
 # absent (software steering, a loss on a 4-vCPU guest with 4 queues already) and
 # so is hw-tc-offload (meaningless on virtio, unsupported on the VF).
 vyos_lan_offload: [gro, gso, sg]
-vyos_wan_offload: [gro, gso, sg, tso]
+# tso was dropped from the running config (live state is the source of
+# truth); the post-boot ethtool line still enables it at the driver level.
+vyos_wan_offload: [gro, gso, sg]
 
 # eth2 was dropping frames at the ring: 5427 overruns. Hardware max is 8192.
 vyos_wan_ring_buffer:
@@ -106,7 +108,7 @@ vyos_dhcp_shared_networks:
           default-router: 10.0.50.1
           domain-name: linds.com.au
           domain-search: linds.com.au
-          name-server: [10.0.50.1, 10.0.50.200]
+          name-server: [10.0.50.1]
           time-zone: Australia/Melbourne
         static_mappings:
           - {name: bedroom-aircon, ip: 10.0.50.231, mac: '28:2e:89:56:f0:10'}
@@ -130,11 +132,11 @@ vyos_dhcp_shared_networks:
           domain-search: linds.com.au
           name-server: [10.0.53.1]
         static_mappings:
-          - {name: jd-kube-01, ip: 10.0.53.11, mac: 'bc:24:11:32:93:c4'}
           - {name: talos-cp, ip: 10.0.53.200, mac: 'BC:24:11:D4:F3:C1'}
           - {name: talos-worker-01, ip: 10.0.53.201, mac: '02:24:11:d4:f3:d1'}
           - {name: talos-worker-02, ip: 10.0.53.202, mac: '02:24:11:d4:f3:d2'}
           - {name: talos-worker-03, ip: 10.0.53.203, mac: '02:24:11:d4:f3:d3'}
+          - {name: talos-worker-04, ip: 10.0.53.204, mac: '02:24:11:d4:f3:d4'}
 
   - name: VLAN_ISOLATION
     options:

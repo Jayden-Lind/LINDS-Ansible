@@ -1,6 +1,13 @@
 ---
 vyos:
   vars:
+      # A VyOS commit that touches an interface can cascade into dependent
+      # services (suricata reloads ~52k ET Open rules, IPsec re-resolves its
+      # dhcp-interface binding) and easily exceeds the 30s network_cli default.
+      ansible_command_timeout: 180
+      ansible_connection: ansible.netcommon.network_cli
+      ansible_network_os: vyos.vyos.vyos
+      ansible_user: vyos
       priv_key: !vault |
         $ANSIBLE_VAULT;1.1;AES256
         31626138653636646430323261656564343337643561343763343234663936306237633734346236
@@ -393,9 +400,6 @@ vyos:
     jd_vyos:
       hosts:
         10.0.50.1:
-          ansible_connection: ansible.netcommon.network_cli
-          ansible_network_os: vyos.vyos.vyos
-          ansible_user: vyos
           ansible_password: !vault |
             $ANSIBLE_VAULT;1.1;AES256
             38356135636432633833616264346163316135323831636566366664383430383963626533643637
@@ -461,9 +465,6 @@ vyos:
     linds_vyos:
       hosts:
         192.168.6.1:
-          ansible_connection: ansible.netcommon.network_cli
-          ansible_network_os: vyos.vyos.vyos
-          ansible_user: vyos
           ansible_password: !vault |
             $ANSIBLE_VAULT;1.1;AES256
             38356135636432633833616264346163316135323831636566366664383430383963626533643637

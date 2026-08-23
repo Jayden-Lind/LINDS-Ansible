@@ -5,14 +5,18 @@
 - name: PKI — IPSEC site-to-site cert + key
   vyos.vyos.vyos_config:
     lines:
-      - set pki certificate IPSEC certificate "{{ pub_key }}"
-      - set pki certificate IPSEC private key "{{ priv_key }}"
+      - set pki certificate IPSEC certificate '{{ pub_key }}'
+      - set pki certificate IPSEC private key '{{ priv_key }}'
+  # prefix-gated: see the PKI note in tasks/main.yml
+  when: >-
+    pub_key[:400] not in vyos_pki_running.stdout[0]
+    or priv_key[:400] not in vyos_pki_running.stdout[0]
 
 - name: IPsec — daemon options + log
   vyos.vyos.vyos_config:
     lines:
-      - set vpn ipsec interface "{{ wan_interface }}"
-      - set vpn ipsec interface "{{ main_lan_interface }}.99"
+      - set vpn ipsec interface '{{ wan_interface }}'
+      - set vpn ipsec interface '{{ main_lan_interface }}.99'
       - set vpn ipsec log level 0
       - set vpn ipsec log subsystem asn
       - set vpn ipsec options disable-route-autoinstall

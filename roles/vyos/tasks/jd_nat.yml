@@ -5,8 +5,8 @@
 - name: Firewall WAN interface group (primary + cellular backup)
   vyos.vyos.vyos_config:
     lines:
-      - set firewall group interface-group WAN interface "{{ wan_interface }}"
-      - set firewall group interface-group WAN interface "{{ main_lan_interface }}.{{ vyos_backup_wan_vif }}"
+      - set firewall group interface-group WAN interface '{{ wan_interface }}'
+      - set firewall group interface-group WAN interface '{{ main_lan_interface }}.{{ vyos_backup_wan_vif }}'
 
 - name: NAT — source and destination rules
   vyos.vyos.vyos_config:
