@@ -2,10 +2,13 @@
   Suricata IDS (detection-only, af-packet copy mode — never in the forwarding
   path) on the LAN trunk, with EVE JSON shipped to Grafana Loki via syslog.
 
-  Pipeline: eve (filetype syslog) -> journald -> rsyslog -> RFC5424 over TCP
-  with octet-counted framing -> Alloy syslog LoadBalancer in the k8s cluster
-  -> Loki. Receiving side: LINDS-Kubernetes applications/monitoring-loki.yaml;
-  dashboard: base/monitoring/suricata-dashboard.yaml.
+  Pipeline: eve (filetype regular) -> /var/log/suricata/eve.json -> rsyslog
+  imfile relay (templates/suricata-eve-rsyslog.j2) -> RFC5424 over TCP with
+  octet-counted framing -> Alloy syslog LoadBalancer in the k8s cluster ->
+  Loki. Receiving side: LINDS-Kubernetes applications/monitoring-loki.yaml;
+  dashboard: base/monitoring/suricata-dashboard.yaml. The file path keeps EVE
+  out of journald so `show log` and login terminals stay VyOS-only; VyOS
+  auto-generates logrotate config for the eve file.
 
   Capture is the PARENT interface only, never its VLAN subinterfaces: the
   parent already sees every VLAN tagged, so adding subinterfaces captures each
@@ -44,10 +47,11 @@ set service suricata port-group geneve-ports port 6081
 set service suricata port-group vxlan-ports port 4789
 set service suricata port-group teredo-ports port 3544
 
-{# EVE via syslog: no eve.json to fill the disk. Local copies are bounded —
-   rsyslog caps /var/log/messages at 1M x 10 and the post-boot script caps
-   journald at 300M. flow/netflow types are deliberately absent (volume). #}
-set service suricata log eve filetype syslog
+{# EVE to file, relayed by rsyslog imfile — NOT filetype syslog, which routes
+   every event through journald (floods `show log`; and suricata's unpatched
+   default of local0.emerg gets broadcast to every logged-in terminal).
+   flow/netflow types are deliberately absent (volume). #}
+set service suricata log eve filetype regular
 {% for t in vyos_suricata_eve_types %}
 set service suricata log eve type {{ t }}
 {% endfor %}

@@ -20,17 +20,19 @@
 #      site-to-site, so the swanctl template is patched instead. The guard makes
 #      it idempotent, and it survives commits, DHCP renews and image upgrades.
 #
-#   3. Suricata EVE syslog facility/level. The VyOS suricata template sets
-#      neither, and suricata's default is local0.emerg — which rsyslog
-#      broadcasts to every logged-in terminal (*.emerg omusrmsg). Patched to
-#      local5.Info; see jd_suricata.yml for the rest of the IDS setup.
+#   3. /etc does not survive image upgrades, so three files are re-seeded:
+#      the rsyslog imfile relay that ships suricata's eve.json to Loki without
+#      touching journald, a journald size cap, and suricata-update's
+#      disable.conf (sid tuning). All three are normally written by
+#      jd_suricata.yml; this only covers the boot after an image upgrade.
 #
-#   4. /etc does not survive image upgrades, so two files are re-seeded:
-#      a journald size cap (the suricata EVE feed would otherwise grow the
-#      journal to its 10%-of-disk default) and suricata-update's disable.conf
-#      (sid tuning, normally written by jd_suricata.yml).
+#      (Historical: EVE used to ride `filetype syslog`, which needed a
+#      facility/level patch to the VyOS suricata Jinja template. Abandoned —
+#      vyos-configd caches templates from first use, so a commit after the
+#      patch silently rendered the stale unpatched copy; and syslog-routed
+#      EVE floods journald/`show log` regardless of facility.)
 
-- name: Post-boot script (ethtool, IPsec RA UDP-encap, suricata syslog patch)
+- name: Post-boot script (ethtool, IPsec RA UDP-encap, /etc re-seeds)
   vyos.vyos.vyos_command:
     commands:
       - |
@@ -46,16 +48,14 @@
         /usr/libexec/vyos/conf_mode/vpn_ipsec.py >/dev/null 2>&1 || true
         fi
 
-        # --- Suricata EVE syslog facility/level (no CLI node; the template's
-        # default is local0.emerg, which rsyslog broadcasts to every TTY) ---
-        SUR_TMPL="/usr/share/vyos/templates/ids/suricata.j2"
-        if [ -f "$SUR_TMPL" ] && ! grep -q "facility: local5" "$SUR_TMPL"; then
-        sed -i '/^      filename: {% raw %}{{ suricata.log.eve.filename }}{% endraw %}$/a\      facility: local5\n      level: Info' "$SUR_TMPL"
-        /usr/libexec/vyos/conf_mode/service_suricata.py >/dev/null 2>&1 || true
-        systemctl restart suricata >/dev/null 2>&1 || true
+        # --- Re-seed /etc after image upgrades: suricata EVE relay, journald
+        # cap, suricata sids (normally owned by the ansible jd_suricata run) ---
+        if [ ! -f /etc/rsyslog.d/60-suricata-eve.conf ]; then
+        cat > /etc/rsyslog.d/60-suricata-eve.conf <<'EVECONF'
+        {{ lookup('template', 'suricata-eve-rsyslog.j2') }}
+        EVECONF
+        systemctl restart rsyslog >/dev/null 2>&1 || true
         fi
-
-        # --- Re-seed /etc after image upgrades: journald cap + suricata sids ---
         mkdir -p /etc/systemd/journald.conf.d
         if [ ! -f /etc/systemd/journald.conf.d/90-size-cap.conf ]; then
         printf '[Journal]\nSystemMaxUse=300M\n' > /etc/systemd/journald.conf.d/90-size-cap.conf

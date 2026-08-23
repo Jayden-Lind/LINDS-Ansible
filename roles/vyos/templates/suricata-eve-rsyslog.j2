@@ -1,0 +1,26 @@
+# Ship Suricata EVE JSON straight to the Alloy syslog LoadBalancer in the k8s
+# cluster (-> Loki -> Grafana). Dedicated ruleset: these lines never reach
+# journald, the default ruleset, or local log files - so `show log`,
+# /var/log/messages and login terminals stay VyOS-only. (EVE via `filetype
+# syslog` instead goes through journald, floods `show log`, and - at its
+# unpatched default of local0.emerg - gets broadcast to every logged-in
+# terminal by rsyslog's *.emerg rule.)
+# Owned by LINDS-Ansible (roles/vyos, jd_suricata.yml); the post-boot script
+# re-seeds it after image upgrades (/etc does not survive them).
+module(load="imfile")
+input(type="imfile"
+      File="/var/log/suricata/eve.json"
+      Tag="suricata"
+      Severity="info"
+      Facility="local5"
+      Ruleset="suricata-eve")
+ruleset(name="suricata-eve") {
+    action(type="omfwd"
+           target="{{ vyos_syslog_remote_host }}"
+           port="{{ vyos_syslog_remote_port }}"
+           protocol="tcp"
+           TCP_Framing="octet-counted"
+           template="RSYSLOG_SyslogProtocol23Format"
+           queue.type="linkedList"
+           queue.size="10000")
+}

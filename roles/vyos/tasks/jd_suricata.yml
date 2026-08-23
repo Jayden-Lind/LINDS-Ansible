@@ -1,19 +1,28 @@
 ---
-# Suricata IDS -> Grafana. Native CLI config only; the two things VyOS has no
-# node for are handled elsewhere:
-#   * The EVE syslog facility/level template patch and the journald size cap
-#     live in the post-boot script (jd_postboot.yml).
-#   * Rule tuning is /etc/suricata/disable.conf, consumed by suricata-update
-#     on every run (weekly task-scheduler job, or a manual `update suricata`).
-#     /etc does not survive image upgrades, so the post-boot script re-seeds
-#     the same file.
+# Suricata IDS -> Grafana. Native CLI config plus two /etc files (both
+# re-seeded by the post-boot script after image upgrades, since /etc does not
+# survive them):
+#   * /etc/rsyslog.d/60-suricata-eve.conf — imfile relay that ships eve.json
+#     to Loki without touching journald (keeps `show log` VyOS-only).
+#   * /etc/suricata/disable.conf — sid tuning, consumed by suricata-update on
+#     every run (weekly task-scheduler job, or a manual `update suricata`).
 #
 # A fresh image needs one manual `update suricata` to fetch ET Open before the
 # daemon has any rules to load; after that the scheduler keeps them current.
 
-- name: Suricata IDS + EVE-to-Loki syslog shipping
+- name: Suricata IDS config (capture, EVE-to-file, syslog remote, rule refresh)
   vyos.vyos.vyos_config:
     lines: "{{ lookup('template', 'jd_suricata.j2').splitlines() | select | list }}"
+
+- name: EVE-to-Loki rsyslog relay (imfile, journald-free)
+  vyos.vyos.vyos_command:
+    commands:
+      - |
+        sudo tee /etc/rsyslog.d/60-suricata-eve.conf >/dev/null <<'EVECONF'
+        {{ lookup('template', 'suricata-eve-rsyslog.j2') }}
+        EVECONF
+        sudo systemctl restart rsyslog
+  changed_when: false
 
 - name: Suricata rule tuning (disable.conf, read by suricata-update)
   vyos.vyos.vyos_command:
