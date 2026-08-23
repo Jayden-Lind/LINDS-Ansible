@@ -7,6 +7,9 @@
 # terminal by rsyslog's *.emerg rule.)
 # Owned by LINDS-Ansible (roles/vyos, jd_suricata.yml); the post-boot script
 # re-seeds it after image upgrades (/etc does not survive them).
+# EVE alert events embed packet payloads and can exceed rsyslog's 8k default
+# ("message too long" truncation errors in syslog).
+global(maxMessageSize="64k")
 module(load="imfile")
 input(type="imfile"
       File="/var/log/suricata/eve.json"
