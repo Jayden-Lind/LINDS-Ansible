@@ -32,7 +32,10 @@ proxmox:
             properties:
               mountpoint: /mnt/HDD
               recordsize: 1M
-              compression: "off"
+              # lz4 early-aborts on incompressible media, so it is close to
+              # free on this pool and catches whatever compressible files
+              # land alongside it. Set live on 2026-09-02 (pool root too).
+              compression: lz4
               atime: "off"
 
         proxmox_nfs_exports:
