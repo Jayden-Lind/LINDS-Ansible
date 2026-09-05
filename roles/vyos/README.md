@@ -55,10 +55,17 @@ report unchanged (`changed_when: false`).
   `jd_postboot.yml`, which writes it whole. Never append to it from another
   task — a previous split writer duplicated blocks on every run.
 * **Suricata non-native bits** (`/etc/rsyslog.d/60-suricata-eve.conf` EVE→Loki
-  relay, `/etc/suricata/disable.conf` sid tuning, journald size cap) are
+  relay, `/etc/suricata/disable.conf` sid tuning, journald size cap, and the
+  `suricata.service.d/20-linds-capture.conf` runmode/thread drop-in) are
   written by `jd_suricata.yml` and re-seeded at boot by the post-boot script,
   because `/etc` does not survive VyOS image upgrades. A fresh image also
-  needs one manual `update suricata` to fetch ET Open.
+  needs one manual `update suricata` to fetch ET Open — and so does any
+  change to `vyos_suricata_disabled_sids` (suricata-update is what applies
+  disable.conf). Capture runs as **one ordered capture thread + autofp**:
+  with the stock one-worker-per-core fanout, the kernel sprays the router's
+  own VLAN-tagged egress copies across threads (`tcp.pkt_on_wrong_thread`
+  15–30%), so check that counter stays at 0 after any Suricata/VyOS upgrade
+  (`sudo suricatasc -c dump-counters /run/suricata/suricata.socket`).
 * **Patching VyOS Jinja templates under `/usr/share` is a trap:** the
   long-lived `vyos-configd` daemon caches templates from first use, so the
   next commit silently renders the stale copy unless configd is restarted.

@@ -20,11 +20,12 @@
 #      site-to-site, so the swanctl template is patched instead. The guard makes
 #      it idempotent, and it survives commits, DHCP renews and image upgrades.
 #
-#   3. /etc does not survive image upgrades, so three files are re-seeded:
+#   3. /etc does not survive image upgrades, so four files are re-seeded:
 #      the rsyslog imfile relay that ships suricata's eve.json to Loki without
-#      touching journald, a journald size cap, and suricata-update's
-#      disable.conf (sid tuning). All three are normally written by
-#      jd_suricata.yml; this only covers the boot after an image upgrade.
+#      touching journald, a journald size cap, suricata-update's disable.conf
+#      (sid tuning) and the suricata systemd drop-in (single ordered capture
+#      thread + autofp). All are normally written by jd_suricata.yml; this
+#      only covers the boot after an image upgrade.
 #
 #      (Historical: EVE used to ride `filetype syslog`, which needed a
 #      facility/level patch to the VyOS suricata Jinja template. Abandoned —
@@ -62,5 +63,12 @@
         systemctl restart systemd-journald >/dev/null 2>&1 || true
         fi
         [ -f /etc/suricata/disable.conf ] || printf '%s\n' {{ vyos_suricata_disabled_sids | join(' ') }} > /etc/suricata/disable.conf
+        if [ ! -f /etc/systemd/system/suricata.service.d/20-linds-capture.conf ]; then
+        mkdir -p /etc/systemd/system/suricata.service.d
+        cat > /etc/systemd/system/suricata.service.d/20-linds-capture.conf <<'OVR'
+        {{ lookup('template', 'suricata-systemd-override.j2') | trim }}
+        OVR
+        systemctl daemon-reload; systemctl restart suricata >/dev/null 2>&1 || true
+        fi
         EOL
   changed_when: false

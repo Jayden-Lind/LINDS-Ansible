@@ -379,10 +379,34 @@ vyos_wireguard_tunnels:
 # jd_suricata.j2; the receiving side and dashboard live in LINDS-Kubernetes.
 vyos_suricata_home_nets: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
 vyos_suricata_eve_types: [alert, dns, tls, http, dhcp, ssh]
-# 2210059 "STREAM pkt seen on wrong thread": a router's capture sees both the
-# rx and tx copy of every routed flow, and kernel fanout cannot keep both
-# directions on one capture thread — a permanent false positive here
-# (~1000 alerts / 5 min before it was disabled).
-vyos_suricata_disabled_sids: [2210059]
+# Stream-engine telemetry rules that are structurally noisy on a router
+# capture point (consumed by suricata-update via /etc/suricata/disable.conf):
+#   2210059 "STREAM pkt seen on wrong thread" — see the capture notes below.
+#   2210029 "STREAM ESTABLISHED invalid ack", 2210045 "STREAM Packet with
+#   invalid ack", 2210020 "STREAM ESTABLISHED packet out of window" — fire
+#   whenever the capture itself misses a segment (kernel_drops during heavy
+#   inter-VLAN transfers such as immich <-> jd-fs-01 SMB) and the peer then
+#   acks data Suricata never saw. They were 99.5% of all alerts (2.4M/day,
+#   a 3.7GB eve.json hour on 2026-09-05) and the EVE write load they caused
+#   made the drops worse. They say nothing about the traffic.
+vyos_suricata_disabled_sids: [2210059, 2210029, 2210045, 2210020]
+
+# Capture threading (rendered into the systemd drop-in by jd_suricata.yml;
+# VyOS exposes no CLI node for any of this). The VyOS template runs
+# af-packet cluster_flow with one worker per core, but on this virtio NIC
+# (no hardware VLAN tx offload) every packet the router *transmits* on a
+# VLAN sub-interface has its 802.1Q tag inserted in software before the
+# AF_PACKET tap, and the kernel's fanout hash mis-dissects those frames:
+# measured 2026-09-05, 98% of outgoing tagged packets landed on a different
+# capture thread from the rest of their flow (tcp.pkt_on_wrong_thread was
+# 15-30% of all packets). autofp with a single capture thread reads the
+# wire in order and hands each flow to one detect thread via Suricata's own
+# symmetric hash, which is the documented remedy when the capture method
+# cannot balance symmetrically. ring-size/max-pending-packets are raised so
+# the one capture thread absorbs bursts instead of dropping them.
+vyos_suricata_runmode: autofp
+vyos_suricata_capture_threads: 1
+vyos_suricata_ring_size: 32768
+vyos_suricata_max_pending_packets: 4096
 vyos_syslog_remote_host: 172.16.1.23   # alloy-podlogs LoadBalancer (k8s)
 vyos_syslog_remote_port: 1515          # its strict-RFC5424 TCP listener

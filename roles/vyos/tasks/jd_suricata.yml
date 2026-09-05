@@ -6,6 +6,9 @@
 #     to Loki without touching journald (keeps `show log` VyOS-only).
 #   * /etc/suricata/disable.conf — sid tuning, consumed by suricata-update on
 #     every run (weekly task-scheduler job, or a manual `update suricata`).
+#     Adding a sid here needs one `update suricata` before it takes effect.
+#   * /etc/systemd/system/suricata.service.d/20-linds-capture.conf — runmode
+#     and capture-thread overrides (templates/suricata-systemd-override.j2).
 #
 # A fresh image needs one manual `update suricata` to fetch ET Open before the
 # daemon has any rules to load; after that the scheduler keeps them current.
@@ -29,3 +32,16 @@
     commands:
       - sudo sh -c 'printf "%s\n" {{ vyos_suricata_disabled_sids | join(" ") }} > /etc/suricata/disable.conf'
   changed_when: false
+
+# Written whole, installed only when it differs, and the daemon restarted only
+# then (a restart re-reads 52k rules, ~20s of blind IDS).
+- name: Suricata capture-thread overrides (systemd drop-in)
+  vyos.vyos.vyos_command:
+    commands:
+      - |
+        sudo tee /tmp/20-linds-capture.conf >/dev/null <<'OVR'
+        {{ lookup('template', 'suricata-systemd-override.j2') | trim }}
+        OVR
+        sudo mkdir -p /etc/systemd/system/suricata.service.d; if sudo cmp -s /tmp/20-linds-capture.conf /etc/systemd/system/suricata.service.d/20-linds-capture.conf; then echo SURICATA_OVERRIDE_UNCHANGED; else sudo install -m 0644 /tmp/20-linds-capture.conf /etc/systemd/system/suricata.service.d/20-linds-capture.conf && sudo systemctl daemon-reload && sudo systemctl restart suricata && echo SURICATA_OVERRIDE_CHANGED; fi; rm -f /tmp/20-linds-capture.conf
+  register: suricata_override
+  changed_when: "'SURICATA_OVERRIDE_CHANGED' in (suricata_override.stdout | join(' '))"

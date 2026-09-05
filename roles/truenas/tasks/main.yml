@@ -43,3 +43,21 @@
   with_items:
     - ssh
     - nfs
+
+# arensb.truenas has no module for system.advanced, so this goes through the
+# middleware CLI. RFC5424 must go to Alloy's 1514 listener: 514 is the strict
+# RFC3164 port for legacy gear, and TrueNAS's RFC5424 frames failed to parse
+# there ("expecting a sequence number"), so none of its logs reached Loki
+# until 2026-09-05. Idempotent: only calls update when the value differs.
+- name: Remote syslog -> Alloy RFC5424 UDP listener (k8s)
+  ansible.builtin.shell: |
+    set -e
+    want='{{ truenas_syslog_server }}'
+    have=$(midclt call system.advanced.config | python3 -c 'import sys,json; s=json.load(sys.stdin)["syslogservers"]; print(s[0]["host"] if s else "")')
+    if [ "$have" != "$want" ]; then
+      midclt call system.advanced.update "{\"syslogservers\":[{\"host\":\"$want\",\"transport\":\"UDP\"}]}" >/dev/null
+      echo SYSLOG_CHANGED
+    fi
+  register: truenas_syslog
+  changed_when: "'SYSLOG_CHANGED' in truenas_syslog.stdout"
+  when: truenas_syslog_server is defined

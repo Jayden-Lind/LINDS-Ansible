@@ -11,3 +11,5 @@ truenas:
         linds-truenas-01.linds.com.au:
       vars:
         hostname: linds-truenas-01.linds.com.au
+        # alloy-podlogs LoadBalancer in the k8s cluster, RFC5424 UDP listener
+        truenas_syslog_server: 172.16.1.23:1514

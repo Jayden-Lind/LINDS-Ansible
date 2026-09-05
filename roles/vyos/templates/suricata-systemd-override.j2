@@ -1,0 +1,14 @@
+{#
+  /etc/systemd/system/suricata.service.d/20-linds-capture.conf
+  Owned by LINDS-Ansible (roles/vyos, jd_suricata.yml); re-seeded after image
+  upgrades by the post-boot script. Layers on VyOS's own 10-override.conf,
+  which only points the daemon at /run/suricata/suricata.yaml.
+  Why: see vyos_suricata_runmode in inventory/group_vars/jd_vyos.yml.
+#}
+# Managed by LINDS-Ansible (roles/vyos/templates/suricata-systemd-override.j2).
+# Single ordered capture thread + autofp detect threads; VyOS has no CLI node
+# for runmode/threads, and its Jinja template must not be patched (configd
+# caches it), so the knobs ride --set overrides on the command line.
+[Service]
+ExecStart=
+ExecStart=/usr/bin/suricata -D --af-packet -c /run/suricata/suricata.yaml --pidfile /run/suricata/suricata.pid --runmode {{ vyos_suricata_runmode }} --set af-packet.0.threads={{ vyos_suricata_capture_threads }} --set af-packet.0.ring-size={{ vyos_suricata_ring_size }} --set max-pending-packets={{ vyos_suricata_max_pending_packets }}

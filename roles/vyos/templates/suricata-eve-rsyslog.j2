@@ -8,8 +8,9 @@
 # Owned by LINDS-Ansible (roles/vyos, jd_suricata.yml); the post-boot script
 # re-seeds it after image upgrades (/etc does not survive them).
 # EVE alert events embed packet payloads and can exceed rsyslog's 8k default
-# ("message too long" truncation errors in syslog).
-global(maxMessageSize="64k")
+# ("message too long" truncation errors in syslog). The Alloy TCP listener
+# accepts up to 1 MiB; keep this well under it.
+global(maxMessageSize="256k")
 module(load="imfile")
 input(type="imfile"
       File="/var/log/suricata/eve.json"
