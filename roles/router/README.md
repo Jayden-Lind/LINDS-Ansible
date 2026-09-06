@@ -88,6 +88,14 @@ run is a box that would route the moment its links come up.
   it), sets the VF rx ring to 8192 and enables UDP GRO forwarding on both
   NICs. irqbalance spreads the queues. All of it is ethtool, none of it is
   expressible in `.link` files.
+* **Suricata runs `workers`, not `autofp`.** tpacket v3 only exists in the
+  workers runmode; under autofp it silently fell back to v2, whose fixed
+  frame size truncated every GRO super-packet at 1514 bytes
+  (`decoder.ipv4.trunc_pkt` climbing, stream gaps). v3 with
+  `block-size: 131072` captures them whole. Do not "fix" truncation with
+  `default-packet-size: 65535`: under v2 that makes the ring mmap fail and
+  Suricata crash-loops. Check with `suricatasc -c dump-counters` →
+  `trunc_pkt` flat, `max_pkt_size` well above 1514.
 * **IKE listens on IPv6 too.** Input rule 3 is family-agnostic and charon
   binds `[::]:500/4500`; ddclient keeps the AAAA record for
   `jd-pfsense.linds.com.au` current. Inside-tunnel IPv6 is still a future
