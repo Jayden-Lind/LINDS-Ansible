@@ -1,0 +1,168 @@
+%YAML 1.1
+---
+# Managed by LINDS-Ansible: roles/router/files/etc/suricata/suricata.yaml.
+# Detection-only IDS on lan0 (AF_PACKET copy mode,
+# never in the forwarding path). Capture is the PARENT interface only: it
+# already sees every VLAN tagged; adding subinterfaces captures each packet
+# twice and splits flows across threads.
+#
+# Capture runs as one ordered capture thread + autofp detect threads: on a
+# virtio NIC every VLAN-tagged frame the router transmits is tagged in
+# software before the AF_PACKET tap and the kernel fanout hash mis-dissects
+# it, so cluster_flow workers see flows split across threads
+# (tcp.pkt_on_wrong_thread 15-30%). Check that counter stays at 0 after
+# upgrades: suricatasc -c dump-counters.
+
+vars:
+  address-groups:
+    HOME_NET: "[10.0.0.0/8,172.16.0.0/12,192.168.0.0/16]"
+    EXTERNAL_NET: "!$HOME_NET"
+    HTTP_SERVERS: "$HOME_NET"
+    SMTP_SERVERS: "$HOME_NET"
+    SQL_SERVERS: "$HOME_NET"
+    DNS_SERVERS: "$HOME_NET"
+    TELNET_SERVERS: "$HOME_NET"
+    AIM_SERVERS: "$EXTERNAL_NET"
+    DC_SERVERS: "$HOME_NET"
+    DNP3_SERVER: "$HOME_NET"
+    DNP3_CLIENT: "$HOME_NET"
+    MODBUS_CLIENT: "$HOME_NET"
+    MODBUS_SERVER: "$HOME_NET"
+    ENIP_CLIENT: "$HOME_NET"
+    ENIP_SERVER: "$HOME_NET"
+  port-groups:
+    HTTP_PORTS: "[80,8080]"
+    SHELLCODE_PORTS: "!$HTTP_PORTS"
+    ORACLE_PORTS: 1521
+    SSH_PORTS: 22
+    DNP3_PORTS: 20000
+    MODBUS_PORTS: 502
+    FILE_DATA_PORTS: "[$HTTP_PORTS,110,143]"
+    FTP_PORTS: 21
+    GENEVE_PORTS: 6081
+    VXLAN_PORTS: 4789
+    TEREDO_PORTS: 3544
+
+default-log-dir: /var/log/suricata/
+
+stats:
+  enabled: yes
+  interval: 60
+
+outputs:
+  - fast:
+      enabled: no
+  # EVE to a file, relayed by rsyslog imfile (60-suricata-eve.conf). Not
+  # syslog: that routes every event through journald. flow/netflow are
+  # deliberately absent (volume).
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: eve.json
+      pcap-file: false
+      community-id: false
+      types:
+        - alert
+        - dns
+        - tls
+        - http
+        - dhcp
+        - ssh
+  - stats:
+      enabled: yes
+      filename: stats.log
+      totals: yes
+      threads: no
+
+logging:
+  default-log-level: notice
+  outputs:
+    - console:
+        enabled: no
+    - file:
+        enabled: yes
+        level: info
+        filename: suricata.log
+    - syslog:
+        enabled: yes
+        facility: local5
+        format: "[%i] <%d> -- "
+
+af-packet:
+  - interface: lan0
+    threads: 1
+    cluster-id: 99
+    cluster-type: cluster_flow
+    defrag: yes
+    use-mmap: yes
+    tpacket-v3: yes
+    ring-size: 32768
+
+runmode: autofp
+max-pending-packets: 4096
+host-mode: router
+
+# Where suricatasc (and suricata-update's reload) expect it; the compiled-in
+# default would land it in /var.
+unix-command:
+  enabled: yes
+  filename: /var/run/suricata-command.socket
+
+vlan:
+  use-for-tracking: true
+
+default-rule-path: /var/lib/suricata/rules
+rule-files:
+  - suricata.rules
+
+classification-file: /etc/suricata/classification.config
+reference-config-file: /etc/suricata/reference.config
+threshold-file: /etc/suricata/threshold.config
+
+detect:
+  profile: medium
+
+app-layer:
+  protocols:
+    tls:
+      enabled: yes
+    http:
+      enabled: yes
+    dns:
+      tcp:
+        enabled: yes
+      udp:
+        enabled: yes
+    ssh:
+      enabled: yes
+    dhcp:
+      enabled: yes
+    smb:
+      enabled: yes
+    ftp:
+      enabled: yes
+    smtp:
+      enabled: yes
+    ntp:
+      enabled: yes
+    krb5:
+      enabled: yes
+    quic:
+      enabled: yes
+    # Off by default in Suricata 7, but ET Open's protocol-event rules
+    # reference them and `suricata -T` (used by suricata-update and the
+    # validators) is strict about rules that fail to parse. They only
+    # engage on their own ports.
+    modbus:
+      enabled: yes
+      detection-ports:
+        dp: 502
+    dnp3:
+      enabled: yes
+      detection-ports:
+        dp: 20000
+    enip:
+      enabled: yes
+      detection-ports:
+        dp: 44818
+        sp: 44818

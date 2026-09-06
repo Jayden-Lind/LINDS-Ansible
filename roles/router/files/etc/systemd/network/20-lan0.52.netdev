@@ -1,0 +1,7 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/network/20-lan0.52.netdev. vlan-52-isolated
+[NetDev]
+Name=lan0.52
+Kind=vlan
+
+[VLAN]
+Id=52

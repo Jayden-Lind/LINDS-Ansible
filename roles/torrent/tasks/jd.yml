@@ -4,13 +4,10 @@
     file: torrent.yml
     name: torrent
 
-- name: Copy Transmission settings
-  ansible.builtin.copy:
-    src: qBittorrent.conf
-    dest: /root/.config/qBittorrent/qBittorrent.conf
-    owner: root
-    group: root
-    mode: "600"
+- name: Deploy qBittorrent configuration
+  ansible.builtin.include_tasks: config.yml
+  vars:
+    torrent_config_src: qBittorrent.conf
 
 - name: Create nas directory
   ansible.builtin.file:

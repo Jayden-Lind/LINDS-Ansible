@@ -1,0 +1,11 @@
+# Managed by LINDS-Ansible (roles/router). Refresh ET Open (honouring
+# /etc/suricata/disable.conf) and reload the ruleset in place; a daemon
+# restart would re-read ~50k rules with the IDS blind for ~20s.
+[Unit]
+Description=Refresh Suricata rules and reload them
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/suricata-update --no-reload
+ExecStart=-/usr/bin/suricatasc -c ruleset-reload-nonblocking

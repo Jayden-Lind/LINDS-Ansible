@@ -1,0 +1,8 @@
+# Managed by LINDS-Ansible (roles/router).
+[Unit]
+Description=Re-resolve WireGuard endpoint for %i
+After=systemd-networkd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/wg-reresolve %i

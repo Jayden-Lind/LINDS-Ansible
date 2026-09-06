@@ -1,0 +1,121 @@
+---
+- name: Hostname
+  ansible.builtin.hostname:
+    name: "{{ router_hostname }}"
+
+- name: Timezone
+  ansible.builtin.file:
+    src: "/usr/share/zoneinfo/{{ router_timezone }}"
+    dest: /etc/localtime
+    state: link
+    force: true
+
+- name: /etc/timezone
+  ansible.builtin.copy:
+    dest: /etc/timezone
+    content: "{{ router_timezone }}\n"
+    mode: '0644'
+
+# The router's own resolver is a static file (VyOS `system name-server`);
+# resolved would otherwise keep rewriting it.
+- name: systemd-resolved unit present?
+  ansible.builtin.stat:
+    path: /usr/lib/systemd/system/systemd-resolved.service
+  register: router_resolved_unit
+
+- name: systemd-resolved off
+  ansible.builtin.systemd_service:
+    name: systemd-resolved
+    state: stopped
+    enabled: false
+    masked: true
+  when: router_resolved_unit.stat.exists
+
+- name: resolv.conf link state
+  ansible.builtin.stat:
+    path: /etc/resolv.conf
+  register: router_resolv_stat
+
+- name: Replace a resolv.conf symlink
+  ansible.builtin.file:
+    path: /etc/resolv.conf
+    state: absent
+  when: router_resolv_stat.stat.islnk | default(false)
+
+- name: /etc/resolv.conf
+  ansible.builtin.copy:
+    src: etc/resolv.conf
+    dest: /etc/resolv.conf
+    mode: '0644'
+
+# Conntrack helpers + xfrm/wireguard, loaded before sysctl so the
+# net.netfilter.* keys exist when systemd-sysctl runs.
+- name: Kernel modules at boot
+  ansible.builtin.copy:
+    src: etc/modules-load.d/router.conf
+    dest: /etc/modules-load.d/router.conf
+    mode: '0644'
+  register: router_modules_conf
+
+- name: nf_conntrack hashsize
+  ansible.builtin.copy:
+    src: etc/modprobe.d/nf_conntrack.conf
+    dest: /etc/modprobe.d/nf_conntrack.conf
+    mode: '0644'
+
+- name: Load the modules now
+  ansible.builtin.command: "modprobe {{ item }}"
+  loop: "{{ lookup('ansible.builtin.file', 'etc/modules-load.d/router.conf').splitlines() | reject('match', '^\\s*(#|$)') | list }}"
+  when: router_modules_conf.changed
+  changed_when: true
+
+- name: sysctl
+  ansible.builtin.copy:
+    src: etc/sysctl.d/90-router.conf
+    dest: /etc/sysctl.d/90-router.conf
+    mode: '0644'
+  notify: sysctl
+
+# A oneshot: starting it applies every sysctl file and clears a failed state
+# left by a boot that had a bad key.
+- name: systemd-sysctl applied
+  ansible.builtin.systemd_service:
+    name: systemd-sysctl
+    state: started
+
+- name: journald conf dir
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    mode: '0755'
+
+- name: journald size cap
+  ansible.builtin.copy:
+    src: etc/systemd/journald.conf.d/90-size-cap.conf
+    dest: /etc/systemd/journald.conf.d/90-size-cap.conf
+    mode: '0644'
+  notify: restart journald
+
+- name: Kernel command line (mitigations)
+  ansible.builtin.copy:
+    src: etc/default/grub.d/90-router.cfg
+    dest: /etc/default/grub.d/90-router.cfg
+    mode: '0644'
+  notify: update-grub
+
+- name: tuned enabled
+  ansible.builtin.systemd_service:
+    name: tuned
+    enabled: true
+    state: started
+
+- name: Active tuned profile
+  ansible.builtin.command: tuned-adm active
+  register: router_tuned_active
+  changed_when: false
+  failed_when: false
+
+- name: tuned profile
+  ansible.builtin.command: tuned-adm profile {{ router_tuned_profile }}
+  when: router_tuned_active.stdout is not search(router_tuned_profile)
+  changed_when: true

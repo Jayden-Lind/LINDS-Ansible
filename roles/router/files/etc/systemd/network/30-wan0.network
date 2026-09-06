@@ -1,0 +1,62 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/network/30-wan0.network. Primary WAN.
+#
+# The DHCP lease supplies only the address: no gateway, no DNS, no NTP. The
+# default route is wan-failover's, and the ISP lease carries no router option
+# anyway (see router_wan_gateway in group_vars). KeepConfiguration=dhcp keeps
+# the address through a renewal or a networkd restart instead of tearing it
+# down first — the "small outage on every renew" VyOS's dhclient produced.
+#
+# Table 1001 always holds this WAN's own default route (onlink: the modem
+# proxy-ARPs for anything). The oif rule sends sockets bound to wan0 — the
+# failover health check — through it, so the check works with no route in
+# main and no /32 pinning of the targets.
+[Match]
+Name=wan0
+
+[Link]
+RequiredForOnline=no
+
+[Network]
+# Both families. With WithoutRA=solicit networkd ignores the RA's request to
+# start DHCPv6 (it assumes the client already started at link setup), and
+# that start only happens when DHCP= includes ipv6. DHCP=ipv4 here left the
+# client created but never running: RA default route, no lease, no PD.
+DHCP=yes
+KeepConfiguration=dhcp
+IPv6AcceptRA=yes
+IPv6PrivacyExtensions=no
+LLDP=no
+EmitLLDP=no
+
+[DHCPv4]
+UseGateway=no
+UseDNS=no
+UseNTP=no
+UseHostname=no
+UseDomains=no
+SendHostname=no
+SendRelease=no
+ClientIdentifier=mac
+
+[IPv6AcceptRA]
+UseGateway=yes
+UseDNS=no
+UseDomains=no
+DHCPv6Client=always
+
+[DHCPv6]
+UseAddress=yes
+UseDNS=no
+UseNTP=no
+WithoutRA=solicit
+PrefixDelegationHint=::/56
+
+[Route]
+Gateway=121.221.64.1
+GatewayOnLink=yes
+Table=1001
+
+[RoutingPolicyRule]
+OutgoingInterface=wan0
+Table=1001
+Priority=100

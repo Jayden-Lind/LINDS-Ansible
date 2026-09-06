@@ -1,0 +1,4 @@
+# Rendered by LINDS-Ansible from the vault. Read by /usr/local/sbin/wg-reresolve.
+PEER={{ item.peer.public_key }}
+ENDPOINT={{ item.peer.host_name }}:{{ item.peer.port | default(51820) }}
+STALE={{ router_wg_reresolve_stale }}

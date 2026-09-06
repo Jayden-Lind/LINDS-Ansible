@@ -1,0 +1,13 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/system/wan-failover.service
+[Unit]
+Description=Dual-WAN failover (default route follows the healthiest WAN)
+After=systemd-networkd.service nftables.service
+Wants=systemd-networkd.service
+
+[Service]
+ExecStart=/usr/local/sbin/wan-failover /etc/wan-failover.json
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,17 @@
+---
+# All facilities at info -> the Alloy RFC5424 TCP listener in the k8s cluster
+# (-> Loki -> Grafana). Suricata's EVE relay is a separate ruleset
+# (suricata.yml) so that firehose never touches journald or local files.
+
+- name: rsyslog remote forwarding
+  ansible.builtin.copy:
+    src: etc/rsyslog.d/50-remote.conf
+    dest: /etc/rsyslog.d/50-remote.conf
+    mode: '0644'
+  notify: restart rsyslog
+
+- name: rsyslog enabled
+  ansible.builtin.systemd_service:
+    name: rsyslog
+    enabled: true
+    state: started

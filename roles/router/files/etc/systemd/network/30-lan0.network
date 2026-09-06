@@ -1,0 +1,45 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/network/30-lan0.network. LAN trunk: untagged
+# 10.0.50.0/24 plus the VLAN sub-interfaces.
+# Addresses appear with carrier, as on any Linux box. Daemons that bind the
+# service addresses before the link is up (a router still being built with
+# lan0 held down at the hypervisor) rely on net.ipv4.ip_nonlocal_bind=1 from
+# sysctl.d/90-router.conf. Do NOT add ConfigureWithoutCarrier here: with it,
+# 10.0.53.1 exists on the link-down lan0.53 while the build management leg
+# on VLAN 53 uses VyOS at 10.0.53.1 as its gateway, and the kernel discards
+# VyOS's ARP requests as martian-source (they come from a "local" address).
+# No IPv6AcceptRA: this is the interface the router sends RAs on; accepting
+# them would let a rogue RA on the LAN install a default route on the router.
+[Match]
+Name=lan0
+
+[Link]
+RequiredForOnline=no
+
+[Network]
+Address=10.0.50.1/24
+IPv6AcceptRA=no
+IPv6SendRA=yes
+DHCPPrefixDelegation=yes
+IPv6DuplicateAddressDetection=1
+LLDP=no
+EmitLLDP=no
+VLAN=lan0.51
+VLAN=lan0.52
+VLAN=lan0.53
+VLAN=lan0.58
+VLAN=lan0.99
+
+[DHCPPrefixDelegation]
+UplinkInterface=wan0
+SubnetId=0x0
+Announce=yes
+Assign=yes
+Token=static:::1
+
+[IPv6SendRA]
+RouterLifetimeSec=3600
+RouterPreference=high
+EmitDNS=no
+EmitDomains=no
+Managed=no
+OtherInformation=no

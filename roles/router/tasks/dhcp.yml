@@ -1,0 +1,55 @@
+---
+# kea (the DHCP server behind VyOS 1.4's `service dhcp-server`) plus its DDNS
+# companion, which pushes leases into AD DNS on the DC pair.
+#
+# Validation goes through a candidate file inside /etc/kea, checked as the
+# _kea user: Debian confines the kea binaries with AppArmor (no dac_override,
+# /etc/kea/** only), so `kea-dhcp4 -t` as root cannot read the temp file
+# Ansible's `validate:` would hand it, nor a root-only file in /etc/kea.
+
+- name: kea candidate configs
+  ansible.builtin.copy:
+    src: "etc/kea/{{ item }}"
+    dest: "/etc/kea/.{{ item }}.candidate"
+    owner: root
+    group: _kea
+    mode: '0640'
+  loop: [kea-dhcp4.conf, kea-dhcp-ddns.conf]
+
+- name: kea configs parse
+  ansible.builtin.command: "runuser -u _kea -- {{ item.check }} /etc/kea/.{{ item.name }}.candidate"
+  loop:
+    - {name: kea-dhcp4.conf, check: kea-dhcp4 -t}
+    - {name: kea-dhcp-ddns.conf, check: kea-dhcp-ddns -t}
+  loop_control:
+    label: "{{ item.name }}"
+  changed_when: false
+
+- name: kea-dhcp4 config
+  ansible.builtin.copy:
+    src: /etc/kea/.kea-dhcp4.conf.candidate
+    remote_src: true
+    dest: /etc/kea/kea-dhcp4.conf
+    owner: root
+    group: _kea
+    mode: '0640'
+  notify: restart kea-dhcp4
+
+- name: kea-dhcp-ddns config
+  ansible.builtin.copy:
+    src: /etc/kea/.kea-dhcp-ddns.conf.candidate
+    remote_src: true
+    dest: /etc/kea/kea-dhcp-ddns.conf
+    owner: root
+    group: _kea
+    mode: '0640'
+  notify: restart kea-dhcp-ddns
+
+- name: kea enabled
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - kea-dhcp-ddns-server
+    - kea-dhcp4-server

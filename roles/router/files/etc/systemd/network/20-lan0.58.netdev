@@ -1,0 +1,7 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/network/20-lan0.58.netdev. vlan-58-us
+[NetDev]
+Name=lan0.58
+Kind=vlan
+
+[VLAN]
+Id=58

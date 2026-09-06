@@ -1,0 +1,12 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/network/30-lan0.53.network. vlan-53-dev
+[Match]
+Name=lan0.53
+
+[Link]
+RequiredForOnline=no
+
+[Network]
+Address=10.0.53.1/24
+IPv6AcceptRA=no
+LLDP=no
+EmitLLDP=no

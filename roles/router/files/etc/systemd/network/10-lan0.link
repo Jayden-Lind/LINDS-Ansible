@@ -1,0 +1,13 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/network/10-lan0.link. lan0: named by MAC so
+# PCI slot order never matters. Type=ether keeps the VLAN sub-interfaces,
+# which inherit this MAC, from matching.
+[Match]
+MACAddress=bc:24:11:01:11:01
+Type=ether
+
+[Link]
+Name=lan0
+GenericReceiveOffload=yes
+GenericSegmentationOffload=yes
+TCPSegmentationOffload=yes
+GenericReceiveOffloadHardware=no

@@ -1,0 +1,69 @@
+---
+# Suricata IDS, detection-only on the LAN trunk, EVE JSON to Loki through an
+# rsyslog imfile relay (never journald). Config: files/etc/suricata/.
+
+- name: suricata.yaml
+  ansible.builtin.copy:
+    src: etc/suricata/suricata.yaml
+    dest: /etc/suricata/suricata.yaml
+    mode: '0644'
+  notify: restart suricata
+
+- name: Rule tuning (disable.conf, read by suricata-update)
+  ansible.builtin.copy:
+    src: etc/suricata/disable.conf
+    dest: /etc/suricata/disable.conf
+    mode: '0644'
+  notify: suricata-update
+
+- name: suricata-update service + timer
+  ansible.builtin.copy:
+    src: "etc/systemd/system/{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: '0644'
+  loop:
+    - suricata-update.service
+    - suricata-update.timer
+  notify: daemon-reload
+
+- name: Flush handlers (units known)
+  ansible.builtin.meta: flush_handlers
+
+- name: Ruleset present?
+  ansible.builtin.stat:
+    path: /var/lib/suricata/rules/suricata.rules
+  register: router_suricata_rules
+
+# A fresh box has no rules and the daemon would start with nothing to load.
+- name: Fetch ET Open (first run only)
+  ansible.builtin.command: suricata-update --no-reload
+  when: not router_suricata_rules.stat.exists
+  changed_when: true
+  notify: restart suricata
+
+- name: EVE -> Loki rsyslog relay
+  ansible.builtin.copy:
+    src: etc/rsyslog.d/60-suricata-eve.conf
+    dest: /etc/rsyslog.d/60-suricata-eve.conf
+    mode: '0644'
+  notify: restart rsyslog
+
+- name: suricata enabled
+  ansible.builtin.systemd_service:
+    name: suricata
+    enabled: true
+    state: started
+
+- name: suricata-update timer enabled
+  ansible.builtin.systemd_service:
+    name: suricata-update.timer
+    enabled: true
+    state: started
+
+# The oneshot's failed state (a rule refresh that hit a bad yaml, say) would
+# otherwise trip the failed-unit sweep in validate.yml forever; the ruleset
+# itself is verified there with `suricata -T`.
+- name: suricata-update failed state cleared
+  ansible.builtin.command: systemctl reset-failed suricata-update.service
+  changed_when: false
+  failed_when: false

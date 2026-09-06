@@ -1,0 +1,11 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/network/30-ipsec0.network. IPsec site-to-site LINDS (BGP underlay)
+[Match]
+Name=ipsec0
+
+[Link]
+RequiredForOnline=no
+
+[Network]
+Address=10.255.0.1/30
+ConfigureWithoutCarrier=yes
+IPv6AcceptRA=no

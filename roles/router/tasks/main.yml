@@ -1,0 +1,51 @@
+---
+# Debian 13 router. Ordering matters in three places:
+#   * packages -> system -> network: sysctls reference conntrack modules,
+#     networkd rename needs the .link files before anything binds to a name.
+#   * network before everything that binds an address (with
+#     ConfigureWithoutCarrier the addresses exist even with the links down).
+#   * ipsec before routing: BGP peers over ipsec0, which strongSwan drives.
+# validate.yml runs the daemons' own config checkers last and fails the play
+# on any failed unit, so a green run means a box that would route.
+
+- name: Packages
+  ansible.builtin.import_tasks: packages.yml
+
+- name: System
+  ansible.builtin.import_tasks: system.yml
+
+- name: Network
+  ansible.builtin.import_tasks: network.yml
+
+- name: Firewall
+  ansible.builtin.import_tasks: firewall.yml
+
+- name: Logging
+  ansible.builtin.import_tasks: logging.yml
+
+- name: DNS forwarder
+  ansible.builtin.import_tasks: dns.yml
+
+- name: DHCP server
+  ansible.builtin.import_tasks: dhcp.yml
+
+- name: Services
+  ansible.builtin.import_tasks: services.yml
+
+- name: IPsec
+  ansible.builtin.import_tasks: ipsec.yml
+
+- name: WireGuard
+  ansible.builtin.import_tasks: wireguard.yml
+
+- name: Routing
+  ansible.builtin.import_tasks: routing.yml
+
+- name: Dual-WAN failover daemon
+  ansible.builtin.import_tasks: failover.yml
+
+- name: Suricata IDS + EVE shipping
+  ansible.builtin.import_tasks: suricata.yml
+
+- name: Validate
+  ansible.builtin.import_tasks: validate.yml

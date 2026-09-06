@@ -1,0 +1,11 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/network/20-ipsec10.netdev. IPsec RA road-warrior (route-based)
+# XFRM interface (the modern VTI): traffic is matched to the IPsec child SA
+# by if_id, so it carries both address families and any number of selectors.
+[NetDev]
+Name=ipsec10
+Kind=xfrm
+MTUBytes=1400
+
+[Xfrm]
+InterfaceId=20
+Independent=yes

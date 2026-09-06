@@ -16,6 +16,12 @@ torrent_config_dir: /root/.config/qBittorrent
 
 torrent_sysctl_file: /etc/sysctl.d/99-torrent.conf
 
+torrent_sunrpc_modprobe_file: /etc/modprobe.d/sunrpc.conf
+
+# Initial NFS RPC slot count. The kernel default of 2 ramps too slowly for
+# sustained torrent writes onto NFS.
+torrent_sunrpc_slot_table_entries: "64"
+
 torrent_sysctl_settings:
   net.core.rmem_max: "33554432"
   net.core.wmem_max: "33554432"

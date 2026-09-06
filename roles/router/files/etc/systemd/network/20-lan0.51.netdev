@@ -1,0 +1,7 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/network/20-lan0.51.netdev. vlan-51-torrent
+[NetDev]
+Name=lan0.51
+Kind=vlan
+
+[VLAN]
+Id=51

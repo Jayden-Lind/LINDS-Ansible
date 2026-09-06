@@ -26,5 +26,8 @@
 - name: Apply torrenting VM sysctl/kernel tuning
   ansible.builtin.include_tasks: sysctl.yml
 
+- name: Apply NFS client tuning for torrent write throughput
+  ansible.builtin.include_tasks: nfs-tuning.yml
+
 - name: Manage qBittorrent service
   ansible.builtin.include_tasks: service.yml

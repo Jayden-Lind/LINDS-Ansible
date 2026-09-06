@@ -1,0 +1,23 @@
+---
+# pdns-recursor, the daemon VyOS's `service dns forwarding` drives. 5.x reads
+# YAML only (recursor.yml); the package's old-style recursor.conf is removed
+# so there is exactly one config file.
+
+- name: pdns-recursor config
+  ansible.builtin.copy:
+    src: etc/powerdns/recursor.yml
+    dest: /etc/powerdns/recursor.yml
+    mode: '0644'
+  notify: restart pdns-recursor
+
+- name: Old-style recursor.conf retired
+  ansible.builtin.file:
+    path: /etc/powerdns/recursor.conf
+    state: absent
+  notify: restart pdns-recursor
+
+- name: pdns-recursor enabled
+  ansible.builtin.systemd_service:
+    name: pdns-recursor
+    enabled: true
+    state: started

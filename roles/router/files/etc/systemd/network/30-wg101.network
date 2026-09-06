@@ -1,0 +1,26 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/network/30-wg101.network. 30-wg101.network: policy routing for
+# lan0.51. Two rules: the first sends the VLAN's traffic to `main`
+# only when main has a real route for it (suppress_prefixlength 0 — so LAN,
+# BGP-learned k8s VIPs and the IPsec /30 bypass the tunnel); the second sends
+# what is left (the default) into table 100.
+[Match]
+Name=wg101
+
+[Link]
+RequiredForOnline=no
+
+[Network]
+Address=10.5.0.2/32
+IPv6AcceptRA=no
+LinkLocalAddressing=no
+
+[RoutingPolicyRule]
+IncomingInterface=lan0.51
+Table=main
+SuppressPrefixLength=0
+Priority=1010
+
+[RoutingPolicyRule]
+IncomingInterface=lan0.51
+Table=100
+Priority=1011

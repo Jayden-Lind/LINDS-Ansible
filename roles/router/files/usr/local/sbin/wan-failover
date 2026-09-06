@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""wan-failover: keep the default route(s) on healthy WANs.
+
+Semantics match VyOS `protocols failover`: every candidate whose health check
+passes has its default route installed at its own metric and the kernel picks
+the lowest. Plus the three things that daemon lacks:
+
+  * rise/fall hysteresis (flap damping),
+  * a carrier check — a link without carrier is never installed, so a router
+    still being built (links held down at the hypervisor) or a WAN that is
+    unplugged can never black-hole traffic another path could carry,
+  * `conntrack -D --src-nat` when the active WAN changes, so LAN->internet
+    flows re-NAT out the new path immediately instead of hanging until they
+    time out.
+
+Config is JSON (LINDS-Ansible roles/router renders it). The Controller is a
+pure state machine with no I/O so it can be unit-tested; the Runner does the
+pinging and the `ip route` calls.
+
+Managed by LINDS-Ansible (roles/router/files/wan-failover).
+"""
+from __future__ import annotations
+
+import concurrent.futures
+import json
+import logging
+import signal
+import subprocess
+import sys
+import time
+from dataclasses import dataclass, field
+
+log = logging.getLogger("wan-failover")
+
+
+@dataclass
+class Candidate:
+    name: str
+    dev: str
+    gateway: str
+    metric: int
+    targets: list[str]
+    onlink: bool = False
+    policy: str = "any-available"  # or all-available
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Candidate":
+        return cls(
+            name=d["name"],
+            dev=d["dev"],
+            gateway=d["gateway"],
+            metric=int(d["metric"]),
+            targets=list(d["targets"]),
+            onlink=bool(d.get("onlink", False)),
+            policy=d.get("policy", "any-available"),
+        )
+
+    def healthy(self, results: list[bool]) -> bool:
+        if not results:
+            return False
+        if self.policy == "all-available":
+            return all(results)
+        return any(results)
+
+
+@dataclass
+class Health:
+    up: bool = False
+    ok: int = 0
+    fail: int = 0
+
+
+class Controller:
+    """One step per check round. Observations map candidate name to either
+    None (no carrier) or the list of per-target ping results. Returns the
+    actions to perform: ("add", c), ("del", c), ("flush", None)."""
+
+    def __init__(self, candidates, rise=3, fall=3, flush_conntrack=True):
+        self.candidates = sorted(candidates, key=lambda c: c.metric)
+        self.rise = rise
+        self.fall = fall
+        self.flush_conntrack = flush_conntrack
+        self.health = {c.name: Health() for c in self.candidates}
+        self.first_step = True
+        self.active: str | None = None
+
+    def up_candidates(self):
+        return [c for c in self.candidates if self.health[c.name].up]
+
+    def step(self, observations: dict) -> list:
+        actions = []
+        # A freshly started daemon installs a healthy route on its first
+        # observation rather than waiting `rise` rounds; a route that is
+        # already present and healthy just gets re-asserted.
+        rise = 1 if self.first_step else self.rise
+        for c in self.candidates:
+            h = self.health[c.name]
+            obs = observations.get(c.name)
+            if obs is None:
+                # No carrier: down immediately, no hysteresis.
+                h.ok = h.fail = 0
+                if h.up:
+                    h.up = False
+                    actions.append(("del", c))
+                continue
+            good = c.healthy(obs)
+            if good:
+                h.ok += 1
+                h.fail = 0
+            else:
+                h.fail += 1
+                h.ok = 0
+            if not h.up and good and h.ok >= rise:
+                h.up = True
+                actions.append(("add", c))
+            elif h.up and not good and h.fail >= self.fall:
+                h.up = False
+                actions.append(("del", c))
+
+        new_active = next((c.name for c in self.candidates if self.health[c.name].up), None)
+        if new_active != self.active:
+            log.info("active WAN: %s -> %s", self.active, new_active)
+            # Not on the first step: a daemon restart must not flush flows
+            # that are still riding a WAN that never changed.
+            if self.flush_conntrack and not self.first_step:
+                actions.append(("flush", None))
+            self.active = new_active
+        self.first_step = False
+        return actions
+
+
+class Runner:
+    def __init__(self, timeout: int):
+        self.timeout = timeout
+
+    @staticmethod
+    def carrier(dev: str) -> bool:
+        try:
+            with open(f"/sys/class/net/{dev}/carrier") as f:
+                return f.read().strip() == "1"
+        except OSError:
+            return False
+
+    def ping(self, dev: str, target: str) -> bool:
+        cmd = ["ping", "-n", "-q", "-c", "1", "-W", str(self.timeout), "-I", dev, target]
+        return subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+    def observe(self, candidates) -> dict:
+        obs = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            futures = {}
+            for c in candidates:
+                if not self.carrier(c.dev):
+                    obs[c.name] = None
+                    continue
+                futures[c.name] = [pool.submit(self.ping, c.dev, t) for t in c.targets]
+            for name, fs in futures.items():
+                obs[name] = [f.result() for f in fs]
+        return obs
+
+    @staticmethod
+    def _route(c: Candidate) -> list[str]:
+        r = ["default", "via", c.gateway, "dev", c.dev, "metric", str(c.metric)]
+        if c.onlink:
+            r.append("onlink")
+        return r
+
+    def ensure(self, c: Candidate) -> None:
+        subprocess.run(["ip", "route", "replace"] + self._route(c) + ["proto", "static"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def add(self, c: Candidate) -> None:
+        log.info("install: %s via %s dev %s metric %s", c.name, c.gateway, c.dev, c.metric)
+        self.ensure(c)
+
+    def delete(self, c: Candidate) -> None:
+        log.info("withdraw: %s via %s dev %s metric %s", c.name, c.gateway, c.dev, c.metric)
+        subprocess.run(["ip", "route", "del"] + self._route(c),
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    @staticmethod
+    def flush() -> None:
+        log.info("flushing SNATed conntrack entries")
+        subprocess.run(["conntrack", "-D", "--src-nat"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def apply(self, actions, up_candidates) -> None:
+        for kind, c in actions:
+            if kind == "add":
+                self.add(c)
+            elif kind == "del":
+                self.delete(c)
+            elif kind == "flush":
+                self.flush()
+        # Re-assert healthy routes every round (idempotent) so a networkd
+        # restart or a stray `ip route flush` cannot leave us routeless.
+        for c in up_candidates:
+            self.ensure(c)
+
+
+def main(argv) -> int:
+    logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
+    if len(argv) != 2:
+        print("usage: wan-failover CONFIG.json", file=sys.stderr)
+        return 2
+    with open(argv[1]) as f:
+        cfg = json.load(f)
+    candidates = [Candidate.from_dict(d) for d in cfg["candidates"]]
+    ctl = Controller(candidates, rise=int(cfg.get("rise", 3)), fall=int(cfg.get("fall", 3)),
+                     flush_conntrack=bool(cfg.get("flush_conntrack", True)))
+    runner = Runner(timeout=int(cfg.get("timeout", 2)))
+    interval = float(cfg.get("interval", 5))
+
+    stop = {"now": False}
+    signal.signal(signal.SIGTERM, lambda *_: stop.__setitem__("now", True))
+    signal.signal(signal.SIGINT, lambda *_: stop.__setitem__("now", True))
+    log.info("watching %s", ", ".join(f"{c.name}({c.dev} metric {c.metric})" for c in ctl.candidates))
+    while not stop["now"]:
+        obs = runner.observe(ctl.candidates)
+        actions = ctl.step(obs)
+        runner.apply(actions, ctl.up_candidates())
+        time.sleep(interval)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

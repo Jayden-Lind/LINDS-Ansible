@@ -1,0 +1,5 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/default/ddclient
+run_dhclient="false"
+run_ipup="false"
+run_daemon="true"
+daemon_interval="300"

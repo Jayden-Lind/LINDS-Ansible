@@ -1,0 +1,123 @@
+---
+# Restarting the unit (rather than `sysctl --system`) applies everything and
+# clears a failed state left by an earlier boot with a bad key.
+- name: sysctl
+  ansible.builtin.systemd_service:
+    name: systemd-sysctl
+    state: restarted
+
+- name: daemon-reload
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: update-grub
+  ansible.builtin.command: update-grub
+  changed_when: true
+
+- name: restart journald
+  ansible.builtin.systemd_service:
+    name: systemd-journald
+    state: restarted
+
+- name: reload networkd
+  ansible.builtin.command: networkctl reload
+  changed_when: true
+
+# nftables.service's ExecReload is `nft -f /etc/nftables.conf`: the whole
+# ruleset is replaced atomically, or not at all.
+- name: reload nftables
+  ansible.builtin.systemd_service:
+    name: nftables
+    state: reloaded
+
+- name: restart rsyslog
+  ansible.builtin.systemd_service:
+    name: rsyslog
+    state: restarted
+
+- name: restart pdns-recursor
+  ansible.builtin.systemd_service:
+    name: pdns-recursor
+    state: restarted
+
+- name: restart kea-dhcp4
+  ansible.builtin.systemd_service:
+    name: kea-dhcp4-server
+    state: restarted
+
+- name: restart kea-dhcp-ddns
+  ansible.builtin.systemd_service:
+    name: kea-dhcp-ddns-server
+    state: restarted
+
+- name: restart chrony
+  ansible.builtin.systemd_service:
+    name: chrony
+    state: restarted
+
+- name: restart snmpd
+  ansible.builtin.systemd_service:
+    name: snmpd
+    state: restarted
+
+- name: restart lldpd
+  ansible.builtin.systemd_service:
+    name: lldpd
+    state: restarted
+
+- name: restart ddclient
+  ansible.builtin.systemd_service:
+    name: ddclient
+    state: restarted
+
+- name: reload sshd
+  ansible.builtin.systemd_service:
+    name: ssh
+    state: reloaded
+
+# charon-systemd re-reads strongswan.conf only on restart; swanctl.conf and
+# the credential directories reload in place.
+- name: restart strongswan
+  ansible.builtin.systemd_service:
+    name: strongswan
+    state: restarted
+
+- name: reload swanctl
+  # --clear drops previously loaded credentials so a rotated cert/key is not
+  # shadowed by the old one still in charon's credential set.
+  ansible.builtin.command: swanctl --load-all --clear --noprompt
+  changed_when: true
+
+# frr.service reloads through frr-reload.py: a diff is applied, BGP sessions
+# that did not change stay up.
+- name: reload frr
+  ansible.builtin.systemd_service:
+    name: frr
+    state: reloaded
+
+- name: restart frr
+  ansible.builtin.systemd_service:
+    name: frr
+    state: restarted
+
+- name: restart wan-failover
+  ansible.builtin.systemd_service:
+    name: wan-failover
+    state: restarted
+
+- name: restart suricata
+  ansible.builtin.systemd_service:
+    name: suricata
+    state: restarted
+
+# disable.conf is consumed by suricata-update, not the daemon: rebuild the
+# ruleset and reload it in place (a restart re-reads ~50k rules, ~20s blind).
+- name: suricata-update
+  ansible.builtin.systemd_service:
+    name: suricata-update
+    state: started
+
+- name: restart tuned
+  ansible.builtin.systemd_service:
+    name: tuned
+    state: restarted

@@ -1,0 +1,11 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/network/20-ipsec0.netdev. IPsec site-to-site LINDS (BGP underlay)
+# XFRM interface (the modern VTI): traffic is matched to the IPsec child SA
+# by if_id, so it carries both address families and any number of selectors.
+[NetDev]
+Name=ipsec0
+Kind=xfrm
+MTUBytes=1436
+
+[Xfrm]
+InterfaceId=10
+Independent=yes

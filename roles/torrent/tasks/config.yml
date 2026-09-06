@@ -1,0 +1,34 @@
+---
+# qBittorrent rewrites its own config file when it shuts down, so the service
+# MUST be stopped before the file is replaced. Copying while it runs (or
+# restarting it via a handler afterwards) lets the running process flush its
+# in-memory settings over the file we just deployed, silently reverting it.
+# main.yml runs service.yml after this, which starts the service again.
+
+- name: Check whether the qBittorrent config needs updating
+  become: true
+  ansible.builtin.copy:
+    src: "{{ torrent_config_src }}"
+    dest: "{{ torrent_config_dir }}/qBittorrent.conf"
+    owner: root
+    group: root
+    mode: "0600"
+  check_mode: true
+  register: torrent_config_check
+
+- name: Stop qBittorrent before rewriting its config
+  become: true
+  ansible.builtin.service:
+    name: "{{ torrent_service_name }}"
+    state: stopped
+  when: torrent_config_check is changed
+
+- name: Deploy qBittorrent config
+  become: true
+  ansible.builtin.copy:
+    src: "{{ torrent_config_src }}"
+    dest: "{{ torrent_config_dir }}/qBittorrent.conf"
+    owner: root
+    group: root
+    mode: "0600"
+  when: torrent_config_check is changed

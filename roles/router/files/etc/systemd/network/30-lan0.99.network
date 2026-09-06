@@ -1,0 +1,42 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/network/30-lan0.99.network. Cellular backup WAN, a VLAN on the
+# LAN trunk. Same shape as wan0: address from DHCP, default route owned by
+# wan-failover, its own always-present default in table 1002 for the health
+# check (1001 is wan0's; 90/100 belong to the WireGuard tunnels). No RA: the WAN's RA supplies the v6 default.
+[Match]
+Name=lan0.99
+
+[Link]
+RequiredForOnline=no
+
+[Network]
+DHCP=yes
+KeepConfiguration=dhcp
+IPv6AcceptRA=no
+LLDP=no
+EmitLLDP=no
+
+[DHCPv4]
+UseGateway=no
+UseDNS=no
+UseNTP=no
+UseHostname=no
+UseDomains=no
+SendHostname=no
+SendRelease=no
+ClientIdentifier=mac
+
+[DHCPv6]
+UseAddress=yes
+UseDNS=no
+UseNTP=no
+WithoutRA=solicit
+
+[Route]
+Gateway=192.168.0.1
+GatewayOnLink=yes
+Table=1002
+
+[RoutingPolicyRule]
+OutgoingInterface=lan0.99
+Table=1002
+Priority=100

@@ -1,0 +1,11 @@
+# Managed by LINDS-Ansible (roles/router). Weekly, like VyOS's task-scheduler entry.
+[Unit]
+Description=Weekly Suricata rule refresh
+
+[Timer]
+OnCalendar=Mon *-*-* 04:00:00
+RandomizedDelaySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

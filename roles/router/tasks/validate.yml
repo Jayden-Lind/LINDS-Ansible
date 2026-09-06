@@ -1,0 +1,65 @@
+---
+# Every daemon's own config checker plus a failed-unit sweep. A green run
+# means a box that would route the moment its links come up.
+
+- name: nftables ruleset parses
+  ansible.builtin.command: nft -c -f /etc/nftables.conf
+  changed_when: false
+
+- name: frr.conf parses
+  ansible.builtin.command: vtysh -C -f /etc/frr/frr.conf
+  changed_when: false
+
+- name: kea configs parse
+  ansible.builtin.command: "{{ item }}"
+  loop:
+    - runuser -u _kea -- kea-dhcp4 -t /etc/kea/kea-dhcp4.conf
+    - runuser -u _kea -- kea-dhcp-ddns -t /etc/kea/kea-dhcp-ddns.conf
+  changed_when: false
+
+- name: sshd config parses
+  ansible.builtin.command: sshd -t
+  changed_when: false
+
+- name: suricata.yaml + rules load
+  ansible.builtin.command: suricata -T -c /etc/suricata/suricata.yaml
+  changed_when: false
+
+- name: swanctl connections loaded
+  ansible.builtin.command: swanctl --list-conns
+  register: router_swanctl_conns
+  changed_when: false
+  failed_when: "'LINDS:' not in router_swanctl_conns.stdout or 'LINDS_MOBILE:' not in router_swanctl_conns.stdout"
+
+- name: pdns-recursor answers control
+  ansible.builtin.command: rec_control ping
+  changed_when: false
+
+- name: Interfaces present
+  ansible.builtin.command: networkctl list --no-legend
+  register: router_links
+  changed_when: false
+  failed_when: router_expected_interfaces | reject('in', router_links.stdout) | list | length > 0
+
+- name: No failed units
+  ansible.builtin.command: systemctl --failed --no-legend --plain
+  register: router_failed_units
+  changed_when: false
+  failed_when: router_failed_units.stdout | trim | length > 0
+
+- name: Routing state (informational)
+  ansible.builtin.shell: |
+    echo '--- ip rule'; ip rule
+    echo '--- main'; ip route
+    echo '--- table 1001 (wan0)'; ip route show table 1001
+    echo '--- table 1002 (lan0.99)'; ip route show table 1002
+    echo '--- table 90 (wg10)'; ip route show table 90
+    echo '--- table 100 (wg101)'; ip route show table 100
+    echo '--- default table'; ip route show table default
+    echo '--- addresses'; ip -br a
+  register: router_routing_state
+  changed_when: false
+
+- name: Routing state
+  ansible.builtin.debug:
+    msg: "{{ router_routing_state.stdout_lines }}"

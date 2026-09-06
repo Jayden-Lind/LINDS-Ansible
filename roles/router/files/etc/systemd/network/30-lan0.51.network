@@ -1,0 +1,12 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/network/30-lan0.51.network. vlan-51-torrent
+[Match]
+Name=lan0.51
+
+[Link]
+RequiredForOnline=no
+
+[Network]
+Address=10.0.51.1/24
+IPv6AcceptRA=no
+LLDP=no
+EmitLLDP=no

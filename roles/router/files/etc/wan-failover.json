@@ -1,0 +1,32 @@
+{
+    "candidates": [
+        {
+            "dev": "wan0",
+            "gateway": "121.221.64.1",
+            "metric": 1,
+            "name": "primary",
+            "onlink": true,
+            "policy": "any-available",
+            "targets": [
+                "8.8.8.8",
+                "8.8.4.4"
+            ]
+        },
+        {
+            "dev": "lan0.99",
+            "gateway": "192.168.0.1",
+            "metric": 10,
+            "name": "backup",
+            "onlink": true,
+            "policy": "any-available",
+            "targets": [
+                "192.168.0.1"
+            ]
+        }
+    ],
+    "fall": 3,
+    "flush_conntrack": true,
+    "interval": 5,
+    "rise": 3,
+    "timeout": 2
+}

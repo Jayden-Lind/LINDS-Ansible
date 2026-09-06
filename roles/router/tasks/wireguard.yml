@@ -1,0 +1,58 @@
+---
+# The tunnels themselves are networkd netdevs (network.yml). This is the one
+# thing networkd does not do: re-resolve a hostname endpoint. NordVPN rotates
+# servers behind the name; networkd resolves it once at load.
+
+- name: wg-reresolve script
+  ansible.builtin.copy:
+    src: usr/local/sbin/wg-reresolve
+    dest: /usr/local/sbin/wg-reresolve
+    mode: '0755'
+
+- name: wg-reresolve units
+  ansible.builtin.copy:
+    src: "etc/systemd/system/{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: '0644'
+  loop:
+    - wg-reresolve@.service
+    - wg-reresolve@.timer
+  notify: daemon-reload
+
+- name: wg-reresolve config dir
+  ansible.builtin.file:
+    path: /etc/wg-reresolve
+    state: directory
+    mode: '0700'
+
+- name: wg-reresolve per-tunnel config (from the vault)
+  ansible.builtin.template:
+    src: wg-reresolve.conf.j2
+    dest: "/etc/wg-reresolve/{{ item.name }}.conf"
+    mode: '0600'
+  loop: "{{ router_wireguard_tunnels | selectattr('peer.host_name', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+
+- name: Flush handlers (units known before enabling timers)
+  ansible.builtin.meta: flush_handlers
+
+- name: wg-reresolve timers (hostname endpoints)
+  ansible.builtin.systemd_service:
+    name: "wg-reresolve@{{ item.name }}.timer"
+    enabled: true
+    state: started
+  loop: "{{ router_wireguard_tunnels | selectattr('peer.host_name', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: wg-reresolve timers off (literal endpoints)
+  ansible.builtin.systemd_service:
+    name: "wg-reresolve@{{ item.name }}.timer"
+    enabled: false
+    state: stopped
+  loop: "{{ router_wireguard_tunnels | rejectattr('peer.host_name', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  failed_when: false

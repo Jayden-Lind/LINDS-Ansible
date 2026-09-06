@@ -1,0 +1,40 @@
+---
+# The torrent hosts write all payload data to NFS. The NFS client's initial RPC
+# slot count defaults to 2 and ramps slowly, which leaves sustained writes
+# queued behind the transport (observed on LINDS-Torrent-02 2026-08-28: average
+# NFS WRITE queue time of 638ms against a 30ms server RTT). Raising the initial
+# slot count removes that ramp.
+
+- name: Persist sunrpc RPC slot tuning for the NFS client
+  become: true
+  ansible.builtin.copy:
+    dest: "{{ torrent_sunrpc_modprobe_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (torrent role)
+      # Raise the initial NFS RPC slot count; the default of 2 ramps too slowly
+      # for sustained torrent writes. Deliberately does NOT set
+      # tcp_max_slot_table_entries - its default is 65536 and pinning it lower
+      # would reduce the ceiling.
+      options sunrpc tcp_slot_table_entries={{ torrent_sunrpc_slot_table_entries }}
+
+# sysctl -w on a sunrpc key fails outright if the module is not loaded, which is
+# the case on a host that has not mounted NFS yet. The modprobe.d file above
+# covers that host from its next boot; only touch the live kernel if the knob
+# actually exists.
+- name: Check whether the sunrpc module is loaded
+  ansible.builtin.stat:
+    path: /proc/sys/sunrpc/tcp_slot_table_entries
+  register: torrent_sunrpc_proc
+
+- name: Apply sunrpc RPC slot tuning to the running kernel
+  become: true
+  ansible.posix.sysctl:
+    name: sunrpc.tcp_slot_table_entries
+    value: "{{ torrent_sunrpc_slot_table_entries }}"
+    state: present
+    sysctl_file: "{{ torrent_sysctl_file }}"
+    reload: true
+  when: torrent_sunrpc_proc.stat.exists

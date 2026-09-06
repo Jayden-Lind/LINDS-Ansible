@@ -1,0 +1,4 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/default/lldpd
+# Legacy protocols as on VyOS (-c cdp, -e edp, -f fdp, -s sonmp) and the
+# SNMP AgentX subagent (-x; snmpd runs `master agentx`).
+DAEMON_ARGS="-c -e -f -s -x"

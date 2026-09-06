@@ -1,0 +1,14 @@
+#!/bin/sh
+# Managed by LINDS-Ansible (roles/router). Re-resolve a WireGuard peer's
+# hostname endpoint once the handshake has gone stale (the wg-quick
+# reresolve-dns pattern). Config: /etc/wg-reresolve/<iface>.conf
+set -eu
+IF="$1"
+. "/etc/wg-reresolve/$IF.conf"
+STALE="${STALE:-150}"
+last=$(wg show "$IF" latest-handshakes | awk -v p="$PEER" '$1 == p { print $2 }')
+[ -n "$last" ] || exit 0
+now=$(date +%s)
+if [ $((now - last)) -gt "$STALE" ]; then
+    wg set "$IF" peer "$PEER" endpoint "$ENDPOINT"
+fi

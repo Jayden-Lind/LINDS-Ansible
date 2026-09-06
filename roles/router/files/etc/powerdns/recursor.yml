@@ -1,0 +1,59 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/powerdns/recursor.yml
+# pdns-recursor 5.x YAML settings (the old key=value syntax is no longer
+# accepted). Same daemon as VyOS `service dns forwarding`, with the cache
+# tuning measured on jd-vyos-01 2026-08-22 carried across:
+#   * max_negative_ttl 300 keeps the search-domain NXDOMAIN churn cached
+#   * minimum_ttl_override 60 floors the TTL-0/4s answers from AD and CDNs
+#   * refresh_on_ttl_perc 10 refetches hot names before they expire
+#   * serve_stale_extensions 1440 answers from expired records for up to 12h
+#     when upstream is unreachable
+
+incoming:
+  listen:
+    - 10.0.50.1
+    - 10.0.53.1
+    - 10.0.52.1
+  port: 53
+  allow_from:
+    - 192.168.0.0/16
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 10.0.50.0/24
+
+recursor:
+  # Catch-all upstream plus the internal stubs, all with recursion desired
+  # (suits an AD zone and kube-dns alike).
+  forward_zones_recurse:
+    - zone: '.'
+      forwarders: ['1.1.1.1', '1.0.0.1', '2606:4700:4700::1111', '2606:4700:4700::1001']
+    # The local DC plus one LINDS DC over the IPsec tunnel as backup; pdns
+    # orders forwarders by measured speed.
+    - zone: linds.com.au
+      forwarders: ['10.0.50.200', '10.3.1.200']
+    # kube-dns, reachable because Cilium advertises ClusterIPs over BGP.
+    # Drop this stub in the same change if that advertisement ever goes.
+    - zone: k8s.linds.com.au
+      forwarders: ['10.96.0.10']
+  minimum_ttl_override: 60
+  threads: 2
+  hint_file: /usr/share/dns/root.hints
+  include_dir: /etc/powerdns/recursor.d
+  socket_dir: /var/run/pdns-recursor
+  setuid: pdns
+  setgid: pdns
+
+outgoing:
+  # Forward to RFC1918 targets (the default refuses them).
+  dont_query: []
+
+recordcache:
+  max_entries: 1000000
+  max_negative_ttl: 300
+  refresh_on_ttl_perc: 10
+  serve_stale_extensions: 1440
+
+dnssec:
+  validation: 'off'
+
+logging:
+  quiet: true

@@ -1,0 +1,10 @@
+---
+- name: Debian router (roles/router)
+  hosts: router
+  become: true
+  # A run that fails after a config file changed must still restart the
+  # daemon that reads it; without this the notification is lost and the next
+  # (unchanged) run never restarts it.
+  force_handlers: true
+  roles:
+    - router

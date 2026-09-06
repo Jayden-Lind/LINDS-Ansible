@@ -1,0 +1,35 @@
+---
+# Dual-WAN failover daemon (files/usr/local/sbin/wan-failover, tests in
+# tests/). Candidates and thresholds: files/etc/wan-failover.json.
+
+- name: wan-failover daemon
+  ansible.builtin.copy:
+    src: usr/local/sbin/wan-failover
+    dest: /usr/local/sbin/wan-failover
+    mode: '0755'
+  notify: restart wan-failover
+
+- name: wan-failover config
+  ansible.builtin.copy:
+    src: etc/wan-failover.json
+    dest: /etc/wan-failover.json
+    mode: '0644'
+  notify: restart wan-failover
+
+- name: wan-failover unit
+  ansible.builtin.copy:
+    src: etc/systemd/system/wan-failover.service
+    dest: /etc/systemd/system/wan-failover.service
+    mode: '0644'
+  notify:
+    - daemon-reload
+    - restart wan-failover
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: wan-failover enabled
+  ansible.builtin.systemd_service:
+    name: wan-failover
+    enabled: true
+    state: started

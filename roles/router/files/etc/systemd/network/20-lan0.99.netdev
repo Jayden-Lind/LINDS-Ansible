@@ -1,0 +1,7 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/network/20-lan0.99.netdev. cellular backup WAN
+[NetDev]
+Name=lan0.99
+Kind=vlan
+
+[VLAN]
+Id=99

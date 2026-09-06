@@ -1,0 +1,15 @@
+# Rendered by LINDS-Ansible from the vault (cf_dyn_dns_*, dyn_host).
+# Cloudflare dynamic DNS for the WAN, both address families
+# (VyOS `service dns dynamic ... ip-version both`).
+daemon=300
+syslog=yes
+pid=/run/ddclient.pid
+ssl=yes
+usev4=ifv4, ifv4=wan0
+usev6=ifv6, ifv6=wan0
+
+protocol=cloudflare
+zone={{ cf_dyn_dns_zone }}
+login=token
+password={{ cf_dyn_dns_key }}
+{{ dyn_host }}

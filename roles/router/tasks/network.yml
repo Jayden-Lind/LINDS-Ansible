@@ -1,0 +1,141 @@
+---
+# systemd-networkd owns every interface. The files are the plain ones in
+# files/etc/systemd/network (edit those); only the WireGuard .netdev files
+# are rendered, because their peer endpoint and public key are vault values.
+# Anything in /etc/systemd/network this role did not write is removed, so
+# deleting a file from the role deletes the interface from the box.
+#
+# First run on a fresh cloud image: the .link files rename the NICs by MAC
+# (ens18 -> mgmt0 ...) and cloud-init's own network config is retired, which
+# needs a reboot to take cleanly. Later runs reload in place; a changed
+# .netdev is deleted first so networkd recreates it with the new properties.
+
+- name: WireGuard key directory
+  ansible.builtin.file:
+    path: /etc/systemd/network/keys
+    state: directory
+    owner: root
+    group: systemd-network
+    mode: '0750'
+
+- name: WireGuard private keys
+  ansible.builtin.copy:
+    dest: "/etc/systemd/network/keys/{{ item.name }}.key"
+    content: "{{ item.private_key }}\n"
+    owner: root
+    group: systemd-network
+    mode: '0640'
+  loop: "{{ router_wireguard_tunnels }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+  register: router_wg_keys
+
+- name: networkd files
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/etc/systemd/network/{{ item | basename }}"
+    mode: '0644'
+  with_fileglob: etc/systemd/network/*
+  loop_control:
+    label: "{{ item | basename }}"
+  register: router_networkd_files
+
+- name: WireGuard netdevs
+  ansible.builtin.template:
+    src: wg.netdev.j2
+    dest: "/etc/systemd/network/20-{{ item.name }}.netdev"
+    mode: '0644'
+  loop: "{{ router_wireguard_tunnels }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: router_wg_netdevs
+
+- name: Prune networkd files this role did not write
+  ansible.builtin.find:
+    paths: /etc/systemd/network
+    file_type: file
+    excludes: >-
+      {{ (router_networkd_files.results | map(attribute='item') | map('basename') | list)
+         + (router_wireguard_tunnels | map(attribute='name') | map('regex_replace', '^(.*)$', '20-\1.netdev') | list) }}
+  register: router_networkd_stale
+
+- name: Remove stale networkd files
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ router_networkd_stale.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  register: router_networkd_pruned
+
+# cloud-init configured the first boot's network through whichever renderer
+# the image carries; both are retired (the 99-disable-network-config.cfg from
+# Terraform stops it coming back).
+- name: Retire cloud-init's network config
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/netplan/50-cloud-init.yaml
+    - /etc/network/interfaces.d/50-cloud-init
+    - /etc/udev/rules.d/70-persistent-net.rules
+  register: router_cloudinit_net
+
+- name: netplan present?
+  ansible.builtin.stat:
+    path: /usr/sbin/netplan
+  register: router_netplan
+
+- name: Regenerate netplan (now empty) so its runtime files go away
+  ansible.builtin.command: netplan generate
+  when: router_netplan.stat.exists and router_cloudinit_net.changed
+  changed_when: true
+
+- name: systemd-networkd enabled
+  ansible.builtin.systemd_service:
+    name: systemd-networkd
+    enabled: true
+    state: started
+
+# Nothing should hold boot for a WAN that may be down; every link is
+# RequiredForOnline=no and the daemons cope with late addresses.
+- name: No wait-online
+  ansible.builtin.systemd_service:
+    name: systemd-networkd-wait-online
+    enabled: false
+    masked: true
+
+- name: Interfaces renamed, cloud-init network retired or kernel changed -> reboot
+  ansible.builtin.set_fact:
+    router_reboot_required: >-
+      {{ router_cloudinit_net.changed
+         or router_kernel_changed | default(false)
+         or (router_networkd_files.results | selectattr('item', 'search', '\.link$') | selectattr('changed') | list | length > 0) }}
+
+- name: Reboot (interface names / kernel)
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+    post_reboot_delay: 10
+  when: router_reboot_required | bool
+
+- name: Recreate changed netdevs
+  ansible.builtin.command: "networkctl delete {{ item }}"
+  loop: >-
+    {{ (router_networkd_files.results | selectattr('item', 'search', '\.netdev$') | selectattr('changed')
+        | map(attribute='item') | map('basename') | map('regex_replace', '^\d+-(.*)\.netdev$', '\1') | list)
+       + (router_wg_netdevs.results | selectattr('changed') | map(attribute='item.name') | list) }}
+  when: not router_reboot_required | bool
+  failed_when: false
+  changed_when: true
+  notify: reload networkd
+
+- name: Reload networkd on any change
+  ansible.builtin.debug:
+    msg: networkd config changed
+  when: (router_networkd_files.changed or router_wg_netdevs.changed or router_networkd_pruned.changed or router_wg_keys.changed) and not router_reboot_required | bool
+  changed_when: true
+  notify: reload networkd
+
+- name: Flush handlers (interfaces up before anything binds)
+  ansible.builtin.meta: flush_handlers

@@ -1,0 +1,35 @@
+---
+# FRR: static routes + BGP (files/etc/frr/frr.conf). VyOS `protocols` is
+# FRR underneath, so the config is the same dialect. Changes go through
+# frr-reload.py (systemctl reload), which diffs and leaves untouched
+# sessions alone.
+
+- name: FRR files
+  ansible.builtin.copy:
+    src: "etc/frr/{{ item.name }}"
+    dest: "/etc/frr/{{ item.name }}"
+    owner: frr
+    group: frr
+    mode: '0640'
+  loop:
+    - {name: daemons, notify: restart frr}
+    - {name: vtysh.conf, notify: restart frr}
+    - {name: frr.conf, notify: reload frr}
+  loop_control:
+    label: "{{ item.name }}"
+  register: router_frr_files
+
+- name: FRR reload / restart
+  ansible.builtin.debug:
+    msg: "{{ item.item.name }} changed"
+  loop: "{{ router_frr_files.results | selectattr('changed') | list }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  changed_when: true
+  notify: "{{ item.item.notify }}"
+
+- name: FRR enabled
+  ansible.builtin.systemd_service:
+    name: frr
+    enabled: true
+    state: started

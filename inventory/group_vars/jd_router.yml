@@ -1,0 +1,53 @@
+---
+# jd-router-01 — the Debian 13 replacement for jd-vyos-01 (roles/router).
+#
+# Nearly everything is a plain file in roles/router/files/etc/ (edit those).
+# What is here is what the few remaining templates need: the WireGuard
+# tunnels (their endpoint and public key are vaulted in inventory/router.yml)
+# and the interface list the validator checks for.
+
+router_hostname: jd-router-01
+
+# Kernel from trixie-backports (7.x) rather than stable's 6.12. The role adds
+# the backports source, installs linux-image-cloud-amd64 from it and reboots
+# when the package changes; stable's kernel stays installed as a fallback
+# GRUB entry.
+router_kernel_backports: true
+
+# NordVPN egress tunnels. Each tunnel's .netdev is rendered from this (the
+# peer values are vault secrets); its .network with the policy routing is a
+# plain file: files/etc/systemd/network/30-<name>.network.
+router_wireguard_tunnels:
+  # VLAN 58 (US egress). host_name: re-resolved by the wg-reresolve timer
+  # when NordVPN rotates the server.
+  - name: wg10
+    mtu: 1420
+    table: 90
+    private_key: "{{ wg_us_priv_key }}"
+    peer:
+      host_name: "{{ wg_us_host }}"
+      public_key: "{{ wg_us_pub_key }}"
+  # VLAN 51 (torrent egress). Literal endpoint, as on VyOS — the healthcheck
+  # notes record that NordVPN has rotated it and the tunnel is not handshaking.
+  - name: wg101
+    mtu: 1420
+    table: 100
+    private_key: "{{ wg_priv_key }}"
+    peer:
+      address: "{{ wg_host }}"
+      public_key: "{{ wg_pub_key }}"
+
+# Every interface files/etc/systemd/network defines; validate.yml fails the
+# run if networkd is not showing one of them.
+router_expected_interfaces:
+  - lan0
+  - wan0
+  - lan0.51
+  - lan0.52
+  - lan0.53
+  - lan0.58
+  - lan0.99
+  - wg10
+  - wg101
+  - ipsec0
+  - ipsec10

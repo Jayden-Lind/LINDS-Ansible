@@ -1,0 +1,88 @@
+---
+# strongSwan through swanctl.conf (files/etc/swanctl/swanctl.conf). The
+# credentials come from the same vault values the vyos role feeds VyOS's PKI
+# store — bare base64 DER — wrapped as PEM by the to_pem filter; the EAP users
+# render into conf.d/secrets.conf, which swanctl.conf includes.
+
+- name: swanctl directories
+  ansible.builtin.file:
+    path: "/etc/swanctl/{{ item }}"
+    state: directory
+    mode: '0700'
+  loop: [x509, x509ca, private, conf.d]
+
+- name: LINDS CA
+  ansible.builtin.copy:
+    dest: /etc/swanctl/x509ca/LINDS-CA.pem
+    content: "{{ lookup('ansible.builtin.file', 'linds-ca.cer') | to_pem('certificate') }}"
+    mode: '0644'
+  notify: reload swanctl
+
+- name: Certificates
+  ansible.builtin.copy:
+    dest: "/etc/swanctl/x509/{{ item.name }}.pem"
+    content: "{{ item.value | to_pem('certificate') }}"
+    mode: '0644'
+  loop:
+    - {name: IPSEC, value: "{{ pub_key }}"}
+    - {name: ipsec_remote, value: "{{ ipsec_remote_pub }}"}
+  loop_control:
+    label: "{{ item.name }}"
+  notify: reload swanctl
+
+- name: Private keys
+  ansible.builtin.copy:
+    dest: "/etc/swanctl/private/{{ item.name }}.pem"
+    content: "{{ item.value | to_pem('key') }}"
+    mode: '0600'
+  loop:
+    - {name: IPSEC, value: "{{ priv_key }}"}
+    - {name: ipsec_remote, value: "{{ ipsec_remote_priv }}"}
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+  notify: reload swanctl
+
+- name: Prune credentials this role did not write
+  ansible.builtin.find:
+    paths: [/etc/swanctl/x509, /etc/swanctl/x509ca, /etc/swanctl/private]
+    file_type: file
+    excludes: [IPSEC.pem, ipsec_remote.pem, LINDS-CA.pem]
+  register: router_swanctl_stale
+
+- name: Remove stale credentials
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ router_swanctl_stale.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  notify: reload swanctl
+
+- name: charon options
+  ansible.builtin.copy:
+    src: etc/strongswan.d/router.conf
+    dest: /etc/strongswan.d/router.conf
+    mode: '0644'
+  notify: restart strongswan
+
+- name: swanctl.conf
+  ansible.builtin.copy:
+    src: etc/swanctl/swanctl.conf
+    dest: /etc/swanctl/swanctl.conf
+    mode: '0600'
+  notify: reload swanctl
+
+- name: EAP users (from the vault)
+  ansible.builtin.template:
+    src: swanctl-secrets.conf.j2
+    dest: /etc/swanctl/conf.d/secrets.conf
+    mode: '0600'
+  no_log: true
+  notify: reload swanctl
+
+- name: strongswan enabled
+  ansible.builtin.systemd_service:
+    name: strongswan
+    enabled: true
+    state: started

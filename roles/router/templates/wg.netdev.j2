@@ -1,0 +1,19 @@
+# Rendered by LINDS-Ansible from inventory/group_vars/jd_router.yml
+# (router_wireguard_tunnels; the peer values are vault secrets). The policy
+# routing for this tunnel is the plain file 30-{{ item.name }}.network.
+# RouteTable: networkd itself installs the AllowedIPs default into the
+# tunnel's table.
+[NetDev]
+Name={{ item.name }}
+Kind=wireguard
+MTUBytes={{ item.mtu }}
+
+[WireGuard]
+PrivateKeyFile=/etc/systemd/network/keys/{{ item.name }}.key
+RouteTable={{ item.table }}
+
+[WireGuardPeer]
+PublicKey={{ item.peer.public_key }}
+AllowedIPs=0.0.0.0/0
+Endpoint={{ item.peer.host_name | default(item.peer.address) }}:{{ item.peer.port | default(51820) }}
+PersistentKeepalive={{ item.peer.keepalive | default(25) }}

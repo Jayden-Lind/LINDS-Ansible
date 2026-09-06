@@ -1,0 +1,11 @@
+# Managed by LINDS-Ansible (roles/router).
+[Unit]
+Description=Re-resolve WireGuard endpoint for %i (periodic)
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=60
+AccuracySec=5
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,102 @@
+---
+# apt on a router. Everything non-interactive, nothing restarts on its own
+# schedule: unattended-upgrades goes, needrestart is told to restart daemons
+# under apt rather than prompt, and upgrades happen only inside this role.
+
+- name: needrestart conf dir
+  ansible.builtin.file:
+    path: /etc/needrestart/conf.d
+    state: directory
+    mode: '0755'
+
+- name: needrestart never prompts
+  ansible.builtin.copy:
+    src: etc/needrestart/conf.d/50-router.conf
+    dest: /etc/needrestart/conf.d/50-router.conf
+    mode: '0644'
+
+- name: unattended-upgrades is not for routers
+  ansible.builtin.apt:
+    name: unattended-upgrades
+    state: absent
+    purge: true
+
+- name: trixie-backports (kernel only, see router_kernel_backports)
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/backports.sources
+    content: |
+      # Managed by LINDS-Ansible (roles/router). Only linux-image-amd64 is
+      # taken from here (router_kernel_backports).
+      Types: deb
+      URIs: http://deb.debian.org/debian
+      Suites: trixie-backports
+      Components: main
+      Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+    mode: '0644'
+  when: router_kernel_backports
+
+- name: trixie-backports (absent)
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/backports.sources
+    state: absent
+  when: not router_kernel_backports
+
+- name: apt full-upgrade
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+    upgrade: full
+    autoremove: true
+  when: router_apt_upgrade
+
+- name: Router packages
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+    name:
+      - linux-image-cloud-amd64   # the image's kernel flavour, see the note below
+      - nftables
+      - frr
+      - frr-pythontools           # frr-reload.py behind `systemctl reload frr`
+      - charon-systemd            # strongSwan daemon (swanctl stack, no ipsec.conf)
+      - strongswan-swanctl
+      - libcharon-extra-plugins   # eap-mschapv2
+      - libstrongswan-extra-plugins
+      - libstrongswan-standard-plugins
+      - kea-dhcp4-server
+      - kea-dhcp-ddns-server
+      - pdns-recursor
+      - chrony
+      - snmpd
+      - lldpd
+      - ddclient
+      - suricata
+      - suricata-update
+      - rsyslog
+      - conntrack                 # failover flushes SNAT entries on switchover
+      - wireguard-tools           # wg(8) for the endpoint re-resolver + debugging
+      - ethtool
+      - tuned
+      - iputils-ping
+      - tcpdump
+      - mtr-tiny
+      - bind9-dnsutils
+      - jq
+      - qemu-guest-agent
+    state: present
+
+# The genericcloud image boots Debian's cloud kernel: same version as the
+# full one, trimmed module set — but it carries everything a virtio router
+# needs (tunnels, cake/bbr, mlx5 for the ConnectX VF, nf_flow_table). It is
+# kept; router_kernel_backports moves it to the backports version.
+- name: Kernel from trixie-backports
+  ansible.builtin.apt:
+    name: linux-image-cloud-amd64
+    default_release: trixie-backports
+    state: latest
+  when: router_kernel_backports
+  register: router_kernel_backports_install
+
+- name: Kernel changed -> reboot later in the run
+  ansible.builtin.set_fact:
+    router_kernel_changed: "{{ router_kernel_backports_install.changed | default(false) }}"

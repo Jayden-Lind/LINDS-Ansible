@@ -1,0 +1,21 @@
+---
+# roles/router — a Debian 13 router built from plain config files.
+#
+# The daemon configs are real files under files/etc/, mirroring where they
+# land on the box; edit them there. Jinja is used only where a file carries
+# vault secrets (WireGuard peers, EAP users, the Cloudflare token) or is
+# rendered from vault values (certificates, keys).
+
+# `apt full-upgrade` on every run. Stable's security fixes should land, but
+# unattended-upgrades is removed (a router must never restart its daemons on
+# its own schedule) — so upgrades happen here, with the validators at the end.
+router_apt_upgrade: true
+# linux-image-cloud-amd64 from trixie-backports instead of stable's kernel.
+router_kernel_backports: false
+# VyOS `system option performance network-throughput` == this tuned profile.
+router_tuned_profile: network-throughput
+router_timezone: Australia/Melbourne
+
+# Hostname-endpoint WireGuard tunnels get `wg set … endpoint` re-run when the
+# last handshake is older than this many seconds (timer: every 60s).
+router_wg_reresolve_stale: 150
