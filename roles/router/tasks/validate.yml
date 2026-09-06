@@ -31,6 +31,15 @@
   changed_when: false
   failed_when: "'LINDS:' not in router_swanctl_conns.stdout or 'LINDS_MOBILE:' not in router_swanctl_conns.stdout"
 
+# recursor.yml listens on lan0's link-local as [addr%2]:53 (the 5.x YAML
+# validator takes only a numeric scope). A different ifindex is not an
+# outage (IPv4 DNS keeps working) but IPv6 DNS from the RA goes quiet.
+- name: lan0 ifindex is 2 (recursor.yml link-local listener scope)
+  ansible.builtin.command: cat /sys/class/net/lan0/ifindex
+  register: router_lan0_ifindex
+  changed_when: false
+  failed_when: router_lan0_ifindex.stdout | trim != '2'
+
 - name: pdns-recursor answers control
   ansible.builtin.command: rec_control ping
   changed_when: false

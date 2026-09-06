@@ -39,7 +39,12 @@ Token=static:::1
 [IPv6SendRA]
 RouterLifetimeSec=3600
 RouterPreference=high
-EmitDNS=no
+# RDNSS = this interface's link-local (fe80::be24:11ff:fe01:1101, EUI-64
+# from the pinned MAC). The GUA changes with the ISP's prefix, the
+# link-local does not; pdns-recursor listens on it and nftables input rule
+# 9 admits DNS to fe80::/10 from lan0.
+EmitDNS=yes
+DNS=_link_local
 EmitDomains=no
 Managed=no
 OtherInformation=no

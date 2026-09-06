@@ -107,10 +107,21 @@ af-packet:
     # up to block-size; 128k covers the largest GRO/TSO skb.
     tpacket-v3: yes
     block-size: 131072
-    ring-size: 32768
-    # IDS (copy) mode: leave GRO/TSO on lan0 alone. Suricata would otherwise
-    # switch them off and every forwarded packet costs the full per-packet path.
-    disable-offloading: no
+    # 64k frames (~100 MB): a single worker dropped ~4% during a burst at
+    # 32k on 2026-09-06. Watch capture.kernel_drops after the offload fix.
+    ring-size: 65536
+
+# IDS (copy) mode: leave sg/TSO/GSO/GRO on lan0 alone. By default Suricata
+# switches all four off on the capture interface once the rules are loaded
+# (and restores them on exit), and every forwarded packet then costs the
+# full per-packet path with software segmentation on a non-SG device. This
+# is a GLOBAL switch; a "disable-offloading" key inside the af-packet
+# interface block is silently ignored (found the hard way, 2026-09-06).
+# Suricata then warns "using AF_PACKET with offloads enabled leads to
+# capture problems" at start; tpacket v3 with a 128k block covers the
+# GRO/TSO super-packets that warning is about.
+capture:
+  disable-offloading: false
 
 # workers, not autofp: see the af-packet comment (tpacket v3).
 runmode: workers

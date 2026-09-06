@@ -79,9 +79,9 @@ run is a box that would route the moment its links come up.
   package installs so the first start never sees Debian's defaults. UPnP
   is main-LAN only, `secure_mode` (clients map only to themselves), IPv6
   pinholes off until a v6 forward filter exists.
-* **Software flowtable, main LAN and VLAN 52 <-> WAN.** The last four
-  forward rules hand established TCP/UDP flows between `lan0`/`lan0.52` and
-  `wan0` to `flowtable ft`; later packets skip the ruleset. `conntrack -L |
+* **Software flowtable, main LAN, VLAN 52 and VLAN 53 <-> WAN.** The last
+  six forward rules hand established TCP/UDP flows between `lan0`, `lan0.52`,
+  `lan0.53` and `wan0` to `flowtable ft`; later packets skip the ruleset. `conntrack -L |
   grep -c OFFLOAD` shows how many. Tunnels are excluded (xfrm and WireGuard
   cannot be software-offloaded). Capture pitfall: the flowtable's ingress
   hook on the parent `lan0` handles tagged frames itself, so an offloaded
@@ -89,11 +89,38 @@ run is a box that would route the moment its links come up.
   vlan 52` instead. A capture on `lan0.52` during the 2026-09-06 UniFi
   console outage was read as "return direction lost", which was this
   artefact. When adding another VLAN, prove both directions the same way.
-* **Suricata no longer disables offloads on lan0**, and
-  `nic-tuning.service` turns them back on (`sg` before `tso`, which needs
-  it), sets the VF rx ring to 8192 and enables UDP GRO forwarding on both
-  NICs. irqbalance spreads the queues. All of it is ethtool, none of it is
-  expressible in `.link` files.
+* **ECMP hashes the 5-tuple.** `fib_multipath_hash_policy=1` (v4 and v6)
+  in sysctl.d, so flows from one client spread across the five Talos
+  next-hops of a service VIP instead of all landing on one node.
+* **IPv6 clients get DNS from the RA.** lan0's RA carries RDNSS =
+  `_link_local` (fe80::be24:11ff:fe01:1101, EUI-64 of the pinned MAC);
+  pdns-recursor listens on it and input rule 9 admits DNS to fe80::/10 from
+  lan0. The GUA is not used because the ISP prefix changes. Recursor 5.x's
+  YAML validator rejects `%lan0` (the daemon's own parser would take it),
+  so recursor.yml uses `[addr%2]:53` with lan0's ifindex, and validate.yml
+  asserts the index is still 2. A wrong index is not an outage: the bind
+  succeeds via ip_nonlocal_bind and only IPv6 DNS goes quiet, IPv4 stays.
+  `allow_from` must list `fe80::/10`: clients query a link-local listener
+  from their link-local, and a source outside the list is dropped silently
+  (`rec_control get unauthorized-udp` climbs).
+* **Security updates apply unattended.** unattended-upgrades with the two
+  Debian-Security origins only, 04:00 local (+0-30 min) via a timer
+  drop-in, never an automatic reboot; needrestart restarts touched daemons
+  in that run, so an OpenSSL fix costs a few seconds of BGP/IPsec
+  reconvergence. The backports kernel is not a security origin and only
+  moves through this role. `journalctl -t unattended-upgrade` and
+  `/var/log/unattended-upgrades/` show what happened; `unattended-upgrade
+  --dry-run -d` previews.
+* **Suricata no longer disables offloads on lan0.** The switch is the
+  top-level `capture: disable-offloading: false`; the same key inside the
+  af-packet interface block is ignored, and with it Suricata turned sg, TSO,
+  GSO and GRO off on lan0 every start (after rule loading, so a check a few
+  seconds after a restart still shows them on). `nic-tuning.service` sets
+  the VF rx ring to 8192, enables UDP GRO forwarding on both NICs and
+  re-asserts lan0's offloads (`sg` before `tso`, which needs it). irqbalance
+  spreads the queues. All of it is ethtool, none of it is expressible in
+  `.link` files. `ethtool -k lan0 | grep -E "^(scatter|tcp-seg|generic)"`
+  must show four `on`s.
 * **Suricata runs `workers`, not `autofp`.** tpacket v3 only exists in the
   workers runmode; under autofp it silently fell back to v2, whose fixed
   frame size truncated every GRO super-packet at 1514 bytes

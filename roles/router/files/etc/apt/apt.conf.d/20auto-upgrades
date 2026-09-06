@@ -1,0 +1,6 @@
+// Managed by LINDS-Ansible: roles/router/files/etc/apt/apt.conf.d/20auto-upgrades
+// Daily list refresh (apt-daily.timer) and unattended run
+// (apt-daily-upgrade.timer, 04:00 local via the timer drop-in).
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";

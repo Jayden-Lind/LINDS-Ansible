@@ -1,7 +1,9 @@
 ---
-# apt on a router. Everything non-interactive, nothing restarts on its own
-# schedule: unattended-upgrades goes, needrestart is told to restart daemons
-# under apt rather than prompt, and upgrades happen only inside this role.
+# apt on a router. Everything non-interactive. Security updates apply on
+# their own (unattended-upgrades, security origins only, 04:00 local, never
+# a reboot); everything else, the backports kernel included, moves only
+# inside this role. needrestart restarts daemons under apt rather than
+# prompt, in the unattended run as well.
 
 - name: needrestart conf dir
   ansible.builtin.file:
@@ -15,11 +17,46 @@
     dest: /etc/needrestart/conf.d/50-router.conf
     mode: '0644'
 
-- name: unattended-upgrades is not for routers
+- name: unattended-upgrades (security origins only)
   ansible.builtin.apt:
     name: unattended-upgrades
-    state: absent
-    purge: true
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: unattended-upgrades policy
+  ansible.builtin.copy:
+    src: "etc/apt/apt.conf.d/{{ item }}"
+    dest: "/etc/apt/apt.conf.d/{{ item }}"
+    mode: '0644'
+  loop:
+    - 20auto-upgrades
+    - 52unattended-upgrades-router
+
+- name: apt-daily-upgrade.timer drop-in dir
+  ansible.builtin.file:
+    path: /etc/systemd/system/apt-daily-upgrade.timer.d
+    state: directory
+    mode: '0755'
+
+- name: apt-daily-upgrade.timer at 04:00
+  ansible.builtin.copy:
+    src: etc/systemd/system/apt-daily-upgrade.timer.d/router.conf
+    dest: /etc/systemd/system/apt-daily-upgrade.timer.d/router.conf
+    mode: '0644'
+  notify: daemon-reload
+
+- name: Flush handlers (timer drop-in)
+  ansible.builtin.meta: flush_handlers
+
+- name: apt timers enabled
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
 
 - name: trixie-backports (kernel only, see router_kernel_backports)
   ansible.builtin.copy:

@@ -13,12 +13,24 @@ incoming:
     - 10.0.50.1
     - 10.0.53.1
     - 10.0.52.1
+    # lan0's link-local, what the RA hands out as RDNSS (30-lan0.network):
+    # EUI-64 of the MAC pinned in 10-lan0.link. The 5.x YAML validator only
+    # accepts a NUMERIC scope in [addr%scope]:port form (%lan0 is rejected
+    # before the daemon's own parser ever sees it), so this is lan0's
+    # ifindex; validate.yml asserts it is still 2. Change both if the MAC or
+    # the NIC order moves.
+    - '[fe80::be24:11ff:fe01:1101%2]:53'
   port: 53
   allow_from:
     - 192.168.0.0/16
     - 10.0.0.0/8
     - 172.16.0.0/12
     - 10.0.50.0/24
+    # Clients that take the RA's RDNSS query the link-local listener from
+    # their own link-local (RFC 6724 scope matching); without this the
+    # recursor drops them silently (rec_control get unauthorized-udp).
+    - 'fe80::/10'
+    - '::1/128'
 
 recursor:
   # Catch-all upstream plus the internal stubs, all with recursion desired
