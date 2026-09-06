@@ -79,10 +79,16 @@ run is a box that would route the moment its links come up.
   package installs so the first start never sees Debian's defaults. UPnP
   is main-LAN only, `secure_mode` (clients map only to themselves), IPv6
   pinholes off until a v6 forward filter exists.
-* **Software flowtable.** The last forward rule hands established TCP/UDP
-  flows to `flowtable ft` (`wan0`, `lan0*`); later packets skip the
-  ruleset. `conntrack -L | grep -c OFFLOAD` shows how many. Rules that must
-  see every packet of a flow have to sit above it (none do today).
+* **Software flowtable, main LAN and VLAN 52 <-> WAN.** The last four
+  forward rules hand established TCP/UDP flows between `lan0`/`lan0.52` and
+  `wan0` to `flowtable ft`; later packets skip the ruleset. `conntrack -L |
+  grep -c OFFLOAD` shows how many. Tunnels are excluded (xfrm and WireGuard
+  cannot be software-offloaded). Capture pitfall: the flowtable's ingress
+  hook on the parent `lan0` handles tagged frames itself, so an offloaded
+  VLAN flow never appears in a `tcpdump -i lan0.52`; use `tcpdump -i lan0 -e
+  vlan 52` instead. A capture on `lan0.52` during the 2026-09-06 UniFi
+  console outage was read as "return direction lost", which was this
+  artefact. When adding another VLAN, prove both directions the same way.
 * **Suricata no longer disables offloads on lan0**, and
   `nic-tuning.service` turns them back on (`sg` before `tso`, which needs
   it), sets the VF rx ring to 8192 and enables UDP GRO forwarding on both
@@ -96,6 +102,13 @@ run is a box that would route the moment its links come up.
   `default-packet-size: 65535`: under v2 that makes the ring mmap fail and
   Suricata crash-loops. Check with `suricatasc -c dump-counters` →
   `trunc_pkt` flat, `max_pkt_size` well above 1514.
+* **Suricata: one worker thread.** The tap is on the trunk parent, so every
+  inter-VLAN packet appears twice (untagged and tagged). With two workers
+  the fanout hash split the copies across threads (`pkt_on_wrong_thread`
+  at 4%) and every LAN<->VLAN flow raised "Applayer Wrong direction first
+  Data" and "3way handshake wrong seq" alerts. One worker sees everything
+  in order; it idles at a few percent CPU today. If `capture.kernel_drops`
+  ever climbs, the fix is not more workers on this capture layout.
 * **IKE listens on IPv6 too.** Input rule 3 is family-agnostic and charon
   binds `[::]:500/4500`; ddclient keeps the AAAA record for
   `jd-pfsense.linds.com.au` current. Inside-tunnel IPv6 is still a future
@@ -104,6 +117,15 @@ run is a box that would route the moment its links come up.
   10.0.53.0/24), which VyOS did not. FRR does not refresh a neighbour when a
   route-map changes: `vtysh -c 'clear ip bgp 10.255.0.2 soft out'` after
   editing the export.
+* **k8s export prefix-lists need `le 32`.** The Talos nodes advertise
+  specific routes only (/24 pod CIDRs, /32 service and LoadBalancer IPs),
+  never the aggregates the prefix-lists name (10.244.0.0/16, 10.96.0.0/12,
+  172.16.1.0/24). Exact-match entries never fired, so LINDS learned no route
+  back to the JD cluster and replies to JD pods were black-holed (radarr
+  "failed to fetch", 2026-09-06). `le 32` makes them match the specifics.
+  This bit despite matching VyOS's config verbatim, so the nodes' advertising
+  must have changed at some point; verify with `show ip bgp neighbors
+  10.255.0.2 advertised-routes`.
 * **`DHCP=yes` on `wan0`, not `DHCP=ipv4`.** With `WithoutRA=solicit`
   networkd ignores the RA's request to start DHCPv6 (it assumes the client
   already started at link setup), and that start only happens when `DHCP=`

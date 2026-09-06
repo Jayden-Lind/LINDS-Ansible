@@ -90,9 +90,13 @@ logging:
 
 af-packet:
   - interface: lan0
-    # Two worker threads, flows pinned by hash (cluster_flow); the other
-    # two vCPUs stay for forwarding.
-    threads: 2
+    # One worker. Capturing on the trunk parent means every inter-VLAN
+    # packet is seen twice (untagged on rx, tagged on tx, or vice versa), and
+    # with two workers the kernel's fanout hash split those copies across
+    # threads: pkt_on_wrong_thread at 4%, "Applayer Wrong direction first
+    # Data" and "3way handshake wrong seq" alerts on every LAN<->VLAN flow.
+    # A single worker sees everything in order. Watch capture.kernel_drops.
+    threads: 1
     cluster-id: 99
     cluster-type: cluster_flow
     defrag: yes
