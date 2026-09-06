@@ -97,6 +97,9 @@ af-packet:
     use-mmap: yes
     tpacket-v3: yes
     ring-size: 32768
+    # IDS (copy) mode: leave GRO/TSO on lan0 alone. Suricata would otherwise
+    # switch them off and every forwarded packet costs the full per-packet path.
+    disable-offloading: no
 
 runmode: autofp
 max-pending-packets: 4096

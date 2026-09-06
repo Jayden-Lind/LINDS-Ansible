@@ -1,0 +1,23 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/system/nic-tuning.service.
+# ethtool knobs systemd .link files cannot express, applied once the renamed
+# devices exist.
+#   wan0 rx ring 1024 -> 8192 (the VF's maximum): absorbs bursts without drops.
+#   rx-udp-gro-forwarding: batch forwarded UDP (WireGuard, QUIC) through GRO,
+#   the UDP counterpart of the TCP GRO the .link files already enable.
+[Unit]
+Description=NIC tuning (ring size, UDP GRO forwarding) for wan0 and lan0
+After=systemd-networkd.service sys-subsystem-net-devices-wan0.device sys-subsystem-net-devices-lan0.device
+Wants=sys-subsystem-net-devices-wan0.device sys-subsystem-net-devices-lan0.device
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/ethtool -G wan0 rx 8192
+ExecStart=/usr/sbin/ethtool -K wan0 rx-udp-gro-forwarding on
+# Suricata switched these off on lan0 before disable-offloading was set to no;
+# it never switches them back on. sg first: TSO needs scatter-gather.
+ExecStart=/usr/sbin/ethtool -K lan0 sg on gro on gso on tso on
+ExecStart=/usr/sbin/ethtool -K lan0 rx-udp-gro-forwarding on
+
+[Install]
+WantedBy=multi-user.target

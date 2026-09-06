@@ -1,0 +1,41 @@
+#!/bin/sh
+# Managed by LINDS-Ansible: roles/router/files/usr/local/sbin/miniupnpd-nft.
+# start: make sure `table inet miniupnpd` exists (idempotent). Its base chains
+# sit next to the router table's on the same hooks, policy accept, and jump
+# to the chains miniupnpd fills at runtime (names in miniupnpd.conf).
+# stop: empty those chains, keep the table.
+set -e
+case "$1" in
+    start)
+        nft list table inet miniupnpd >/dev/null 2>&1 && exit 0
+        nft -f - <<'EOF'
+table inet miniupnpd {
+    chain forward {
+        type filter hook forward priority filter; policy accept;
+        jump miniupnpd
+    }
+    chain miniupnpd {
+    }
+    chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+        jump prerouting_miniupnpd
+    }
+    chain prerouting_miniupnpd {
+    }
+    chain postrouting {
+        type nat hook postrouting priority srcnat; policy accept;
+        jump postrouting_miniupnpd
+    }
+    chain postrouting_miniupnpd {
+    }
+}
+EOF
+        ;;
+    stop)
+        for c in miniupnpd prerouting_miniupnpd postrouting_miniupnpd; do
+            nft flush chain inet miniupnpd "$c" 2>/dev/null || true
+        done
+        ;;
+    *)
+        echo "usage: $0 start|stop" >&2; exit 1 ;;
+esac

@@ -68,6 +68,34 @@ run is a box that would route the moment its links come up.
   discard VyOS's ARP requests on VLAN 53 as martian-source (they come from
   what is then a local address) — the management leg goes dark. Addresses
   appear with carrier; daemons bind ahead of that via `ip_nonlocal_bind`.
+* **The firewall replaces its own table, not the ruleset.** `nftables.conf`
+  starts with `table inet router` / `delete table inet router`, so a reload
+  leaves `table inet miniupnpd` (the UPnP/NAT-PMP pinholes) alone. Do not
+  put `flush ruleset` back.
+* **miniupnpd runs with our table setup, not Debian's.** Its packaged
+  `nft_init.sh` would add a second forward base chain with policy DROP.
+  `/etc/default/miniupnpd` points the start/stop hooks at
+  `/usr/local/sbin/miniupnpd-nft` instead; the unit is masked while the
+  package installs so the first start never sees Debian's defaults. UPnP
+  is main-LAN only, `secure_mode` (clients map only to themselves), IPv6
+  pinholes off until a v6 forward filter exists.
+* **Software flowtable.** The last forward rule hands established TCP/UDP
+  flows to `flowtable ft` (`wan0`, `lan0*`); later packets skip the
+  ruleset. `conntrack -L | grep -c OFFLOAD` shows how many. Rules that must
+  see every packet of a flow have to sit above it (none do today).
+* **Suricata no longer disables offloads on lan0**, and
+  `nic-tuning.service` turns them back on (`sg` before `tso`, which needs
+  it), sets the VF rx ring to 8192 and enables UDP GRO forwarding on both
+  NICs. irqbalance spreads the queues. All of it is ethtool, none of it is
+  expressible in `.link` files.
+* **IKE listens on IPv6 too.** Input rule 3 is family-agnostic and charon
+  binds `[::]:500/4500`; ddclient keeps the AAAA record for
+  `jd-pfsense.linds.com.au` current. Inside-tunnel IPv6 is still a future
+  step (ULA pool).
+* **BGP export to LINDS carries the JD LANs** (`JD-LANS`: 10.0.50.0/24,
+  10.0.53.0/24), which VyOS did not. FRR does not refresh a neighbour when a
+  route-map changes: `vtysh -c 'clear ip bgp 10.255.0.2 soft out'` after
+  editing the export.
 * **`DHCP=yes` on `wan0`, not `DHCP=ipv4`.** With `WithoutRA=solicit`
   networkd ignores the RA's request to start DHCPv6 (it assumes the client
   already started at link setup), and that start only happens when `DHCP=`
@@ -234,6 +262,9 @@ The "commit" is `ansible-playbook playbooks/router.yml`.
 | `reset dns forwarding cache` | `rec_control wipe-cache '.$'` (everything) or `'linds.com.au$'` |
 | `show firewall` | `nft list ruleset`; one chain: `nft list chain inet router input` |
 | `show nat source rules` | `nft list chain inet router postrouting_nat` (`prerouting_nat` for port forwards) |
+| UPnP / NAT-PMP mappings | `nft list table inet miniupnpd`; `cat /var/lib/miniupnpd/upnp.leases`; `journalctl -u miniupnpd` |
+| flowtable fast path | `conntrack -L \| grep -c OFFLOAD`; `nft list flowtable inet router ft` |
+| live traffic (TUI) | `iftop -i wan0 -nP` (top flows), `bmon -p wan0,lan0` (per-NIC graphs), `iptraf-ng` (LAN stations, protocol breakdown), `vnstat -l -i wan0` live and `vnstat -d` history |
 | `show conntrack table ipv4` | `conntrack -L`; count `conntrack -C`; NATed only `conntrack -L --src-nat` |
 | `show ntp` | `chronyc tracking`, `chronyc sources` |
 | `show lldp neighbors` | `lldpcli show neighbors` |

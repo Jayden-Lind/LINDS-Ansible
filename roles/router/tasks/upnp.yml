@@ -1,0 +1,54 @@
+---
+# UPnP IGD + NAT-PMP/PCP: miniupnpd with the nftables backend. Its pinholes
+# live in `table inet miniupnpd`, created by files/usr/local/sbin/miniupnpd-nft
+# (wired in through /etc/default/miniupnpd) instead of Debian's nft_init.sh,
+# whose forward base chain has policy DROP. The unit is masked while the
+# package installs so its first start never runs with Debian's defaults.
+
+- name: miniupnpd installed?
+  ansible.builtin.command: dpkg-query -W -f '${Status}' miniupnpd
+  register: router_upnp_pkg
+  changed_when: false
+  failed_when: false
+
+- name: Keep miniupnpd from starting with Debian's config during install
+  ansible.builtin.command: systemctl mask miniupnpd
+  when: "'install ok installed' not in router_upnp_pkg.stdout"
+
+- name: miniupnpd packages
+  ansible.builtin.apt:
+    name: [miniupnpd, miniupnpd-nftables]
+    state: present
+
+- name: miniupnpd nft table script
+  ansible.builtin.copy:
+    src: usr/local/sbin/miniupnpd-nft
+    dest: /usr/local/sbin/miniupnpd-nft
+    mode: '0755'
+  notify: restart miniupnpd
+
+- name: miniupnpd lease directory
+  ansible.builtin.file:
+    path: /var/lib/miniupnpd
+    state: directory
+    mode: '0755'
+
+- name: miniupnpd config
+  ansible.builtin.copy:
+    src: "etc/{{ item }}"
+    dest: "/etc/{{ item }}"
+    mode: '0644'
+  loop:
+    - miniupnpd/miniupnpd.conf
+    - default/miniupnpd
+  notify: restart miniupnpd
+
+- name: Unmask miniupnpd (config in place)
+  ansible.builtin.command: systemctl unmask miniupnpd
+  when: "'install ok installed' not in router_upnp_pkg.stdout"
+
+- name: miniupnpd enabled
+  ansible.builtin.systemd_service:
+    name: miniupnpd
+    enabled: true
+    state: started

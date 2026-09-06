@@ -1,0 +1,28 @@
+---
+# ethtool settings the .link files cannot express (files/etc/systemd/system/
+# nic-tuning.service): VF rx ring, UDP GRO forwarding. irqbalance (packages.yml)
+# spreads the VF and virtio queues over the vCPUs.
+
+- name: nic-tuning unit
+  ansible.builtin.copy:
+    src: etc/systemd/system/nic-tuning.service
+    dest: /etc/systemd/system/nic-tuning.service
+    mode: '0644'
+  notify:
+    - daemon-reload
+    - restart nic-tuning
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: nic-tuning enabled
+  ansible.builtin.systemd_service:
+    name: nic-tuning
+    enabled: true
+    state: started
+
+- name: irqbalance enabled
+  ansible.builtin.systemd_service:
+    name: irqbalance
+    enabled: true
+    state: started

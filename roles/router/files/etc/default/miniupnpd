@@ -1,0 +1,8 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/default/miniupnpd.
+# Debian's startstop helper would run /etc/miniupnpd/nft_init.sh, which
+# creates a SECOND forward base chain with policy drop and would black-hole
+# all forwarding. These hooks replace it with our own table setup.
+MiniUPnPd_OTHER_OPTIONS=""
+MiniUPnPd_ip6tables_enable=
+MiniUPnPd_PRESTART_COMMAND="/usr/local/sbin/miniupnpd-nft start"
+MiniUPnPd_POSTSTOP_COMMAND="/usr/local/sbin/miniupnpd-nft stop"

@@ -17,8 +17,14 @@
 - name: Network
   ansible.builtin.import_tasks: network.yml
 
+- name: NIC tuning
+  ansible.builtin.import_tasks: tuning.yml
+
 - name: Firewall
   ansible.builtin.import_tasks: firewall.yml
+
+- name: UPnP / NAT-PMP
+  ansible.builtin.import_tasks: upnp.yml
 
 - name: Logging
   ansible.builtin.import_tasks: logging.yml

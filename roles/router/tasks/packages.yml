@@ -82,6 +82,12 @@
       - mtr-tiny
       - bind9-dnsutils
       - jq
+      - irqbalance
+      # Traffic TUIs: per-flow, per-interface graphs, LAN stations, history.
+      - iftop
+      - bmon
+      - iptraf-ng
+      - vnstat
       - qemu-guest-agent
     state: present
 
