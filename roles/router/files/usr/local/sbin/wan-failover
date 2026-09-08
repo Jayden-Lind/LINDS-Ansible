@@ -13,6 +13,14 @@ the lowest. Plus the three things that daemon lacks:
     flows re-NAT out the new path immediately instead of hanging until they
     time out.
 
+A candidate's "gateway" may be the literal "dhcp" (or be omitted), in which
+case it is read from the systemd-networkd lease for that link on every round
+and followed when the ISP changes it. Hardcoding it is what broke this box:
+the config still carried a gateway from an earlier session, off-subnet from
+the current lease, and only reachable because the upstream CPE proxy-ARPs for
+anything. It forwarded, but never answered the health-check pings itself, so
+the primary flapped and every flap tore down the IPsec SAs.
+
 Config is JSON (LINDS-Ansible roles/router renders it). The Controller is a
 pure state machine with no I/O so it can be unit-tested; the Runner does the
 pinging and the `ip route` calls.
@@ -24,6 +32,7 @@ from __future__ import annotations
 import concurrent.futures
 import json
 import logging
+import os
 import signal
 import subprocess
 import sys
@@ -37,7 +46,7 @@ log = logging.getLogger("wan-failover")
 class Candidate:
     name: str
     dev: str
-    gateway: str
+    gateway: str | None   # None: read it from the link's DHCP lease
     metric: int
     targets: list[str]
     onlink: bool = False
@@ -45,10 +54,11 @@ class Candidate:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Candidate":
+        gw = d.get("gateway")
         return cls(
             name=d["name"],
             dev=d["dev"],
-            gateway=d["gateway"],
+            gateway=None if gw in (None, "dhcp") else gw,
             metric=int(d["metric"]),
             targets=list(d["targets"]),
             onlink=bool(d.get("onlink", False)),
@@ -130,8 +140,48 @@ class Controller:
 
 
 class Runner:
+    # systemd-networkd writes one lease per link, named by ifindex.
+    LEASE_DIR = "/run/systemd/netif/leases"
+
     def __init__(self, timeout: int):
         self.timeout = timeout
+        # Last gateway we successfully resolved per candidate. A lease file is
+        # briefly absent while networkd rewrites it on renewal; falling back to
+        # the previous value keeps us from withdrawing a healthy default route
+        # over a race. A link that is genuinely down fails the carrier check.
+        self.gateways: dict[str, str] = {}
+
+    def lease_gateway(self, dev: str) -> str | None:
+        """The ROUTER= from this link's DHCP lease, or None."""
+        try:
+            with open(f"/sys/class/net/{dev}/ifindex") as f:
+                ifindex = f.read().strip()
+            with open(os.path.join(self.LEASE_DIR, ifindex)) as f:
+                lease = f.read()
+        except OSError:
+            return None
+        for line in lease.splitlines():
+            key, _, value = line.partition("=")
+            if key.strip() == "ROUTER":
+                # The option is a list; the first entry is the one networkd
+                # would install.
+                routers = value.split()
+                if routers:
+                    return routers[0]
+        return None
+
+    def resolve(self, c: Candidate) -> str | None:
+        """Effective gateway: the configured one, else the lease, else the
+        last one we saw."""
+        if c.gateway is not None:
+            return c.gateway
+        gw = self.lease_gateway(c.dev)
+        if gw is None:
+            return self.gateways.get(c.name)
+        if self.gateways.get(c.name) not in (None, gw):
+            log.info("%s: gateway %s -> %s", c.name, self.gateways[c.name], gw)
+        self.gateways[c.name] = gw
+        return gw
 
     @staticmethod
     def carrier(dev: str) -> bool:
@@ -159,23 +209,36 @@ class Runner:
         return obs
 
     @staticmethod
-    def _route(c: Candidate) -> list[str]:
-        r = ["default", "via", c.gateway, "dev", c.dev, "metric", str(c.metric)]
+    def _route(c: Candidate, gateway: str) -> list[str]:
+        r = ["default", "via", gateway, "dev", c.dev, "metric", str(c.metric)]
         if c.onlink:
             r.append("onlink")
         return r
 
+    @staticmethod
+    def _route_match(c: Candidate) -> list[str]:
+        """Enough to delete our route whatever gateway it was installed with —
+        a DHCP gateway can change between install and withdraw."""
+        return ["default", "dev", c.dev, "metric", str(c.metric)]
+
     def ensure(self, c: Candidate) -> None:
-        subprocess.run(["ip", "route", "replace"] + self._route(c) + ["proto", "static"],
+        gateway = self.resolve(c)
+        if gateway is None:
+            log.warning("%s: no gateway (no lease on %s), not touching its route",
+                        c.name, c.dev)
+            return
+        subprocess.run(["ip", "route", "replace"] + self._route(c, gateway) + ["proto", "static"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def add(self, c: Candidate) -> None:
-        log.info("install: %s via %s dev %s metric %s", c.name, c.gateway, c.dev, c.metric)
+        log.info("install: %s via %s dev %s metric %s",
+                 c.name, self.resolve(c), c.dev, c.metric)
         self.ensure(c)
 
     def delete(self, c: Candidate) -> None:
-        log.info("withdraw: %s via %s dev %s metric %s", c.name, c.gateway, c.dev, c.metric)
-        subprocess.run(["ip", "route", "del"] + self._route(c),
+        log.info("withdraw: %s via %s dev %s metric %s",
+                 c.name, self.resolve(c), c.dev, c.metric)
+        subprocess.run(["ip", "route", "del"] + self._route_match(c),
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     @staticmethod

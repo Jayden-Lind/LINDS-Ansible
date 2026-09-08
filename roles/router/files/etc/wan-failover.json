@@ -2,7 +2,7 @@
     "candidates": [
         {
             "dev": "wan0",
-            "gateway": "121.221.64.1",
+            "gateway": "dhcp",
             "metric": 1,
             "name": "primary",
             "onlink": true,
@@ -14,7 +14,7 @@
         },
         {
             "dev": "lan0.99",
-            "gateway": "192.168.0.1",
+            "gateway": "dhcp",
             "metric": 10,
             "name": "backup",
             "onlink": true,

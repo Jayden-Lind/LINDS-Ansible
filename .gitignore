@@ -4,3 +4,4 @@
 vault_password
 /.idea/
 /.venv
+__pycache__/
