@@ -5,8 +5,19 @@ daemon=300
 syslog=yes
 pid=/run/ddclient.pid
 ssl=yes
-usev4=ifv4, ifv4=wan0
-usev6=ifv6, ifv6=wan0
+# Dual-WAN: the published address must follow whichever WAN currently holds
+# the default route, not wan0 specifically. Pinning ifv4=wan0 meant that in
+# the failure this box actually sees — link up, internet dead — wan0 still
+# held its lease, so ddclient kept publishing a black-holed address and the
+# road warriors never had anywhere to reconnect to.
+#
+# ifv4 cannot be made to work here even by switching interface: on the
+# cellular backup the router's own address is RFC1918 (192.168.0.87, behind
+# the modem's NAT), so the interface never carries the public address.
+# webv4/webv6 ask Cloudflare which source address it actually sees, which
+# is correct on either leg and follows a failover with no extra machinery.
+usev4=webv4, webv4=https://cloudflare.com/cdn-cgi/trace, webv4-skip='ip='
+usev6=webv6, webv6=https://cloudflare.com/cdn-cgi/trace, webv6-skip='ip='
 
 protocol=cloudflare
 zone={{ cf_dyn_dns_zone }}
