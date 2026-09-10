@@ -283,6 +283,8 @@ vyos_nat_source_rules:
 vyos_nat_destination_rules:
   - {n: 20, dport: '25565', protocol: tcp_udp, to: 172.16.1.25, comment: Minecraft}
   - {n: 21, dport: '32400', protocol: tcp_udp, to: 172.16.1.50, comment: Plex}
+  - {n: 22, dport: '2456-2457', protocol: udp, to: 172.16.1.10,
+     comment: 'Valheim (k8s valheim-0 LoadBalancer, LINDS-Kubernetes applications/valheim.yaml)'}
   - {n: 23, dport: '7777', protocol: tcp, to: 172.16.1.1}
   - {n: 24, dport: '443', protocol: tcp_udp, to: 172.16.1.12, comment: 'mTLS ingress'}
   - {n: 50, dport: '27015,27016,33540,27031-27036,33540', protocol: tcp_udp,
