@@ -1,4 +1,12 @@
 ## {{ ansible_managed }}
+#
+# Per-dataset opt-out: datasets in proxmox_sanoid_optout carry the ZFS user
+# property au.com.linds:sanoid=off, and the templates run
+# /usr/local/sbin/sanoid-snapshot-gate as pre_snapshot_script with
+# no_inconsistent_snapshot, so sanoid skips them. Do not use a [child]
+# section override for this instead: sanoid 2.2.0 walks sections in hash
+# order and `recursive = yes` copies every parent key onto each child, so
+# the parent silently wins on some runs.
 
 {% for policy in proxmox_sanoid_policies %}
 [{{ policy.dataset }}]

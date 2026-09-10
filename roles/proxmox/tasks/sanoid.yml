@@ -17,6 +17,16 @@
     mode: "0644"
     force: false
 
+# Referenced by the templates' pre_snapshot_script, so it must exist before
+# sanoid.conf names it.
+- name: Install the sanoid snapshot gate (per-dataset opt-out)
+  ansible.builtin.copy:
+    src: sanoid-snapshot-gate
+    dest: /usr/local/sbin/sanoid-snapshot-gate
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Render sanoid.conf
   ansible.builtin.template:
     src: sanoid.conf.j2
@@ -24,6 +34,33 @@
     owner: root
     group: root
     mode: "0644"
+
+# Read first so the set only fires when needed, and so a dataset that is
+# gone (its PVC was recreated under a new name) is reported, not created -
+# community.general.zfs with state: present would create it.
+- name: Read the sanoid opt-out property
+  ansible.builtin.command: zfs get -H -o value au.com.linds:sanoid {{ item }}
+  loop: "{{ proxmox_sanoid_optout }}"
+  register: proxmox_sanoid_optout_state
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Opt datasets out of sanoid snapshots
+  ansible.builtin.command: zfs set au.com.linds:sanoid=off {{ item.item }}
+  loop: "{{ proxmox_sanoid_optout_state.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.rc == 0 and item.stdout != 'off'
+  changed_when: true
+
+- name: Report opt-out datasets that no longer exist
+  ansible.builtin.debug:
+    msg: "{{ item.item }} not found - update proxmox_sanoid_optout (recreated PVC?)"
+  loop: "{{ proxmox_sanoid_optout_state.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.rc != 0
 
 - name: Enable sanoid timer
   ansible.builtin.systemd:

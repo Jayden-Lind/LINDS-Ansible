@@ -69,6 +69,17 @@ proxmox:
             template: ssd_short
             recursive: true
 
+        # k8s zvols whose churn makes snapshots expensive and worthless. The
+        # zvols are named after their PV, so a recreated PVC needs its new
+        # name here (the role reports names it cannot find).
+        proxmox_sanoid_optout:
+          # monitoring/prometheus-...-prometheus-0: TSDB compaction rewrites
+          # blocks every few hours - 14 dailies pinned 20.9G of deleted data.
+          - VM/truenas-nas/k8s-iscsi/v/pvc-6bc3d715-6306-4c54-a4ca-871de99d36f1
+          # monitoring/storage-loki-0: WAL and compactor scratch (chunks live
+          # in MinIO) - 3.7G of snapshots for ~20MB of live data.
+          - VM/truenas-nas/k8s-iscsi/v/pvc-cf4eacc1-da88-451b-92a7-71126abc6559
+
         proxmox_lxc_containers:
           - vmid: 106
             hostname: jd-minio-01

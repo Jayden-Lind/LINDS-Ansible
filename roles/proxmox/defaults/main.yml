@@ -67,18 +67,33 @@ proxmox_iscsi_targets: []
 # Sanoid policies (override in inventory)
 proxmox_sanoid_policies: []
 
+# Datasets sanoid must skip even though a policy covers them (override in
+# inventory). Each gets the ZFS user property au.com.linds:sanoid=off, which
+# files/sanoid-snapshot-gate turns into a skipped snapshot. A name that no
+# longer exists is reported and left alone, never created.
+proxmox_sanoid_optout: []
+
 # LXC containers (override in inventory)
 proxmox_lxc_containers: []
 
 # Sanoid retention templates -- shared across hosts
 proxmox_sanoid_templates:
   ssd_short:
-    hourly: 24
+    # 0, not 24: set live on 2026-08-10 and never carried back here, so a run
+    # would have reinstated 24 hourlies per dataset on top of the dailies.
+    hourly: 0
     daily: 14
     monthly: 0
     yearly: 0
     autosnap: "yes"
     autoprune: "yes"
+    # Per-dataset opt-out (proxmox_sanoid_optout): the gate exits non-zero for
+    # a dataset carrying au.com.linds:sanoid=off, and no_inconsistent_snapshot
+    # makes sanoid skip that snapshot. Every child of a recursive policy
+    # inherits these keys, which is what makes the opt-out deterministic.
+    pre_snapshot_script: /usr/local/sbin/sanoid-snapshot-gate
+    no_inconsistent_snapshot: "yes"
+    script_timeout: 30
 
 # Files
 proxmox_exports_file: /etc/exports

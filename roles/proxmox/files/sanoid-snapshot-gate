@@ -1,0 +1,18 @@
+#!/bin/sh
+# sanoid pre_snapshot_script (wired up in /etc/sanoid/sanoid.conf). With
+# no_inconsistent_snapshot = yes, a non-zero exit makes sanoid skip the
+# snapshot of $SANOID_TARGET for that run.
+#
+#   opt a dataset out:  zfs set au.com.linds:sanoid=off <dataset>
+#   opt it back in:     zfs inherit au.com.linds:sanoid <dataset>
+#
+# The property is a ZFS user property, so it is inherited: setting it on a
+# parent opts out every child. Fails open - no target or a zfs error exits 0
+# and the snapshot is taken as usual.
+[ -n "${SANOID_TARGET:-}" ] || exit 0
+value=$(/usr/sbin/zfs get -H -o value au.com.linds:sanoid "$SANOID_TARGET" 2>/dev/null) || exit 0
+if [ "$value" = "off" ]; then
+    echo "sanoid-snapshot-gate: skipping $SANOID_TARGET (au.com.linds:sanoid=off)" >&2
+    exit 1
+fi
+exit 0
