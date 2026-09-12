@@ -139,7 +139,14 @@ run is a box that would route the moment its links come up.
 * **IKE listens on IPv6 too.** Input rule 3 is family-agnostic and charon
   binds `[::]:500/4500`; ddclient keeps the AAAA record for
   `jd-pfsense.linds.com.au` current. Inside-tunnel IPv6 is still a future
-  step (ULA pool).
+  step (ULA pool). Because of that AAAA, an IPv4-only service must never be
+  published on `dyn_host`: a dual-stack client prefers the AAAA, the router
+  answers ICMPv6 on it, and the service traffic dies with nothing to fall
+  back from. `dyn_host_v4` (`jd.linds.com.au`) is the A-only name to point
+  those at — Valheim was the first, after players resolving
+  `valheim.linds.com.au` through a CNAME at `dyn_host` got the AAAA and
+  timed out while the owner, on internal DNS with no AAAA, could not
+  reproduce it.
 * **BGP export to LINDS carries the JD LANs** (`JD-LANS`: 10.0.50.0/24,
   10.0.53.0/24), which VyOS did not. FRR does not refresh a neighbour when a
   route-map changes: `vtysh -c 'clear ip bgp 10.255.0.2 soft out'` after

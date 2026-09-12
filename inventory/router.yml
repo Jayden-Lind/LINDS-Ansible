@@ -403,7 +403,9 @@ router:
           # 10.0.50.1 at cutover — see roles/router/README.md.
           ansible_host: 10.0.50.1
           # ----- Per-site secrets (copied from the 10.0.50.1 host in vyos.yml) -----
-          # dyn_host: the Cloudflare record ddclient keeps pointed at the WAN.
+          # dyn_host: the Cloudflare record ddclient keeps pointed at the WAN,
+          #   A and AAAA both. Road warriors reach IKE over v6 on it, so the
+          #   AAAA stays - see roles/router/templates/ddclient.conf.j2.
           # wg_us_*: NordVPN US tunnel (wg10, VLAN 58). wg_*: NordVPN tunnel (wg101, VLAN 51).
           dyn_host: !vault |
             $ANSIBLE_VAULT;1.1;AES256
@@ -412,6 +414,16 @@ router:
             36623061626563313464653636313332343133333735333331636134343836336533373234326266
             3934623165366261340a383832626137396534633037326636383939643331353437643961326365
             64336462643561366136316262313931363164353738383938323534616432396530
+          # A-only companion to dyn_host, in plaintext because its whole purpose
+          # is to be publicly resolvable and there is nothing to hide. Anything
+          # that is IPv4-only behind this router points at this name instead of
+          # dyn_host, so it never inherits an AAAA that leads nowhere. Valheim
+          # (UDP 2456-2457 -> 172.16.1.10, nftables rule 22) is the first user:
+          # point valheim.linds.com.au here, not at dyn_host.
+          #
+          # Create the A record in Cloudflare before the first run - ddclient
+          # PATCHes existing records and never creates them.
+          dyn_host_v4: jd.linds.com.au
           wg_us_priv_key: !vault |
             $ANSIBLE_VAULT;1.1;AES256
             35656333313133656365386634306536366437323762393033656263666439366332633061623633

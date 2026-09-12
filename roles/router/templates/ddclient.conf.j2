@@ -1,10 +1,11 @@
-# Rendered by LINDS-Ansible from the vault (cf_dyn_dns_*, dyn_host).
-# Cloudflare dynamic DNS for the WAN, both address families
-# (VyOS `service dns dynamic ... ip-version both`).
+# Rendered by LINDS-Ansible from the vault (cf_dyn_dns_*, dyn_host) plus the
+# plaintext dyn_host_v4. Cloudflare dynamic DNS for the WAN.
 daemon=300
 syslog=yes
 pid=/run/ddclient.pid
 ssl=yes
+
+# ----- dyn_host: A + AAAA --------------------------------------------------
 # Dual-WAN: the published address must follow whichever WAN currently holds
 # the default route, not wan0 specifically. Pinning ifv4=wan0 meant that in
 # the failure this box actually sees — link up, internet dead — wan0 still
@@ -16,6 +17,11 @@ ssl=yes
 # the modem's NAT), so the interface never carries the public address.
 # webv4/webv6 ask Cloudflare which source address it actually sees, which
 # is correct on either leg and follows a failover with no extra machinery.
+#
+# The AAAA here is deliberate and load-bearing: charon binds [::]:500/4500
+# and input rule 3 is family-agnostic, so road warriors reach IKE over IPv6
+# on this name. Never drop it to fix an IPv4-only service — publish an
+# A-only name for that service instead, which is what dyn_host_v4 is for.
 usev4=webv4, webv4=https://cloudflare.com/cdn-cgi/trace, webv4-skip='ip='
 usev6=webv6, webv6=https://cloudflare.com/cdn-cgi/trace, webv6-skip='ip='
 
@@ -24,3 +30,38 @@ zone={{ cf_dyn_dns_zone }}
 login=token
 password={{ cf_dyn_dns_key }}
 {{ dyn_host }}
+{% if dyn_host_v4 is defined %}
+
+# ----- dyn_host_v4: A only -------------------------------------------------
+# For services that exist on IPv4 only, where also publishing an AAAA is
+# worse than publishing nothing: a dual-stack client prefers the AAAA
+# (RFC 6724 destination address selection), that address answers ICMPv6
+# because it is this router, and the service traffic then dies with no fast
+# failure to fall back from. The client just sits there.
+#
+# Valheim is the case that found this, on 2026-09-13. It is a SingleStack
+# IPv4 Service on 172.16.1.10 reached through the v4 DNAT in
+# files/etc/nftables.conf rule 22, and the cluster has no IPv6 at all, so
+# there is no v6 path that could ever work. valheim.linds.com.au was CNAMEd
+# at dyn_host, inherited its AAAA, and only IPv4-only players could connect.
+#
+# usev6 must be set explicitly. ddclient carries settings forward from one
+# host block to the next, so omitting it here inherits webv6 from the block
+# above and publishes the AAAA anyway — the exact bug this block exists to
+# avoid. `disabled` is the current spelling (`usev6=no` is deprecated).
+#
+# ddclient does not create records: it looks the name up and PATCHes it,
+# and fails with "cannot set IPv4 to <ip>: no 'A' record at Cloudflare" if
+# it is absent. Create the A record in Cloudflare first (any placeholder
+# address will do — the next run within `daemon` seconds corrects it).
+#
+# Comma-separate the value for more than one name.
+usev4=webv4, webv4=https://cloudflare.com/cdn-cgi/trace, webv4-skip='ip='
+usev6=disabled
+
+protocol=cloudflare
+zone={{ cf_dyn_dns_zone }}
+login=token
+password={{ cf_dyn_dns_key }}
+{{ dyn_host_v4 }}
+{% endif %}
