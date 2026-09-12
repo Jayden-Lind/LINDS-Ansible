@@ -79,6 +79,11 @@ proxmox:
           # monitoring/storage-loki-0: WAL and compactor scratch (chunks live
           # in MinIO) - 3.7G of snapshots for ~20MB of live data.
           - VM/truenas-nas/k8s-iscsi/v/pvc-cf4eacc1-da88-451b-92a7-71126abc6559
+          # valheim/valheim-server-files: the SteamCMD-downloaded game server
+          # (~4G), re-fetched from Steam in about a minute and replaced
+          # wholesale on every Valheim patch. The world is the OTHER valheim
+          # zvol (pvc-95d1127b, ~66M) and stays on dailies.
+          - VM/truenas-nas/k8s-iscsi/v/pvc-8a4d142e-81a0-42b0-a61b-73229e7ff2e2
 
         proxmox_lxc_containers:
           - vmid: 106
