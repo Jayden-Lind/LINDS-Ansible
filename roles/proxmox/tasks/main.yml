@@ -5,6 +5,9 @@
 - name: Configure ZFS module parameters
   ansible.builtin.import_tasks: zfs-tunables.yml
 
+- name: Keep drive write caches on
+  ansible.builtin.import_tasks: drive-cache.yml
+
 - name: Enforce ZFS dataset properties
   ansible.builtin.import_tasks: zfs.yml
 

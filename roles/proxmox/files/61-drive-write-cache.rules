@@ -1,0 +1,7 @@
+# Drives behind the Adaptec ASR-81605ZQ (aacraid) can come up with their write
+# cache off. The controller turns it off for a drive after a command abort and
+# leaves it off across reboots, which costs the 870 EVOs ~14x in write latency
+# (3 ms vs 0.2 ms). Turn it back on through the sd cache_type attribute, so the
+# kernel learns about it and sends flushes; hdparm -W1 would enable the drive
+# cache behind its back. queue/write_cache is the kernel view, only read here.
+ACTION=="add|change", SUBSYSTEM=="block", KERNEL=="sd[a-z]", SUBSYSTEMS=="scsi", ATTRS{vendor}=="ATA*", ATTR{queue/write_cache}=="write through", ATTR{device/scsi_disk/*/cache_type}="write back"
