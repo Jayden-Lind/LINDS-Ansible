@@ -1,0 +1,34 @@
+---
+# Drive write cache (/etc/udev/rules.d/61-drive-write-cache.rules).
+#
+# Every data drive on jd-proxmox-02 sits behind an Adaptec ASR-81605ZQ. When a
+# command to a drive is aborted, the controller turns that drive's write cache
+# off and it stays off across reboots: the aborts of 2025-08-24/25 hit three
+# 870 EVOs, which then ran without one for a year. By 2026-10 six of the eight
+# pool SSDs had none (the two HP VK0600s ship that way).
+#
+# Without it an SSD that has no power-loss protection commits every write to
+# flash before acknowledging it. Measured on identical raidz members: 3.0 ms
+# per write with the cache off against 0.2 ms with it on, and 4.3 ms on the
+# 2 TB 870 EVO in the VM pool, which every write to that pool waits for.
+#
+# The rule sets sd's cache_type back to "write back", which turns the cache on
+# in the drive and tells the kernel to send flushes. ZFS issues one after every
+# ZIL commit and txg, so this is the ordinary, safe way to run a SATA drive.
+# Do not use hdparm -W1 instead: the drive then caches without the kernel
+# knowing, and no flush is ever sent.
+#
+# The controller reports the caching mode page as not saveable, so do not
+# count on the card remembering the setting. The rule acts on every add or
+# change event, which covers boot and a drive that is re-added.
+
+- name: Install drive write-cache udev rule
+  ansible.builtin.copy:
+    src: 61-drive-write-cache.rules
+    dest: /etc/udev/rules.d/61-drive-write-cache.rules
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload udev rules
+    - Re-run udev rules on the disks

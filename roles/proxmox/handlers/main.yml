@@ -11,6 +11,22 @@
   ansible.builtin.command: update-initramfs -u -k all
   changed_when: true
 
+- name: Reload udev rules
+  ansible.builtin.command: udevadm control --reload
+  changed_when: true
+
+# Whole disks only (sda, not sda1), so each rule re-evaluates once per drive.
+- name: Re-run udev rules on the disks
+  ansible.builtin.command:
+    argv:
+      - udevadm
+      - trigger
+      - --action=change
+      - --subsystem-match=block
+      - "--sysname-match=sd[a-z]"
+      - --settle
+  changed_when: true
+
 - name: Reload systemd
   ansible.builtin.systemd:
     daemon_reload: true
