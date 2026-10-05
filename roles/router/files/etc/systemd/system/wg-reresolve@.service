@@ -6,3 +6,8 @@ After=systemd-networkd.service
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/wg-reresolve %i
+# The timer starts this every minute, and systemd logs "Starting", "Finished"
+# and "Deactivated successfully" for each start at info: 170 journal entries
+# an hour, 40% of everything this box logged. LogLevelMax also applies to what
+# PID 1 says about the unit, so those go and a failure (warning and up) stays.
+LogLevelMax=notice
