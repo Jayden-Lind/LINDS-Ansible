@@ -96,6 +96,10 @@
     cache_valid_time: 3600
     name:
       - linux-image-cloud-amd64   # the image's kernel flavour, see the note below
+      # The package behind conf.d/50-router.conf above. It was missing from
+      # this list until 2026-10, so that file configured nothing and no daemon
+      # was restarted after an unattended library update.
+      - needrestart
       - nftables
       - frr
       - frr-pythontools           # frr-reload.py behind `systemctl reload frr`
