@@ -6,11 +6,16 @@
 # vault secrets (WireGuard peers, EAP users, the Cloudflare token) or is
 # rendered from vault values (certificates, keys).
 
-# `apt full-upgrade` on every run. Stable's security fixes should land, but
-# unattended-upgrades is removed (a router must never restart its daemons on
-# its own schedule) — so upgrades happen here, with the validators at the end.
-router_apt_upgrade: true
-# linux-image-cloud-amd64 from trixie-backports instead of stable's kernel.
+# Upgrades are a deliberate act, not a side effect of a config push. A normal
+# run installs what is missing and upgrades nothing: no `apt full-upgrade`,
+# the kernel stays at the installed version, so nothing in the run can reboot
+# the router. Security fixes arrive on their own (unattended-upgrades,
+# security origins only, tasks/packages.yml). To move everything else, the
+# backports kernel included, and reboot if the kernel changed:
+#   ansible-playbook playbooks/router.yml -e router_apt_upgrade=true
+router_apt_upgrade: false
+# linux-image-cloud-amd64 from trixie-backports instead of stable's kernel
+# (true for jd-router-01, group_vars/jd_router.yml).
 router_kernel_backports: false
 # VyOS `system option performance network-throughput` == this tuned profile.
 router_tuned_profile: network-throughput

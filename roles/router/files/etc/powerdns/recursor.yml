@@ -69,3 +69,6 @@ dnssec:
 
 logging:
   quiet: true
+  # No "Periodic statistics report" (ten journal lines every 30 minutes by
+  # default). The same numbers are one `rec_control get-all` away.
+  statistics_interval: 0

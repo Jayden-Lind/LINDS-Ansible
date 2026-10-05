@@ -28,7 +28,17 @@ what the role would put back.
 ```sh
 ansible-playbook playbooks/router.yml --check --diff   # what would change
 ansible-playbook playbooks/router.yml                  # apply
+ansible-playbook playbooks/router.yml --tags firewall  # one area (plus the validators)
+ansible-playbook playbooks/router.yml -e router_apt_upgrade=true   # upgrade run
 ```
+
+A normal run **upgrades nothing and cannot reboot the box**: it installs
+missing packages and pushes config. `apt full-upgrade`, a newer backports
+kernel and the reboot that follows it happen only in an upgrade run
+(`router_apt_upgrade`, off by default). Every task file has a tag of its own
+name (`packages`, `system`, `network`, `tuning`, `firewall`, `upnp`,
+`logging`, `dns`, `dhcp`, `services`, `ipsec`, `wireguard`, `routing`,
+`failover`, `suricata`); `validate` is tagged `always`.
 
 A run ends in `tasks/validate.yml`: every daemon's own config checker
 (`nft -c`, `vtysh -C`, `kea-dhcp4 -t`, `suricata -T`, `sshd -t`,
@@ -59,7 +69,13 @@ run is a box that would route the moment its links come up.
 * **A changed `.link` file or a kernel package change means a reboot** (the
   run does it). The kernel is the cloud flavour from trixie-backports
   (`router_kernel_backports: true`); stable's 6.12 stays installed as a
-  fallback GRUB entry. Anything else
+  fallback GRUB entry. The kernel package only changes in an upgrade run
+  (`-e router_apt_upgrade=true`) or on a first build. Until 2026-10 it was
+  `state: latest` on every run, so any run could reboot the router, and
+  while backports sat between a `linux` upload and its `linux-signed-amd64`
+  one (the meta-package is uninstallable for those days) every run died at
+  that task before reaching any config. An upgrade run still fails in that
+  window; wait and run it again. Anything else
   reloads in place; a changed `.netdev` is deleted and recreated.
 * **nftables is validated before install** (`nft -c`), as are the kea files.
   FRR and Suricata are validated after the daemons are up, in `validate.yml`.
@@ -89,6 +105,40 @@ run is a box that would route the moment its links come up.
   vlan 52` instead. A capture on `lan0.52` during the 2026-09-06 UniFi
   console outage was read as "return direction lost", which was this
   artefact. When adding another VLAN, prove both directions the same way.
+* **A private destination never leaves through a WAN.** LINDS, the k8s
+  VIPs and the pod and service ranges exist only as BGP routes; with a
+  session or the tunnel down they fell through to the default route and went
+  to the ISP, masqueraded by the catch-all rule (about six minutes at every
+  boot, and any port forward whose VIP is not advertised). The `forward` and
+  `output` chains now reject RFC 1918 destinations leaving by `wan0`, and by
+  `lan0.99` except the modem's own 192.168.0.0/24: LAN hosts get "network
+  unreachable" at once, and the router's own daemons retry instead of
+  holding a session sourced from the WAN address (rsyslog did, and Loki
+  labelled the router's logs with the ISP's reverse DNS name). This is
+  deliberately not three reject routes in `frr.conf`: an unreachable route
+  also fails the loose reverse-path check for every packet arriving *from*
+  those ranges without a more specific route. Check:
+  `ping 10.99.99.99` from a LAN host answers "Destination Net Unreachable"
+  from 10.0.50.1.
+* **The journal carries events, not heartbeats.** Measured 2026-10-05: 424
+  entries an hour, nearly all of them routine, and journald writing 2.6 GiB a
+  day to store about 2 MB of text. What was turned down:
+  `wg-reresolve@.service` has `LogLevelMax=notice` (systemd's
+  start/finish lines for a unit that runs every minute); kea-dhcp4 logs at
+  WARN except its `leases` logger, so one `DHCP4_LEASE_ALLOC` line per
+  lease and no per-packet lines; kea-dhcp-ddns logs at WARN (failed updates
+  still show); pdns-recursor's half-hourly statistics report is off
+  (`rec_control get-all` has the numbers); the apt timers no longer wait for
+  a network-online that cannot arrive and log a timeout as an error; and
+  packets addressed to 127/8 from the wire are dropped in `prerouting_raw`
+  before the kernel can log each as a martian (`log_martians` stays on for
+  the rest). One consequence had to be handled too: Alloy closes a syslog
+  session that has been idle for two minutes, which the quieter stream now
+  often is, and rsyslog announced every reconnect in five lines.
+  `rsyslog.d/50-remote.conf` keeps its own messages to errors
+  (`internalmsg.severity`) and logs that one error once per thousand
+  (`ConErrSkip`); the reconnect itself loses nothing. To see a DHCP exchange in full, set the `kea-dhcp4` logger back
+  to INFO and `config-reload` over the control socket.
 * **ECMP hashes the 5-tuple.** `fib_multipath_hash_policy=1` (v4 and v6)
   in sysctl.d, so flows from one client spread across the five Talos
   next-hops of a service VIP instead of all landing on one node.
@@ -106,9 +156,15 @@ run is a box that would route the moment its links come up.
 * **Security updates apply unattended.** unattended-upgrades with the two
   Debian-Security origins only, 04:00 local (+0-30 min) via a timer
   drop-in, never an automatic reboot; needrestart restarts touched daemons
-  in that run, so an OpenSSL fix costs a few seconds of BGP/IPsec
-  reconvergence. The backports kernel is not a security origin and only
-  moves through this role. `journalctl -t unattended-upgrade` and
+  in that run, so an OpenSSL fix costs a BGP and an IPsec reconvergence.
+  needrestart's stock config never restarts `frr` or `strongswan` by itself;
+  `needrestart/conf.d/50-router.conf` overrides both, and the override keys
+  must be spelled exactly like the stock ones (they are regexes used as hash
+  keys). The package itself was missing from the role until 2026-10, so
+  before that nothing was restarted at all. `needrestart -b` lists what is
+  running on replaced libraries. The backports kernel is not a security
+  origin and only moves through an upgrade run of this role.
+  `journalctl -t unattended-upgrade` and
   `/var/log/unattended-upgrades/` show what happened; `unattended-upgrade
   --dry-run -d` previews.
 * **Suricata no longer disables offloads on lan0.** The switch is the
@@ -136,6 +192,25 @@ run is a box that would route the moment its links come up.
   Data" and "3way handshake wrong seq" alerts. One worker sees everything
   in order; it idles at a few percent CPU today. If `capture.kernel_drops`
   ever climbs, the fix is not more workers on this capture layout.
+* **Suricata's stream memory is not capped.** With no `stream:` section it
+  ran on the compiled-in 256 MiB reassembly cap, which was full within hours
+  of every start (`memcap_pressure` 99-100, `tcp.segment_memcap_drop` and
+  `tcp.reassembly_gap` climbing): payload the detection engine never saw.
+  `stream.memcap` and `stream.reassembly.memcap` are 0 (unlimited); the
+  reassembly depth bounds each session, and `MemoryMax=4G` on the unit
+  (`suricata.service.d/memory.conf`) is the backstop, so a runaway costs a
+  Suricata restart rather than the router. `suricatasc -c 'memcap-show
+  stream-reassembly'` says `unlimited`; watch `tcp.reassembly_memuse`.
+* **EVE reaches Loki through rsyslog imfile, and logrotate truncates the
+  file under it.** Debian's `logrotate.d/suricata` uses `copytruncate`, and
+  imfile without `reopenOnTruncate` keeps its old offset: after the first
+  weekly rotation (2026-09-13) the reader sat 6 GB into a file that never
+  grew that large again, and the Grafana Suricata dashboard was empty for
+  three weeks while everything looked healthy on the box. Fixed in
+  `rsyslog.d/60-suricata-eve.conf` and proven with a forced rotation. If the
+  dashboard is empty: `ss -tn state established '( dport = :1515 )'` should
+  show two sessions, and `/var/spool/rsyslog/imfile-state:*` should hold an
+  offset just below the size of `eve.json`.
 * **IKE listens on IPv6 too.** Input rule 3 is family-agnostic and charon
   binds `[::]:500/4500`; ddclient keeps the AAAA record for
   `jd-pfsense.linds.com.au` current. Inside-tunnel IPv6 is still a future
@@ -148,7 +223,8 @@ run is a box that would route the moment its links come up.
   timed out while the owner, on internal DNS with no AAAA, could not
   reproduce it.
 * **BGP export to LINDS carries the JD LANs** (`JD-LANS`: 10.0.50.0/24,
-  10.0.53.0/24), which VyOS did not. FRR does not refresh a neighbour when a
+  10.0.53.0/24, and the road-warrior pool 10.0.10.0/24 so LINDS can answer
+  remote-access clients), which VyOS did not. FRR does not refresh a neighbour when a
   route-map changes: `vtysh -c 'clear ip bgp 10.255.0.2 soft out'` after
   editing the export.
 * **k8s export prefix-lists need `le 32`.** The Talos nodes advertise

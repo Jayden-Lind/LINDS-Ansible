@@ -9,6 +9,22 @@
     mode: '0644'
   notify: restart suricata
 
+# suricata.yaml leaves stream memory uncapped; MemoryMax= on the unit is what
+# keeps a runaway from taking the router's other daemons with it. A cgroup
+# limit applies on daemon-reload, no restart needed.
+- name: suricata.service drop-in dir
+  ansible.builtin.file:
+    path: /etc/systemd/system/suricata.service.d
+    state: directory
+    mode: '0755'
+
+- name: suricata.service memory backstop
+  ansible.builtin.copy:
+    src: etc/systemd/system/suricata.service.d/memory.conf
+    dest: /etc/systemd/system/suricata.service.d/memory.conf
+    mode: '0644'
+  notify: daemon-reload
+
 - name: Rule tuning (disable.conf, read by suricata-update)
   ansible.builtin.copy:
     src: etc/suricata/disable.conf

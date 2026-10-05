@@ -2,8 +2,10 @@
 # apt on a router. Everything non-interactive. Security updates apply on
 # their own (unattended-upgrades, security origins only, 04:00 local, never
 # a reboot); everything else, the backports kernel included, moves only
-# inside this role. needrestart restarts daemons under apt rather than
-# prompt, in the unattended run as well.
+# inside this role and only when asked for (router_apt_upgrade, off by
+# default: a config push must not turn into an upgrade and a reboot).
+# needrestart restarts daemons under apt rather than prompt, in the
+# unattended run as well.
 
 - name: needrestart conf dir
   ansible.builtin.file:
@@ -46,6 +48,23 @@
     mode: '0644'
   notify: daemon-reload
 
+# Both apt services begin with a wait for network-online that can only time
+# out on this box (see the drop-in).
+- name: apt service drop-in dirs
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}.service.d"
+    state: directory
+    mode: '0755'
+  loop: [apt-daily, apt-daily-upgrade]
+
+- name: apt services skip wait-online
+  ansible.builtin.copy:
+    src: "etc/systemd/system/{{ item }}.service.d/router.conf"
+    dest: "/etc/systemd/system/{{ item }}.service.d/router.conf"
+    mode: '0644'
+  loop: [apt-daily, apt-daily-upgrade]
+  notify: daemon-reload
+
 - name: Flush handlers (timer drop-in)
   ansible.builtin.meta: flush_handlers
 
@@ -84,7 +103,9 @@
     cache_valid_time: 3600
     upgrade: full
     autoremove: true
-  when: router_apt_upgrade
+  # | bool: `-e router_apt_upgrade=true` arrives as the string "true", and
+  # ansible-core 2.19+ refuses a non-boolean conditional.
+  when: router_apt_upgrade | bool
 
 - name: Router packages
   ansible.builtin.apt:
@@ -92,6 +113,10 @@
     cache_valid_time: 3600
     name:
       - linux-image-cloud-amd64   # the image's kernel flavour, see the note below
+      # The package behind conf.d/50-router.conf above. It was missing from
+      # this list until 2026-10, so that file configured nothing and no daemon
+      # was restarted after an unattended library update.
+      - needrestart
       - nftables
       - frr
       - frr-pythontools           # frr-reload.py behind `systemctl reload frr`
@@ -132,11 +157,32 @@
 # full one, trimmed module set — but it carries everything a virtio router
 # needs (tunnels, cake/bbr, mlx5 for the ConnectX VF, nf_flow_table). It is
 # kept; router_kernel_backports moves it to the backports version.
+#
+# The kernel only moves when asked to (router_apt_upgrade) or when the box is
+# still on stable's kernel (a first build: no "~bpo" in the installed
+# version). Until 2026-10 this task was `state: latest` on every run, which
+# had two effects on a run meant to change one firewall rule:
+#   * a newer kernel in backports was installed and the router rebooted
+#     mid-run (network.yml);
+#   * between a `linux` upload to backports and the matching
+#     `linux-signed-amd64` one, the meta-package is uninstallable ("held
+#     broken packages", seen 2026-10-05: 7.1.13 wanting a linux-base that the
+#     archive had already replaced with 7.2.6) and the run died here, before
+#     any config task. An upgrade run still fails in that window; wait for the
+#     signed upload and run it again.
+- name: Installed kernel meta-package version
+  ansible.builtin.command: dpkg-query -W -f '${Version}' linux-image-cloud-amd64
+  register: router_kernel_installed
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: router_kernel_backports
+
 - name: Kernel from trixie-backports
   ansible.builtin.apt:
     name: linux-image-cloud-amd64
     default_release: trixie-backports
-    state: latest
+    state: "{{ 'latest' if (router_apt_upgrade | bool or '~bpo' not in router_kernel_installed.stdout) else 'present' }}"
   when: router_kernel_backports
   register: router_kernel_backports_install
 

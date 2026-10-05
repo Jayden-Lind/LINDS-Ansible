@@ -7,51 +7,71 @@
 #   * ipsec before routing: BGP peers over ipsec0, which strongSwan drives.
 # validate.yml runs the daemons' own config checkers last and fails the play
 # on any failed unit, so a green run means a box that would route.
+#
+# Each area carries a tag of the same name, so one area can be pushed on its
+# own (`--tags firewall`); validate.yml is tagged `always` and runs after any
+# of them. No file depends on a fact registered in another one.
 
 - name: Packages
   ansible.builtin.import_tasks: packages.yml
+  tags: [packages]
 
 - name: System
   ansible.builtin.import_tasks: system.yml
+  tags: [system]
 
 - name: Network
   ansible.builtin.import_tasks: network.yml
+  tags: [network]
 
 - name: NIC tuning
   ansible.builtin.import_tasks: tuning.yml
+  tags: [tuning]
 
 - name: Firewall
   ansible.builtin.import_tasks: firewall.yml
+  tags: [firewall]
 
 - name: UPnP / NAT-PMP
   ansible.builtin.import_tasks: upnp.yml
+  tags: [upnp]
 
 - name: Logging
   ansible.builtin.import_tasks: logging.yml
+  tags: [logging]
 
 - name: DNS forwarder
   ansible.builtin.import_tasks: dns.yml
+  tags: [dns]
 
 - name: DHCP server
   ansible.builtin.import_tasks: dhcp.yml
+  tags: [dhcp]
 
 - name: Services
   ansible.builtin.import_tasks: services.yml
+  tags: [services]
 
 - name: IPsec
   ansible.builtin.import_tasks: ipsec.yml
+  tags: [ipsec]
 
 - name: WireGuard
   ansible.builtin.import_tasks: wireguard.yml
+  tags: [wireguard]
 
 - name: Routing
   ansible.builtin.import_tasks: routing.yml
+  tags: [routing]
 
 - name: Dual-WAN failover daemon
   ansible.builtin.import_tasks: failover.yml
+  tags: [failover]
 
 - name: Suricata IDS + EVE shipping
   ansible.builtin.import_tasks: suricata.yml
+  tags: [suricata]
 
 - name: Validate
   ansible.builtin.import_tasks: validate.yml
+  tags: [validate, always]
