@@ -128,6 +128,30 @@ runmode: workers
 max-pending-packets: 4096
 host-mode: router
 
+# Stream memory: no cap. Without a `stream:` section Suricata ran on its
+# compiled-in caps (64 MiB for sessions, 256 MiB for reassembly), and the
+# reassembly one was full within hours of every start: memcap_pressure 99-100,
+# tcp.segment_memcap_drop and tcp.insert_data_normal_fail climbing (32M failed
+# inserts and 4.7M tcp.reassembly_gap in one day), so the detection engine
+# never saw that payload. 0 means unlimited for these two keys. What bounds
+# the buffers instead is the reassembly depth (the default, 1 MiB per
+# direction per session), and behind that MemoryMax= on the unit
+# (suricata.service.d/memory.conf): a runaway costs a Suricata restart, not
+# the router. Check with
+#   suricatasc -c dump-counters /var/run/suricata-command.socket \
+#     | grep -E 'reassembly_memuse|segment_memcap_drop|memcap_pressure'
+stream:
+  memcap: 0
+  reassembly:
+    memcap: 0
+
+# The flow table cannot be unlimited (0 would mean no flows at all), and with
+# no `flow:` section it ran on the compiled-in 32 MiB. A normal day uses about
+# 8 MiB of that, so it never bit, but it was the next cap in line. 256 MiB is
+# room for some 500k flows, as many as the router's own conntrack table holds.
+flow:
+  memcap: 256mb
+
 # Where suricatasc (and suricata-update's reload) expect it; the compiled-in
 # default would land it in /var.
 unix-command:
