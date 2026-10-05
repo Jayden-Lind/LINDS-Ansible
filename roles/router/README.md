@@ -132,7 +132,12 @@ run is a box that would route the moment its links come up.
   a network-online that cannot arrive and log a timeout as an error; and
   packets addressed to 127/8 from the wire are dropped in `prerouting_raw`
   before the kernel can log each as a martian (`log_martians` stays on for
-  the rest). To see a DHCP exchange in full, set the `kea-dhcp4` logger back
+  the rest). One consequence had to be handled too: Alloy closes a syslog
+  session that has been idle for two minutes, which the quieter stream now
+  often is, and rsyslog announced every reconnect in five lines.
+  `rsyslog.d/50-remote.conf` keeps its own messages to errors
+  (`internalmsg.severity`) and logs that one error once per thousand
+  (`ConErrSkip`); the reconnect itself loses nothing. To see a DHCP exchange in full, set the `kea-dhcp4` logger back
   to INFO and `config-reload` over the control socket.
 * **ECMP hashes the 5-tuple.** `fib_multipath_hash_policy=1` (v4 and v6)
   in sysctl.d, so flows from one client spread across the five Talos
