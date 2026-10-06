@@ -56,7 +56,7 @@ run is a box that would route the moment its links come up.
 | Dual-WAN failover | `wan-failover` | `etc/wan-failover.json` | Per-WAN default in tables 1001/1002 for the health check (90/100 are the WireGuard tunnels'); hysteresis; carrier check; SNAT conntrack flush on switch |
 | IPsec | strongSwan (swanctl) | `etc/swanctl/swanctl.conf` | `LINDS` site-to-site over `ipsec0`, `LINDS_MOBILE` road-warrior over `ipsec10`; `encap = yes` is a line here, not a template patch |
 | DHCP | kea | `etc/kea/` | DDNS into AD DNS |
-| DNS forwarder | pdns-recursor | `etc/powerdns/recursor.yml` | The 2026-08-22 cache tuning carried across |
+| DNS forwarder | pdns-recursor | `etc/powerdns/recursor.yml` | Upstream Quad9, 15-minute cache floor: see below |
 | NTP / SNMP / LLDP / DDNS | chrony, snmpd, lldpd, ddclient | `etc/chrony/`, `etc/snmp/`, `etc/default/` | |
 | IDS | Suricata 7 + suricata-update | `etc/suricata/` | One capture thread + autofp; EVE → rsyslog imfile → Alloy → Loki; weekly rule refresh reloads in place |
 | Kernel | linux-image-cloud-amd64 from trixie-backports (7.x, `router_kernel_backports`), sysctl, modules, grub, tuned | `etc/sysctl.d/`, `etc/modules-load.d/`, `etc/default/grub.d/` | `ignore_routes_with_linkdown` keeps a link-down build reachable; `ip_nonlocal_bind` lets daemons bind `.1` addresses before the LAN link is up |
@@ -142,6 +142,31 @@ run is a box that would route the moment its links come up.
 * **ECMP hashes the 5-tuple.** `fib_multipath_hash_policy=1` (v4 and v6)
   in sysctl.d, so flows from one client spread across the five Talos
   next-hops of a service VIP instead of all landing on one node.
+* **Upstream DNS decides where browsers connect, not just how fast a name
+  resolves.** The catch-all forwarder was Cloudflare until 2026-10-06. It
+  answers quickest, but it does not pass the client subnet on, and Google's
+  name servers then send clients somewhere 125 ms away about half the time:
+  30% of the answers LAN clients got that day for Google-hosted names that
+  can be served locally (fonts.gstatic.com, fonts.googleapis.com,
+  i.ytimg.com, mail.google.com ...) pointed 128 ms away instead of 11 ms,
+  and every connection to one then pays that round trip two or three times.
+  Quad9's `.11` service (DNSSEC, client subnet, blocks known-malicious
+  names) gave none and answers within a millisecond or two of Cloudflare;
+  the isolated VLANs are handed it over DHCP as well. Telstra's own
+  resolvers are quicker still but rewrite court-ordered blocked sites. To
+  re-check after changing upstream, resolve a dozen Google-hosted names
+  through 10.0.50.1 and time a TCP handshake to each answer.
+* **Names are cached for at least 15 minutes** (`minimum_ttl_override: 900`)
+  and refreshed in the background once half that is used up
+  (`refresh_on_ttl_perc: 50`). A lookup that misses the cache costs a client
+  14 ms; with the old 60 s floor only 47% of the main LAN's lookups were
+  answered from cache, because most names have short TTLs and a forwarder
+  hands them over part-used. Replaying 30 h of real lookups: 59% at 900 s,
+  70% at an hour. The price is that a site which changes address is followed
+  up to 15 minutes late. pdns-recursor cannot serve an expired answer while
+  it refreshes (its serve-stale is for upstream failure only); a resolver
+  that can, such as unbound with `serve-expired`, would reach about 92% on
+  the same traffic.
 * **IPv6 clients get DNS from the RA.** lan0's RA carries RDNSS =
   `_link_local` (fe80::be24:11ff:fe01:1101, EUI-64 of the pinned MAC);
   pdns-recursor listens on it and input rule 9 admits DNS to fe80::/10 from
