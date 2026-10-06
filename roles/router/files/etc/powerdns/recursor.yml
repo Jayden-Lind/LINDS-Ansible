@@ -6,15 +6,27 @@
 #     when upstream is unreachable (only then: this daemon cannot serve a
 #     stale answer and refresh it behind the client's back)
 #   * minimum_ttl_override and refresh_on_ttl_perc, re-measured 2026-10-06
-#     by replaying 30 h of the main LAN's lookups (24,400, from the Suricata
+#     by replaying 30 h of the main LAN's lookups (23,800, from the Suricata
 #     DNS log). A miss costs a client 14 ms (median); with a 60 s floor only
-#     47% of lookups were answered from cache. Most of the names are short
-#     TTL records behind a forwarder, which hands them over part-used.
-#     Replayed hit rate by floor (refresh at 50%): 60 s 40%, 300 s 47%,
-#     900 s 59%, 3600 s 70%; serving stale would be 92%. 900 s is the
-#     compromise: a site that changes address is followed up to 15 minutes
-#     late. Refreshing in the last half of the lifetime instead of the last
-#     tenth keeps names that are in regular use from ever expiring.
+#     46% of lookups, and 55% of connection setups (the A, AAAA and HTTPS
+#     lookups for one name together), were answered from cache. Most names
+#     are short-TTL records behind a forwarder, which hands them over
+#     part-used. Replayed share answered from cache by floor (refresh at
+#     50%): 60 s 38%, 300 s 47%, 900 s 58%, 3600 s 68%; serving stale would
+#     be 92%. 900 s is the compromise: a site that changes address is
+#     followed up to 15 minutes late. Refreshing in the last half of the
+#     lifetime instead of the last tenth keeps names in regular use from
+#     ever expiring.
+#     Two things to know about the floor:
+#       - It lifts answers WITHOUT data as well (no AAAA, no HTTPS record,
+#         NXDOMAIN: 28% of the main LAN's lookups), but those stop at
+#         max_negative_ttl, so they live 300 s, not 900 s. Raising that cap
+#         to 900 replays as 7 more points of instant connection setups; the
+#         price is that a name looked up before it was created stays
+#         NXDOMAIN for 15 minutes instead of 5.
+#       - It is global: linds.com.au and k8s.linds.com.au answers are held
+#         for 15 minutes too. After changing an internal record:
+#         rec_control wipe-cache NAME   (or 'linds.com.au$' for the subtree)
 
 incoming:
   listen:
@@ -44,27 +56,48 @@ recursor:
   # Catch-all upstream plus the internal stubs, all with recursion desired
   # (suits an AD zone and kube-dns alike).
   #
-  # The catch-all is Quad9 (the .11 service: validates DNSSEC, passes the
-  # client subnet on, refuses known-malicious names), not Cloudflare.
-  # Cloudflare answers a shade faster but does not pass the client subnet
-  # on, and Google's name servers place its resolvers here somewhere
-  # 125 ms away about half the time. Measured 2026-10-06 from the DNS log:
-  # of the answers LAN clients got for Google-hosted names that can be served
-  # locally (fonts.gstatic.com, fonts.googleapis.com, i.ytimg.com,
-  # mail.google.com, www.googletagmanager.com ...), 30% pointed at a server
-  # 128 ms away instead of 11 ms, all day. Every connection to one of those
-  # then costs that round trip two or three times over. Quad9, Google and
-  # Telstra gave no such answer in the same tests. Answer time for 59 sites:
-  # Quad9 13-15 ms median, 30-34 ms at the 95th percentile; Cloudflare
-  # 13-14 / 19; Google 16-18 / 140-173. Telstra's own resolvers
-  # (61.9.133.193, 61.9.134.49) are the quickest and best placed of all,
-  # but they rewrite the sites Australian ISPs are ordered to block.
-  # To re-check: resolve a dozen Google-hosted names through 10.0.50.1 and
-  # time a TCP handshake to each answer; all but accounts.google.com should
-  # be around 10 ms.
+  # The catch-all is Quad9 (9.9.9.9: validates DNSSEC, refuses
+  # known-malicious names, one shared cache), not Cloudflare. Which resolver
+  # is asked decides where browsers are then sent. Cloudflare does not pass
+  # the client subnet on, and Google's and Microsoft's name servers place
+  # its resolvers here well over 100 ms away much of the time.
+  # Measured 2026-10-06/07:
+  #   * From the DNS log: of the answers LAN clients got in 30 h for
+  #     Google-hosted names that can be served locally (fonts.gstatic.com,
+  #     fonts.googleapis.com, i.ytimg.com, mail.google.com ...), 30% pointed
+  #     128 ms away instead of 11 ms, in every hour of the day.
+  #   * The 300 names this LAN asks for most, looked up once through each
+  #     resolver, then a TCP handshake to every answer. Cloudflare's answer
+  #     was over 50 ms away where Quad9's was under 25 ms for 25 of 283
+  #     names on IPv4 and 27 of 200 on IPv6: Google's, and the Microsoft 365
+  #     ones (officeapps.live.com, svc.cloud.microsoft, at 160 ms). The
+  #     reverse: 1 and 0. Every new connection pays that round trip two or
+  #     three times.
+  #   * Same test: time to answer (median / 95th / share over 100 ms), then
+  #     the mean handshake to the answers, IPv4 and IPv6:
+  #       Cloudflare 1.1.1.1    11 / 19 ms / 1.7%     61 ms   41 ms
+  #       Quad9 9.9.9.9         12 / 28 ms / 1.7%     51 ms   24 ms   <- this
+  #       Quad9 9.9.9.11 (ECS)  15 / 242 ms / 7.0%    50 ms   24 ms
+  #       Google 8.8.8.8        15 / 189 ms / 13%     51 ms   27 ms
+  #       Telstra 61.9.134.49   11 / 25 ms / 3.0%     49 ms   24 ms
+  #   * On this router's real traffic, answers that took over 100 ms and
+  #     upstream queries that timed out: Cloudflare 1.2% and 0.3% (30 h),
+  #     9.9.9.9 0.8% and 0.4% (10 minutes), 9.9.9.11 4.5% and 3.1% (5
+  #     minutes).
+  # The resolvers that do pass the client subnet on (9.9.9.11, Google) map
+  # just as well but keep a cache per subnet, so a name this network has not
+  # asked for lately is a full recursion on their side. 9.9.9.11 was tried
+  # first, for twenty minutes, and taken out again for that slow tail. Telstra's own resolvers
+  # (61.9.133.193, 61.9.134.49) are as good on both counts, but rewrite the
+  # sites Australian ISPs are ordered to block.
+  # If Quad9 refuses a name that is wanted (NXDOMAIN from 9.9.9.9, an
+  # address from 9.9.9.10): 9.9.9.10 / 149.112.112.10 is the same service
+  # without the block list and without DNSSEC validation.
+  # To re-check: resolve the busiest names in the DNS log through each
+  # candidate and time a TCP handshake to every answer.
   forward_zones_recurse:
     - zone: '.'
-      forwarders: ['9.9.9.11', '149.112.112.11', '2620:fe::11', '2620:fe::fe:11']
+      forwarders: ['9.9.9.9', '149.112.112.112', '2620:fe::fe', '2620:fe::9']
     # The local DC plus one LINDS DC over the IPsec tunnel as backup; pdns
     # orders forwarders by measured speed.
     - zone: linds.com.au
