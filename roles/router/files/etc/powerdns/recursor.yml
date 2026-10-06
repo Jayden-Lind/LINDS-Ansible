@@ -35,9 +35,28 @@ incoming:
 recursor:
   # Catch-all upstream plus the internal stubs, all with recursion desired
   # (suits an AD zone and kube-dns alike).
+  #
+  # The catch-all is Quad9 (the .11 service: validates DNSSEC, passes the
+  # client subnet on, refuses known-malicious names), not Cloudflare.
+  # Cloudflare answers a shade faster but does not pass the client subnet
+  # on, and Google's name servers place its resolvers here somewhere
+  # 125 ms away about half the time. Measured 2026-10-06 from the DNS log:
+  # of the answers LAN clients got for Google-hosted names that can be served
+  # locally (fonts.gstatic.com, fonts.googleapis.com, i.ytimg.com,
+  # mail.google.com, www.googletagmanager.com ...), 30% pointed at a server
+  # 128 ms away instead of 11 ms, all day. Every connection to one of those
+  # then costs that round trip two or three times over. Quad9, Google and
+  # Telstra gave no such answer in the same tests. Answer time for 59 sites:
+  # Quad9 13-15 ms median, 30-34 ms at the 95th percentile; Cloudflare
+  # 13-14 / 19; Google 16-18 / 140-173. Telstra's own resolvers
+  # (61.9.133.193, 61.9.134.49) are the quickest and best placed of all,
+  # but they rewrite the sites Australian ISPs are ordered to block.
+  # To re-check: resolve a dozen Google-hosted names through 10.0.50.1 and
+  # time a TCP handshake to each answer; all but accounts.google.com should
+  # be around 10 ms.
   forward_zones_recurse:
     - zone: '.'
-      forwarders: ['1.1.1.1', '1.0.0.1', '2606:4700:4700::1111', '2606:4700:4700::1001']
+      forwarders: ['9.9.9.11', '149.112.112.11', '2620:fe::11', '2620:fe::fe:11']
     # The local DC plus one LINDS DC over the IPsec tunnel as backup; pdns
     # orders forwarders by measured speed.
     - zone: linds.com.au
