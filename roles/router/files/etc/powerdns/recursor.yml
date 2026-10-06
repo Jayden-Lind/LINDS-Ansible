@@ -1,12 +1,20 @@
 # Managed by LINDS-Ansible: roles/router/files/etc/powerdns/recursor.yml
 # pdns-recursor 5.x YAML settings (the old key=value syntax is no longer
-# accepted). Same daemon as VyOS `service dns forwarding`, with the cache
-# tuning measured on jd-vyos-01 2026-08-22 carried across:
+# accepted). Same daemon as VyOS `service dns forwarding`. Cache tuning:
 #   * max_negative_ttl 300 keeps the search-domain NXDOMAIN churn cached
-#   * minimum_ttl_override 60 floors the TTL-0/4s answers from AD and CDNs
-#   * refresh_on_ttl_perc 10 refetches hot names before they expire
 #   * serve_stale_extensions 1440 answers from expired records for up to 12h
-#     when upstream is unreachable
+#     when upstream is unreachable (only then: this daemon cannot serve a
+#     stale answer and refresh it behind the client's back)
+#   * minimum_ttl_override and refresh_on_ttl_perc, re-measured 2026-10-06
+#     by replaying 30 h of the main LAN's lookups (24,400, from the Suricata
+#     DNS log). A miss costs a client 14 ms (median); with a 60 s floor only
+#     47% of lookups were answered from cache. Most of the names are short
+#     TTL records behind a forwarder, which hands them over part-used.
+#     Replayed hit rate by floor (refresh at 50%): 60 s 40%, 300 s 47%,
+#     900 s 59%, 3600 s 70%; serving stale would be 92%. 900 s is the
+#     compromise: a site that changes address is followed up to 15 minutes
+#     late. Refreshing in the last half of the lifetime instead of the last
+#     tenth keeps names that are in regular use from ever expiring.
 
 incoming:
   listen:
@@ -65,7 +73,7 @@ recursor:
     # Drop this stub in the same change if that advertisement ever goes.
     - zone: k8s.linds.com.au
       forwarders: ['10.96.0.10']
-  minimum_ttl_override: 60
+  minimum_ttl_override: 900
   threads: 2
   hint_file: /usr/share/dns/root.hints
   include_dir: /etc/powerdns/recursor.d
@@ -80,7 +88,7 @@ outgoing:
 recordcache:
   max_entries: 1000000
   max_negative_ttl: 300
-  refresh_on_ttl_perc: 10
+  refresh_on_ttl_perc: 50
   serve_stale_extensions: 1440
 
 dnssec:
