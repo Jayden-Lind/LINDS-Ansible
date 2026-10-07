@@ -193,6 +193,31 @@ run is a box that would route the moment its links come up.
   `allow_from` must list `fe80::/10`: clients query a link-local listener
   from their link-local, and a source outside the list is dropped silently
   (`rec_control get unauthorized-udp` climbs).
+* **The router cannot find a Wi-Fi client's IPv6 address by asking.** IPv6
+  multicast from the wired side does not reach wireless clients. Measured
+  2026-10-07: a neighbour solicitation to the solicited-node address of any
+  Wi-Fi device, or a ping to `ff02::1`, is never answered, while wired VMs
+  and the UniFi gear answer in 0.3 ms and a unicast solicitation to the same
+  Mac in 4 ms. The solicitations do leave the hypervisor's uplink, so the
+  filter is in the UniFi switch or access points (a UniFi MLD querier is
+  active on the LAN and on VLAN 51 and 53, and the access points answer ARP
+  for their clients). The router therefore learns a wireless client's global
+  address only when the client resolves the router from that address, on
+  joining, and it must not forget it:
+  `net.ipv6.neigh.lan0.ucast_solicit = 86400` keeps a known neighbour on
+  probation for a day instead of three seconds.
+  * Symptom when an entry is lost anyway: `ip -6 neigh show dev lan0` lists
+    the address as FAILED, the device's IPv6 connections get no answer, and
+    every new connection falls back to IPv4 after 30-200 ms. One Mac ran
+    like that for 40 hours.
+  * Repair by hand: `ip -6 neigh replace ADDR lladdr MAC dev lan0 nud stale`
+    (the MAC is in the DHCP lease or `ip neigh` for the device's IPv4).
+  * The fix belongs on the UniFi side: per SSID, "Multicast and Broadcast
+    Control" (permit the router's MAC, it is not a UniFi gateway) and "Proxy
+    ARP"; per network, IGMP/MLD snooping. To test a change, send a neighbour
+    solicitation for a Wi-Fi client's address to its solicited-node
+    multicast address from the router and look for the advertisement; a
+    wired VM is the control. Once that works, remove the sysctl line.
 * **Security updates apply unattended.** unattended-upgrades with the two
   Debian-Security origins only, 04:00 local (+0-30 min) via a timer
   drop-in, never an automatic reboot; needrestart restarts touched daemons
