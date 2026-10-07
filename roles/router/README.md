@@ -215,7 +215,7 @@ run is a box that would route the moment its links come up.
   each address it is about to resolve, and the daemon asks for it through
   `ff02::1`. The kernel takes the answer itself; the daemon never writes to
   the neighbour table, and the sysctl goes back to 0 when the unit stops.
-  With it the router re-found a forgotten Mac address in 17 of 18 tries
+  With it the router re-found a forgotten Mac address in 33 of 35 tries
   (devices idle), without it in 0 of 8.
   * Look: `ip -6 neigh show dev lan0` (FAILED for a device that is present
     means it is not working); `systemctl kill -s USR1 nd-allnodes` then
