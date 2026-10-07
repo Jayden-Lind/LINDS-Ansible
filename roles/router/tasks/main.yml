@@ -68,6 +68,10 @@
   ansible.builtin.import_tasks: failover.yml
   tags: [failover]
 
+- name: IPv6 neighbour helper for Wi-Fi clients
+  ansible.builtin.import_tasks: neighbours.yml
+  tags: [neighbours]
+
 - name: Suricata IDS + EVE shipping
   ansible.builtin.import_tasks: suricata.yml
   tags: [suricata]

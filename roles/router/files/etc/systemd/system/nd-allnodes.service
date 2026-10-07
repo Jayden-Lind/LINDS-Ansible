@@ -1,0 +1,25 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/system/nd-allnodes.service
+[Unit]
+Description=Ask for IPv6 neighbours on lan0 through the all-nodes group too (Wi-Fi clients)
+After=systemd-networkd.service sys-subsystem-net-devices-lan0.device
+BindsTo=sys-subsystem-net-devices-lan0.device
+
+[Service]
+# The kernel announces each address it is about to resolve only while this is
+# 1; it goes back to 0 with the daemon, so a stopped daemon costs nothing.
+ExecStartPre=+/usr/sbin/sysctl -q -w net.ipv6.neigh.lan0.app_solicit=1
+ExecStart=/usr/local/sbin/nd-allnodes lan0
+ExecStopPost=+/usr/sbin/sysctl -q -w net.ipv6.neigh.lan0.app_solicit=0
+Restart=always
+RestartSec=2
+DynamicUser=yes
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictAddressFamilies=AF_INET6 AF_NETLINK AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

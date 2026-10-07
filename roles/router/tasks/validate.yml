@@ -44,6 +44,14 @@
   ansible.builtin.command: rec_control ping
   changed_when: false
 
+# Without the daemon the kernel is not told to ask it (the unit clears
+# app_solicit when it stops), so both must hold together.
+- name: nd-allnodes is running and the kernel consults it
+  ansible.builtin.shell: systemctl is-active nd-allnodes && cat /proc/sys/net/ipv6/neigh/lan0/app_solicit
+  register: router_nd_allnodes
+  changed_when: false
+  failed_when: router_nd_allnodes.stdout_lines != ['active', '1']
+
 - name: Interfaces present
   ansible.builtin.command: networkctl list --no-legend
   register: router_links

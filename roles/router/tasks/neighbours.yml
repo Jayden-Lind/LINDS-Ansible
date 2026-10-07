@@ -1,0 +1,31 @@
+---
+# nd-allnodes (files/usr/local/sbin/nd-allnodes, tests in tests/): asks for an
+# IPv6 neighbour on lan0 through the all-nodes group as well, because the
+# Wi-Fi access points drop the kernel's own per-address solicitations. The
+# unit sets net.ipv6.neigh.lan0.app_solicit while it runs. README: "The
+# router cannot find a Wi-Fi client's IPv6 address by asking".
+
+- name: nd-allnodes daemon
+  ansible.builtin.copy:
+    src: usr/local/sbin/nd-allnodes
+    dest: /usr/local/sbin/nd-allnodes
+    mode: '0755'
+  notify: restart nd-allnodes
+
+- name: nd-allnodes unit
+  ansible.builtin.copy:
+    src: etc/systemd/system/nd-allnodes.service
+    dest: /etc/systemd/system/nd-allnodes.service
+    mode: '0644'
+  notify:
+    - daemon-reload
+    - restart nd-allnodes
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: nd-allnodes enabled
+  ansible.builtin.systemd_service:
+    name: nd-allnodes
+    enabled: true
+    state: started

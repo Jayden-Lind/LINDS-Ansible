@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""nd-allnodes: ask for an IPv6 neighbour through the all-nodes group as well.
+
+When the kernel needs the MAC of an IPv6 address on a link it sends a
+neighbour solicitation to that address's own multicast group (the
+"solicited-node" group, ff02::1:ffXX:XXXX). On this LAN those never reach
+Wi-Fi clients: the access points pass multicast for the all-nodes group
+(ff02::1) from the wired side and drop it for every other IPv6 group, with
+every multicast option in UniFi switched off. Measured 2026-10-07 from two
+different wired senders: 0 answers in 60 tries through the address's own
+group, 8 to 10 in 10 through all-nodes. A Wi-Fi device whose entry the router
+has lost, or never had, is then unreachable over IPv6 until it happens to
+introduce itself again; one Mac went 40 hours like that.
+
+With net.ipv6.neigh.IFACE.app_solicit=1 (set by the unit, cleared when it
+stops) the kernel announces each address it is about to resolve on netlink
+(RTM_GETNEIGH) before it sends its own solicitations. This daemon answers by
+sending the same question to ff02::1. Every host accepts a solicitation for
+its own address whatever group it arrives on and replies to the router
+directly; the kernel takes that advertisement like any other and completes
+the entry itself. Nothing here writes to the neighbour table.
+
+Five tries per address over the three seconds the kernel keeps trying,
+because group-addressed frames reach a dozing Wi-Fi client only at some
+beacon intervals; the later tries are dropped as soon as the kernel reports
+the entry valid.
+
+The Asker decides what to send and when and does no I/O, so it can be
+unit-tested (tests/test_nd_allnodes.py); main() owns the two sockets.
+
+usage: nd-allnodes IFACE        (needs CAP_NET_RAW)
+SIGUSR1 logs the counters.
+
+Managed by LINDS-Ansible (roles/router/files/usr/local/sbin/nd-allnodes).
+"""
+from __future__ import annotations
+
+import errno
+import heapq
+import select
+import signal
+import socket
+import struct
+import sys
+import time
+
+RTM_NEWNEIGH, RTM_GETNEIGH = 28, 30
+RTMGRP_NEIGH = 4
+NDA_DST = 1
+NUD_VALID = 0x02 | 0x04 | 0x08 | 0x10 | 0x40 | 0x80   # reachable stale delay probe noarp permanent
+RETRIES = (0.4, 1.0, 1.8, 2.8)   # after the immediate one; the kernel gives up after about 4 s
+MIN_GAP = 2.0                    # per address, between rounds
+MAX_PER_SECOND = 40              # all addresses together
+ICMP6_FILTER = 1
+
+
+def neigh_messages(buf: bytes, ifindex: int):
+    """Yield (message type, NUD state, address) for the IPv6 neighbour messages about ifindex."""
+    off = 0
+    while off + 16 <= len(buf):
+        ln, typ = struct.unpack_from("=IH", buf, off)
+        if ln < 16 or off + ln > len(buf):
+            return
+        if typ in (RTM_GETNEIGH, RTM_NEWNEIGH) and ln >= 28:
+            family, _, _, idx, state = struct.unpack_from("=BBHiH", buf, off + 16)
+            if family == socket.AF_INET6 and idx == ifindex:
+                a = off + 28
+                while a + 4 <= off + ln:
+                    alen, atype = struct.unpack_from("=HH", buf, a)
+                    if alen < 4:
+                        break
+                    if atype == NDA_DST and alen == 20:
+                        yield typ, state, bytes(buf[a + 4:a + 20])
+                    a += (alen + 3) & ~3
+        off += (ln + 3) & ~3
+
+
+def solicitation(target: bytes, mac: bytes) -> bytes:
+    """ICMPv6 neighbour solicitation for target with our MAC attached (the kernel fills the checksum)."""
+    return struct.pack("!BBHI", 135, 0, 0, 0) + target + b"\x01\x01" + mac
+
+
+class Asker:
+    """Which addresses to ask for, and when. No I/O."""
+
+    def __init__(self, retries=RETRIES, min_gap=MIN_GAP, per_second=MAX_PER_SECOND):
+        self.retries, self.min_gap, self.per_second = retries, min_gap, per_second
+        self.last: dict[bytes, float] = {}     # address -> start of its last round
+        self.pending: list[tuple[float, bytes]] = []
+        self.live: set[bytes] = set()          # addresses with tries still queued
+        self.window = [0.0, 0]
+        self.stats = {"asked": 0, "sent": 0, "answered_early": 0, "rate_limited": 0, "errors": 0}
+
+    def _allow(self, now: float) -> bool:
+        if now - self.window[0] >= 1.0:
+            self.window = [now, 0]
+        if self.window[1] >= self.per_second:
+            self.stats["rate_limited"] += 1
+            return False
+        self.window[1] += 1
+        return True
+
+    def request(self, target: bytes, now: float) -> bool:
+        """The kernel wants target resolved. True = solicit now (later tries are queued)."""
+        if target[0] == 0xff or now - self.last.get(target, -self.min_gap) < self.min_gap:
+            return False
+        self.last[target] = now
+        self.stats["asked"] += 1
+        self.live.add(target)
+        for d in self.retries:
+            heapq.heappush(self.pending, (now + d, target))
+        if len(self.last) > 4096:
+            for k in [k for k, v in self.last.items() if v < now - 60]:
+                del self.last[k]
+        return self._allow(now)
+
+    def valid(self, target: bytes) -> None:
+        """The kernel reports a usable entry for target: drop the tries still queued."""
+        if target in self.live:
+            self.live.discard(target)
+            self.stats["answered_early"] += 1
+
+    def due(self, now: float) -> list[bytes]:
+        """Queued tries whose time has come."""
+        out = []
+        while self.pending and self.pending[0][0] <= now:
+            _, target = heapq.heappop(self.pending)
+            if target in self.live:
+                if not any(t == target for _, t in self.pending):
+                    self.live.discard(target)
+                if self._allow(now):
+                    out.append(target)
+        return out
+
+    def next_due(self) -> float | None:
+        return self.pending[0][0] if self.pending else None
+
+
+def log(msg: str) -> None:
+    print(msg, flush=True)
+
+
+def main() -> None:
+    if len(sys.argv) != 2:
+        sys.exit("usage: nd-allnodes IFACE")
+    iface = sys.argv[1]
+    ifindex = socket.if_nametoindex(iface)
+    with open(f"/sys/class/net/{iface}/address") as f:
+        mac = bytes.fromhex(f.read().strip().replace(":", ""))
+
+    nl = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, socket.NETLINK_ROUTE)
+    nl.bind((0, RTMGRP_NEIGH))
+
+    tx = socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_ICMPV6)
+    tx.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, iface.encode())
+    tx.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 255)
+    tx.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_IF, ifindex)
+    tx.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_LOOP, 0)
+    tx.setsockopt(socket.IPPROTO_ICMPV6, ICMP6_FILTER, b"\xff" * 32)   # receive nothing: the kernel reads the answers
+
+    asker = Asker()
+    stats = asker.stats
+    signal.signal(signal.SIGUSR1, lambda *_: log("counters: " + ", ".join(f"{k}={v}" for k, v in stats.items())))
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
+    def solicit(target: bytes) -> None:
+        try:
+            tx.sendto(solicitation(target, mac), ("ff02::1", 0, 0, ifindex))
+            stats["sent"] += 1
+        except OSError as e:
+            stats["errors"] += 1
+            if stats["errors"] in (1, 10, 100, 1000):
+                log(f"send failed ({stats['errors']}): {e}")
+
+    log(f"watching {iface} (ifindex {ifindex}); asking through ff02::1 as well")
+    while True:
+        nxt = asker.next_due()
+        ready, _, _ = select.select([nl], [], [], None if nxt is None else max(0.0, nxt - time.monotonic()))
+        if ready:
+            try:
+                buf = nl.recv(65536)
+            except OSError as e:
+                if e.errno != errno.ENOBUFS:      # a burst overflowed the socket: carry on
+                    raise
+                buf = b""
+            now = time.monotonic()
+            for typ, state, target in neigh_messages(buf, ifindex):
+                if typ == RTM_NEWNEIGH:
+                    if state & NUD_VALID:
+                        asker.valid(target)
+                elif asker.request(target, now):
+                    solicit(target)
+        for target in asker.due(time.monotonic()):
+            solicit(target)
+
+
+if __name__ == "__main__":
+    main()

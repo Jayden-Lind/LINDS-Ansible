@@ -105,6 +105,11 @@
     name: wan-failover
     state: restarted
 
+- name: restart nd-allnodes
+  ansible.builtin.systemd_service:
+    name: nd-allnodes
+    state: restarted
+
 - name: restart suricata
   ansible.builtin.systemd_service:
     name: suricata

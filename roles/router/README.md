@@ -11,13 +11,13 @@ router.
 | What | Where |
 |---|---|
 | Every daemon config, as the file it is on the box | `files/etc/…` (same path as on the box: `files/etc/nftables.conf` → `/etc/nftables.conf`) |
-| The failover daemon and the WireGuard endpoint re-resolver | `files/usr/local/sbin/`, unit files in `files/etc/systemd/system/` |
+| The failover daemon, the WireGuard endpoint re-resolver and the IPv6 neighbour helper | `files/usr/local/sbin/`, unit files in `files/etc/systemd/system/` |
 | The few rendered files (they carry vault secrets) | `templates/`: WireGuard `.netdev` (peer endpoint + key), `swanctl/conf.d/secrets.conf` (EAP users), `ddclient.conf` (Cloudflare token), `wg-reresolve/*.conf` |
 | Certificates / keys | rendered from the vault by `tasks/ipsec.yml` (VyOS's bare-base64 PKI blobs, wrapped as PEM by `filter_plugins/router_filters.py`) |
 | Secrets | `inventory/router.yml` (copied from `inventory/vyos.yml`, same vault password) |
 | The little data the templates need | `inventory/group_vars/jd_router.yml` |
 | Task flow | `tasks/main.yml` → one task file per area, in dependency order |
-| Failover daemon tests | `tests/` — `python3 -m unittest discover -s roles/router/tests` |
+| Tests for the failover daemon and the neighbour helper | `tests/` — `python3 -m unittest discover -s roles/router/tests` |
 
 To change something, **edit the file under `files/etc/` and run the playbook**.
 Hand edits on the box are fine for experiments; `--check --diff` shows exactly
@@ -54,6 +54,7 @@ run is a box that would route the moment its links come up.
 | Firewall + NAT | nftables | `etc/nftables.conf` | One `inet` table, rule comments carry the VyOS rule numbers; the `output` chain has the build-time mgmt guard |
 | Static + BGP | FRR (`bgpd`, `staticd`) | `etc/frr/frr.conf` | Same dialect as VyOS's `protocols`; `systemctl reload frr` diffs |
 | Dual-WAN failover | `wan-failover` | `etc/wan-failover.json` | Per-WAN default in tables 1001/1002 for the health check (90/100 are the WireGuard tunnels'); hysteresis; carrier check; SNAT conntrack flush on switch |
+| IPv6 neighbours on Wi-Fi | `nd-allnodes` | none (unit: `etc/systemd/system/nd-allnodes.service`) | Asks for a neighbour through `ff02::1` as well, because the access points drop the kernel's own solicitations: see below |
 | IPsec | strongSwan (swanctl) | `etc/swanctl/swanctl.conf` | `LINDS` site-to-site over `ipsec0`, `LINDS_MOBILE` road-warrior over `ipsec10`; `encap = yes` is a line here, not a template patch |
 | DHCP | kea | `etc/kea/` | DDNS into AD DNS |
 | DNS forwarder | pdns-recursor | `etc/powerdns/recursor.yml` | Upstream Quad9, 15-minute cache floor: see below |
@@ -193,31 +194,38 @@ run is a box that would route the moment its links come up.
   `allow_from` must list `fe80::/10`: clients query a link-local listener
   from their link-local, and a source outside the list is dropped silently
   (`rec_control get unauthorized-udp` climbs).
-* **The router cannot find a Wi-Fi client's IPv6 address by asking.** IPv6
-  multicast from the wired side does not reach wireless clients. Measured
-  2026-10-07: a neighbour solicitation to the solicited-node address of any
-  Wi-Fi device, or a ping to `ff02::1`, is never answered, while wired VMs
-  and the UniFi gear answer in 0.3 ms and a unicast solicitation to the same
-  Mac in 4 ms. The solicitations do leave the hypervisor's uplink, so the
-  filter is in the UniFi switch or access points (a UniFi MLD querier is
-  active on the LAN and on VLAN 51 and 53, and the access points answer ARP
-  for their clients). The router therefore learns a wireless client's global
-  address only when the client resolves the router from that address, on
-  joining, and it must not forget it:
-  `net.ipv6.neigh.lan0.ucast_solicit = 86400` keeps a known neighbour on
-  probation for a day instead of three seconds.
-  * Symptom when an entry is lost anyway: `ip -6 neigh show dev lan0` lists
-    the address as FAILED, the device's IPv6 connections get no answer, and
-    every new connection falls back to IPv4 after 30-200 ms. One Mac ran
-    like that for 40 hours.
-  * Repair by hand: `ip -6 neigh replace ADDR lladdr MAC dev lan0 nud stale`
-    (the MAC is in the DHCP lease or `ip neigh` for the device's IPv4).
-  * The fix belongs on the UniFi side: per SSID, "Multicast and Broadcast
-    Control" (permit the router's MAC, it is not a UniFi gateway) and "Proxy
-    ARP"; per network, IGMP/MLD snooping. To test a change, send a neighbour
-    solicitation for a Wi-Fi client's address to its solicited-node
-    multicast address from the router and look for the advertisement; a
-    wired VM is the control. Once that works, remove the sysctl line.
+* **The router cannot find a Wi-Fi client's IPv6 address by asking the usual
+  way.** The access points pass IPv6 multicast for the all-nodes group
+  (`ff02::1`) from the wired side and drop it for every other group, the
+  solicited-node groups that neighbour discovery uses among them. Measured
+  2026-10-07 from the router and from a second wired VM: a solicitation to a
+  Wi-Fi device's own group was answered 0 times in 60 tries, one to
+  all-nodes 8 to 10 times in 10, a unicast one every time (4 ms). The
+  solicitations do leave the hypervisor's uplink (tcpdump on `ens5f1np1`),
+  and turning off IGMP snooping, Proxy ARP, Multicast and Broadcast Control
+  and Multicast Enhancement in UniFi did not change it. The router's own
+  advertisements are in order (prefix on-link and autonomous, lifetimes
+  1800/3600 s, DNS on the link-local).
+  Left alone, the router learns a wireless client's address only when the
+  client resolves the router from it, on joining, and cannot find it again
+  once the entry is lost: one Mac had no working IPv6 for 40 hours, every
+  new connection trying IPv6 first and falling back after about 180 ms.
+  `nd-allnodes` closes the gap. Its unit sets
+  `net.ipv6.neigh.lan0.app_solicit=1`, so the kernel announces on netlink
+  each address it is about to resolve, and the daemon asks for it through
+  `ff02::1`. The kernel takes the answer itself; the daemon never writes to
+  the neighbour table, and the sysctl goes back to 0 when the unit stops.
+  With it the router re-found a forgotten Mac address in 17 of 18 tries
+  (devices idle), without it in 0 of 8.
+  * Look: `ip -6 neigh show dev lan0` (FAILED for a device that is present
+    means it is not working); `systemctl kill -s USR1 nd-allnodes` then
+    `journalctl -u nd-allnodes -n1` for the counters.
+  * By hand: `ip -6 neigh replace ADDR lladdr MAC dev lan0 nud stale` (the
+    MAC is in the DHCP lease or `ip neigh` for the device's IPv4).
+  * If the access points ever pass that multicast (send a solicitation for
+    a Wi-Fi client's address to its solicited-node group from the router and
+    look for the advertisement; a wired VM is the control), stop and disable
+    the unit. Nothing else depends on it.
 * **Security updates apply unattended.** unattended-upgrades with the two
   Debian-Security origins only, 04:00 local (+0-30 min) via a timer
   drop-in, never an automatic reboot; needrestart restarts touched daemons
