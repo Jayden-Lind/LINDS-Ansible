@@ -129,6 +129,24 @@ run is a box that would route the moment its links come up.
     a LAN host, and a test announcement sent from an access point on VLAN 52
     heard by a LAN host and seen leaving the office access point's Wi-Fi
     interface.
+* **The IoT devices live on VLAN 52 with fixed addresses** (reservations in
+  `kea-dhcp4.conf`, 10.0.52.230 and up, above the pool; Home Assistant is
+  configured with them). VLAN 52 may not open a connection to a private
+  address (forward rules 99/100). That suits devices that are only polled:
+  Home Assistant, hostNetwork on a cluster node, starts every exchange with
+  the inverter, the battery, the IR remote and the vacuum. The aircons are
+  the exception and have forward rule 98: they answer ECHONET Lite to port
+  3610 from a port of their own, which conntrack counts as a new flow from
+  VLAN 52 rather than a reply. A device that has to reach something private
+  itself needs a rule of its own next to it. Being found from the main LAN
+  is the reflector's job (above). The four that already had reservations
+  on 10.0.50.0/24 keep those until they have moved; delete them then.
+  * kea answers a VLAN 52 client twice: its raw socket on `lan0` also sees
+    the tagged frames, so the journal shows a 10.0.50.x offer next to the
+    10.0.52.x one for the same transaction. The first goes out untagged and
+    never reaches the client. Seen for the UniFi console as well, before
+    any of this; harmless, but do not read the 10.0.50.x line as the
+    address the device got.
 * **Software flowtable, main LAN, VLAN 52 and VLAN 53 <-> WAN.** The last
   six forward rules hand established TCP/UDP flows between `lan0`, `lan0.52`,
   `lan0.53` and `wan0` to `flowtable ft`; later packets skip the ruleset. `conntrack -L |
