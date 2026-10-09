@@ -1,0 +1,40 @@
+---
+# mDNS reflector: avahi-daemon repeating multicast DNS between the main LAN,
+# VLAN 52 and VLAN 58 (files/etc/avahi/avahi-daemon.conf says why and how).
+# The units are masked while the package installs so the daemon's first start
+# never runs with Debian's config, which answers on every interface, the WANs
+# included. No recommends: libnss-mdns would put mdns4_minimal into
+# /etc/nsswitch.conf and have the router itself resolve .local names.
+
+- name: avahi-daemon installed?
+  ansible.builtin.command: dpkg-query -W -f '${Status}' avahi-daemon
+  register: router_mdns_pkg
+  changed_when: false
+  failed_when: false
+
+- name: Keep avahi-daemon from starting with Debian's config during install
+  ansible.builtin.command: systemctl mask avahi-daemon.service avahi-daemon.socket
+  when: "'install ok installed' not in router_mdns_pkg.stdout"
+
+- name: avahi-daemon package
+  ansible.builtin.apt:
+    name: avahi-daemon
+    state: present
+    install_recommends: false
+
+- name: avahi-daemon config
+  ansible.builtin.copy:
+    src: etc/avahi/avahi-daemon.conf
+    dest: /etc/avahi/avahi-daemon.conf
+    mode: '0644'
+  notify: restart avahi-daemon
+
+- name: Unmask avahi-daemon (config in place)
+  ansible.builtin.command: systemctl unmask avahi-daemon.service avahi-daemon.socket
+  when: "'install ok installed' not in router_mdns_pkg.stdout"
+
+- name: avahi-daemon enabled
+  ansible.builtin.systemd_service:
+    name: avahi-daemon
+    enabled: true
+    state: started

@@ -131,3 +131,8 @@
   ansible.builtin.systemd_service:
     name: miniupnpd
     state: restarted
+
+- name: restart avahi-daemon
+  ansible.builtin.systemd_service:
+    name: avahi-daemon
+    state: restarted
