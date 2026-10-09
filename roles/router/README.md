@@ -36,7 +36,7 @@ A normal run **upgrades nothing and cannot reboot the box**: it installs
 missing packages and pushes config. `apt full-upgrade`, a newer backports
 kernel and the reboot that follows it happen only in an upgrade run
 (`router_apt_upgrade`, off by default). Every task file has a tag of its own
-name (`packages`, `system`, `network`, `tuning`, `firewall`, `upnp`,
+name (`packages`, `system`, `network`, `tuning`, `firewall`, `upnp`, `mdns`,
 `logging`, `dns`, `dhcp`, `services`, `ipsec`, `wireguard`, `routing`,
 `failover`, `suricata`); `validate` is tagged `always`.
 
@@ -58,6 +58,7 @@ run is a box that would route the moment its links come up.
 | DHCP | kea | `etc/kea/` | DDNS into AD DNS |
 | DNS forwarder | pdns-recursor | `etc/powerdns/recursor.yml` | Upstream Quad9, 15-minute cache floor: see below |
 | NTP / SNMP / LLDP / DDNS | chrony, snmpd, lldpd, ddclient | `etc/chrony/`, `etc/snmp/`, `etc/default/` | |
+| mDNS reflector | avahi-daemon | `etc/avahi/avahi-daemon.conf` | Repeats mDNS between `lan0`, `lan0.52` and `lan0.58` so devices on one can be found from the others; publishes nothing itself |
 | IDS | Suricata 7 + suricata-update | `etc/suricata/` | One capture thread + autofp; EVE → rsyslog imfile → Alloy → Loki; weekly rule refresh reloads in place |
 | Kernel | linux-image-cloud-amd64 from trixie-backports (7.x, `router_kernel_backports`), sysctl, modules, grub, tuned | `etc/sysctl.d/`, `etc/modules-load.d/`, `etc/default/grub.d/` | `ignore_routes_with_linkdown` keeps a link-down build reachable; `ip_nonlocal_bind` lets daemons bind `.1` addresses before the LAN link is up |
 
@@ -95,6 +96,39 @@ run is a box that would route the moment its links come up.
   package installs so the first start never sees Debian's defaults. UPnP
   is main-LAN only, `secure_mode` (clients map only to themselves), IPv6
   pinholes off until a v6 forward filter exists.
+* **mDNS is repeated between the main LAN, VLAN 52 and VLAN 58** (avahi as
+  a reflector, since 2026-10-09). mDNS never crosses a router, so a phone on
+  the main LAN could not find the Shield on VLAN 58 (it was missing from the
+  YouTube app's cast list) although every cast port on it was reachable from
+  there. avahi repeats each question and answer heard on one of `lan0`,
+  `lan0.52`, `lan0.58` onto the other two and does nothing else: it publishes
+  nothing of its own, `allow-interfaces` keeps it off the WANs and VLAN 53,
+  and it is IPv4 only. Input rule 15 admits the multicast group on those
+  three interfaces, ahead of rule 2, so mDNS is now the second thing (after
+  DHCP) that VLAN 52 may send the router.
+  * It makes a device findable, not reachable. Who may connect to whom is
+    still the forward chain: VLAN 52 only answers what the LAN started
+    (rules 99/100), VLAN 58 is not restricted.
+  * It does not carry SSDP (the HEOS app, DLNA): that is 239.255.255.250 and
+    would need a relay of its own.
+  * A question sent from a port other than 5353 (mDNS calls it legacy
+    unicast; one-shot lookup tools do it) is not carried across: its answers
+    come back by unicast to a random port on the router, which the input
+    chain does not admit. Phones, browsers and the cast and AirPlay stacks
+    ask from 5353.
+  * Every one of the three networks now sees the service names of the other
+    two. `reflect-filters=` in the config can narrow that.
+  * The cache is left on: a repeated question is answered from it while the
+    device itself stays silent (the config file says how). No recommends at
+    install, so libnss-mdns stays out of `/etc/nsswitch.conf`.
+  * Check: `journalctl -u avahi-daemon` has "Joining mDNS multicast group"
+    for exactly those three interfaces; `tcpdump -ni lan0.58 udp port 5353`
+    shows the router's repeats coming from 10.0.58.1; a browse for
+    `_googlecast._tcp.local` from a LAN host is answered from 10.0.50.1.
+    Proven both ways on 2026-10-09: the Shield found and connected to from
+    a LAN host, and a test announcement sent from an access point on VLAN 52
+    heard by a LAN host and seen leaving the office access point's Wi-Fi
+    interface.
 * **Software flowtable, main LAN, VLAN 52 and VLAN 53 <-> WAN.** The last
   six forward rules hand established TCP/UDP flows between `lan0`, `lan0.52`,
   `lan0.53` and `wan0` to `flowtable ft`; later packets skip the ruleset. `conntrack -L |
@@ -443,6 +477,7 @@ The "commit" is `ansible-playbook playbooks/router.yml`.
 | `show firewall` | `nft list ruleset`; one chain: `nft list chain inet router input` |
 | `show nat source rules` | `nft list chain inet router postrouting_nat` (`prerouting_nat` for port forwards) |
 | UPnP / NAT-PMP mappings | `nft list table inet miniupnpd`; `cat /var/lib/miniupnpd/upnp.leases`; `journalctl -u miniupnpd` |
+| mDNS reflector | `journalctl -u avahi-daemon`; `tcpdump -ni lan0.58 udp port 5353` (the router's repeats come from 10.0.58.1, on VLAN 52 from 10.0.52.1) |
 | flowtable fast path | `conntrack -L \| grep -c OFFLOAD`; `nft list flowtable inet router ft` |
 | live traffic (TUI) | `iftop -i wan0 -nP` (top flows), `bmon -p wan0,lan0` (per-NIC graphs), `iptraf-ng` (LAN stations, protocol breakdown), `vnstat -l -i wan0` live and `vnstat -d` history |
 | `show conntrack table ipv4` | `conntrack -L`; count `conntrack -C`; NATed only `conntrack -L --src-nat` |
