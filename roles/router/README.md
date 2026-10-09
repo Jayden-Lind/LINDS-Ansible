@@ -227,6 +227,34 @@ run is a box that would route the moment its links come up.
   `allow_from` must list `fe80::/10`: clients query a link-local listener
   from their link-local, and a source outside the list is dropped silently
   (`rec_control get unauthorized-udp` climbs).
+* **Wi-Fi clients' IPv6 depends on which VLANs the access points' switch
+  ports carry.** Nothing in this role, but this is where it shows. An
+  access point bridges every VLAN its port hands it, tagged or not, through
+  one bridge with multicast snooping on. Once that bridge hears an IGMP or
+  MLD querier on any of them it stops flooding: an IPv6 group other than
+  `ff02::1` reaches Wi-Fi only if a client there reported it in the last
+  260 s. Wi-Fi clients report their solicited-node groups once, when they
+  form the address, and do not answer queries (four queries, v1 and v2, 0 of
+  7 clients). So four minutes after a device joins, lan0's neighbour
+  solicitations no longer reach it, and once the router's entry lapses the
+  device has no IPv6 until it happens to introduce itself again: every new
+  connection tries IPv6, waits about 180 ms and falls back (one Mac went 40
+  hours like that).
+  The cellular modem on VLAN 99 is such a querier (IGMPv3 and MLDv2 every
+  125 s), and the UniFi switches were another while IGMP snooping was on
+  for the Default network. Since 2026-10-07 the two access point ports
+  (24-port switch port 18, 8-port switch port 7) carry the untagged LAN and
+  VLAN 52 only ("Tagged VLAN Management: Custom") and IGMP snooping is off
+  on the Default network. Before: the router re-found a forgotten Wi-Fi
+  address 0 times in 8. After: 16 in 16.
+  It comes back if an access point lands on a port left at "Allow All", or
+  IGMP snooping is turned on for the main LAN.
+  * Look: `Icmp6OutDestUnreachs` in `/proc/net/dev_snmp6/wan0` (about 16 an
+    hour when it works, about 1,600 when it does not).
+  * Test, with a Wi-Fi device that is awake:
+    `ip -6 neigh del ADDR dev lan0; ping -6 -c1 ADDR; ip -6 neigh show ADDR`
+    must end REACHABLE.
+  * By hand meanwhile: `ip -6 neigh replace ADDR lladdr MAC dev lan0 nud stale`.
 * **Security updates apply unattended.** unattended-upgrades with the two
   Debian-Security origins only, 04:00 local (+0-30 min) via a timer
   drop-in, never an automatic reboot; needrestart restarts touched daemons
