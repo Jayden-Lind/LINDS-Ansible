@@ -139,8 +139,7 @@ run is a box that would route the moment its links come up.
   3610 from a port of their own, which conntrack counts as a new flow from
   VLAN 52 rather than a reply. A device that has to reach something private
   itself needs a rule of its own next to it. Being found from the main LAN
-  is the reflector's job (above). The four that already had reservations
-  on 10.0.50.0/24 keep those until they have moved; delete them then.
+  is the reflector's job (above).
   * kea answers a VLAN 52 client twice: its raw socket on `lan0` also sees
     the tagged frames, so the journal shows a 10.0.50.x offer next to the
     10.0.52.x one for the same transaction. The first goes out untagged and
