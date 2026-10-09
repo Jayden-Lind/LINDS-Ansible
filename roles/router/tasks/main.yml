@@ -36,6 +36,10 @@
   ansible.builtin.import_tasks: upnp.yml
   tags: [upnp]
 
+- name: mDNS reflector
+  ansible.builtin.import_tasks: mdns.yml
+  tags: [mdns]
+
 - name: Logging
   ansible.builtin.import_tasks: logging.yml
   tags: [logging]
