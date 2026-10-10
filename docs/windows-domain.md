@@ -55,9 +55,10 @@ server-side change.
   servers that were here before do not, until `make windows-baseline
   HOST=<fqdn>` is run against them; `make windows` does not apply it.
 - **`windows_bootstrap`, `windows_domain_join`, `windows_edition`,
-  `windows_domain_controller`, `windows_dc_retire`** — the stages of building
-  and replacing a server. They run from `playbooks/windows-build.yml` and
-  `playbooks/windows-retire-dc.yml`, not from `make windows`.
+  `windows_domain_controller`, `windows_dc_retire`, `windows_ad_converge`** —
+  the stages of building and replacing a server. They run from
+  `playbooks/windows-build.yml` and `playbooks/windows-retire-dc.yml`, not
+  from `make windows`.
 - **`windows_dfsr`** — the NAS replication group: group, replicated folders,
   members, content paths, staging and conflict quotas, and connections.
   `PrimaryMember` is deliberately not declared; it is a one-shot initial-sync
@@ -108,9 +109,11 @@ What each one does:
   it does nothing.
 - **`windows-promote`** installs AD DS and DNS, promotes the member to an
   additional domain controller and global catalog in its site, waits for
-  SYSVOL, sets the DNS forwarders and the server's own resolver order, puts it
-  in the time hierarchy and closes the template's bootstrap WinRM rule. The
-  restore-mode password is `vault_windows_dsrm_password` unless one is typed.
+  SYSVOL, sets the DNS forwarders and the server's own resolver order, tells
+  the other domain controllers about it, waits for its RID pool, runs
+  `dcdiag`, puts it in the time hierarchy and closes the template's bootstrap
+  WinRM rule. The restore-mode password is `vault_windows_dsrm_password`
+  unless one is typed.
 
 From the promote stage on, the server is managed like the others: `make
 windows` covers it.
@@ -121,11 +124,26 @@ Things that were learned the hard way and are now built in:
   controller.** The promote stage therefore refuses an Evaluation edition.
   `-e windows_edition_allow_evaluation=true` overrides that for a throwaway;
   an Evaluation server stops working 180 days after it was installed.
-- **A new computer account exists on one domain controller only**, and for up
-  to 15 minutes the other site's has never heard of it. Kerberos then answers
-  "Server not found in Kerberos database" to whoever asked the wrong one.
-  `repadmin /syncall /AdeP` reported success and moved nothing; the join role
-  uses `Sync-ADObject` for that one object, to every other domain controller.
+- **The two sites replicate every 15 minutes, and nearly every step trips
+  over that.** A computer account created at LINDS is unknown at JD, where
+  the operator's Kerberos client asks first, and the answer is "Server not
+  found in Kerberos database". After a demotion at LINDS, JD still lists the
+  server as a domain controller and holds its account, and for a reused name
+  would issue tickets for the old machine. A new domain controller has no RID
+  pool until the RID master at JD knows it. `windows_ad_converge` deals with
+  all three: it has every domain controller recalculate its topology
+  (`repadmin /kcc`) and pull from its partners (`repadmin /syncall <dc>
+  /Aed`, twice), then waits until all of them hold, or no longer hold, the
+  computer in question. A push from the one that has the change (`/syncall
+  /AdeP`) reported success and moved nothing.
+- **The connection between the sites moves.** While a third domain
+  controller existed at LINDS, JD's inbound connection was re-pointed at it,
+  and JD was left without a partner when it went. The topology generator
+  repairs that by itself; the `repadmin /kcc` above makes it immediate.
+- **A demoted server refuses new logons until it has restarted** ("Access is
+  denied"): it is no longer a domain controller and not yet a member. The
+  demotion therefore queues its own restart from inside the session that
+  demotes.
 - **Server 2025 locks the local Administrator out** for ten minutes after ten
   bad logons, and refuses all logons while setup is still running. A clone
   therefore does not answer WinRM at all until setup has finished (that is in
@@ -174,12 +192,22 @@ Then, with the site's other domain controller healthy (`repadmin
 make windows-retire-dc HOST=linds-dc2.linds.com.au
 ```
 
-That demotes the old server, shuts it down and deletes its computer account.
-It refuses a FSMO role holder and the last domain controller. On the
-hypervisor, stop the old VM from coming back (`qm set <vmid> --onboot 0`) and
-keep it until the new one has been in service for a while. Then build the new
-one as above. The site runs on one domain controller in between, which for
-LINDS is about an hour, most of it Windows updates.
+That demotes the old server, restarts it as a member and shuts it down, then
+on the site's other domain controller deletes what a demotion leaves behind:
+the computer account, the empty server object under the site, and the DNS
+records a domain controller registers for itself (its host record and the
+`DomainDnsZones`, `ForestDnsZones` and `gc` address records). It finishes
+only when no domain controller at either site knows the name any more. It
+refuses a FSMO role holder and the last domain controller. `--tags cleanup`
+runs the second half alone, for a server that is already demoted and off.
+
+On the hypervisor, stop the old VM from coming back (`qm set <vmid> --onboot
+0`) and keep it until the new one has been in service for a while. It must
+not be started again on the network: it would come up as a member whose
+account no longer exists, at the address the new one now has.
+
+Then build the new one as above. The site runs on one domain controller in
+between, which for LINDS is about an hour, most of it Windows updates.
 
 Afterwards the operator's ticket cache holds a service ticket for the old
 server under the same name, and connections to the new one fail with a
@@ -654,14 +682,27 @@ Not automated: this is a repair to one host's DCOM descriptor, not fleet state.
 
 ## Known outstanding
 
-As of 10 October 2026.
+As of 11 October 2026.
 
 - **Retrim fails on the guests**, so thin space is only handed back by the
   runbook above. Both sites were done on 10 October.
 - **Entra Connect is in staging mode and its pass-through agent looks dead**;
   see the section above. Both need a tenant administrator in the wizard.
 - **`linds-dc2` cannot install cumulative updates** and is still on build
-  26100.3476; see the runbook above. It needs a repair install or replacing.
+  26100.3476; see the runbook above. Its replacement is built by
+  `playbooks/windows-build.yml` (template 160, VM 112 on `linds-proxmox-01`);
+  the swap itself is "replacing a domain controller" above. What the old one
+  held outside the directory was copied first to
+  `\\linds-dc\NAS\server\backup\linds-dc2-before-rebuild-2026-10-11`: the
+  Entra Connect configuration export, the Milestone licence and its old
+  scripts. Entra Connect is not reinstalled by the build.
+- **Time does not follow the domain hierarchy.** The Default Domain Policy
+  sets every member, domain controllers included, to `Type=NTP` with
+  `0.au.pool.ntp.org`, and policy wins over what `windows_dc_time` configures:
+  the role reports `ok` and `w32tm /query /source` on any server names the
+  pool. Everything agrees because everything asks the same pool, but a machine
+  that cannot reach the internet drifts. The setting belongs in a policy that
+  applies to the PDC emulator alone.
 - **`jd-dc-01` has 8.2 GB free on a 39.4 GB `C:`**.
 - **DNS**: `linds.com.au` accepts nonsecure dynamic updates and scavenging is
   disabled on the servers. The stale public IPv6 `AAAA` records for `jd-fs-01`

@@ -40,6 +40,10 @@
       @"
       `$ErrorActionPreference = 'Continue'
       Start-Transcript -Path C:\Windows\Temp\set-identity.log -Force
+      # Nothing may reach the machine between the change of address and the
+      # restart: whatever is waiting for the new address would find it, start
+      # work and be cut off. WinRM starts again by itself at boot.
+      Stop-Service -Name WinRM -Force
       `$nic = Get-NetAdapter -Physical | Where-Object Status -eq 'Up' | Select-Object -First 1
       Set-NetIPInterface -InterfaceIndex `$nic.ifIndex -AddressFamily IPv4 -Dhcp Disabled
       Get-NetIPAddress -InterfaceIndex `$nic.ifIndex -AddressFamily IPv4 | Remove-NetIPAddress -Confirm:`$false

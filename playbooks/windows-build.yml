@@ -67,6 +67,15 @@
         connect_timeout: 10
         sleep: 10
         timeout: 900
+
+    - name: Check that it came back under its own name
+      ansible.windows.win_powershell:
+        script: |
+          $Ansible.Changed = $false
+          $env:COMPUTERNAME
+      register: windows_build_name
+      changed_when: false
+      failed_when: windows_build_name.output[0] | lower != windows_hostname | lower
   roles:
     - windows_baseline
 
