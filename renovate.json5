@@ -1,0 +1,25 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: ["config:recommended"],
+
+  // Renovate is not run from this repository. One workflow in
+  // LINDS-Kubernetes (.github/workflows/renovate.yaml) runs it for
+  // LINDS-Kubernetes, LINDS-Terraform and LINDS-Ansible; this file is only
+  // the configuration it reads here. The label is the same in all three, so
+  // one search lists every open update:
+  //   https://github.com/pulls?q=is%3Aopen+is%3Apr+user%3AJayden-Lind+label%3Arenovate
+  //
+  // What it tracks here is requirements.yml: the Galaxy roles and
+  // collections. Merging a PR changes nothing on any host - the new version
+  // is used once `make update-requirements` has installed it on the box the
+  // playbooks run from.
+  //
+  // Not tracked: requirements.txt and the venv in the Makefile, which name
+  // their packages without a version (Renovate skips those), and anything
+  // installed with apt on the hosts themselves.
+  labels: ["renovate"],
+
+  // A homelab doesn't need 25 PRs in the first hour.
+  prConcurrentLimit: 0,
+  prHourlyLimit: 0,
+}
