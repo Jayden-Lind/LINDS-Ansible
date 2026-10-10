@@ -20,7 +20,8 @@ make windows
 ```
 
 No credentials are stored anywhere in this repo. Authentication comes from the
-operator's Kerberos ticket, which expires on its own.
+operator's Kerberos ticket, which expires on its own. The ticket cache is
+`/tmp/krb5cc_<uid>`, so restarting the machine it was taken on loses it.
 
 Two constraints the tooling depends on:
 
@@ -49,7 +50,9 @@ server-side change.
   members, content paths, staging and conflict quotas, and connections.
   `PrimaryMember` is deliberately not declared; it is a one-shot initial-sync
   flag that DFSR clears itself, so asserting it would re-arm an initial sync on
-  every run.
+  every run. Staging quotas are per folder (`dfsr_staging_quota_overrides_mb`);
+  the conflict quota is one value and is only ever raised, because lowering it
+  purges the oldest conflict copies at once.
 
 ## Runbook: the DFS-R stale junction trap
 
@@ -193,6 +196,191 @@ damage. Points worth keeping:
   area. Small files restore fine (58,508 files / 373 GB in ~50 minutes); large
   ones effectively do not. Prefer any live source over a snapshot for bulk data.
 
+## Runbook: adding a replicated folder
+
+Replication is by folder, from a list (`dfsr_folders`). Anything on a data
+volume that is not in the list stays on that one server. At JD that is `immich`
+alone, on purpose. At LINDS it is `server` (old Veeam backups of hosts that no
+longer exist), `.bzvol`, `._nfs` and the loose files in the root of `E:\`.
+
+For a folder whose content exists at **one site only**:
+
+1. Add the name to `dfsr_folders` and run `make windows`. That creates the
+   folder object and a membership on each member, and then nothing moves,
+   because neither member is primary: each waits (event 4102) for a partner
+   that already has the content.
+2. Make the member that holds the data primary, for this folder only. The other
+   member's folder must be empty.
+
+   ```powershell
+   Set-DfsrMembership -GroupName NAS -FolderName '<name>' -ComputerName <member with the data> -PrimaryMember $true -Force
+   ```
+
+3. `dfsrdiag pollad` on both members. Expect 4112 on the primary, then 4102 and
+   finally 4104 on the other.
+
+This is the one place the primary flag is right: a folder that neither member
+has a database for. It does not contradict the runbook above, which is about a
+folder that already replicates.
+
+`Music` and `papa usb` went in this way on 10 October 2026, from LINDS. The
+LINDS uplink carried them at about 3 MB/s.
+
+**Why not replicate the whole volume and exclude `immich`?** DFS-R can do it: a
+replicated folder may be a volume root, and it takes a list of folder names to
+skip (`Set-DfsReplicatedFolder -DirectoryNameToExclude`, matched by name at any
+depth). But replicated folders cannot nest, so the existing ones would have to
+be removed and replaced by one new folder at `D:\` and `E:\`. That is a fresh
+initial sync over every file on both volumes, with one member primary: the
+kind of operation that cost 380,000 files in August. The only thing it buys is
+that a new top-level folder replicates without being added to the list.
+
+## Runbook: a backlog that is only old deletion records
+
+On 10 October 2026 `dfsrdiag backlog` showed 717 files in `holiday videos`
+waiting to go from JD to LINDS. Nothing was waiting. Every file it named was
+already on both servers, the same size and date.
+
+DFS-R keeps a record of each deleted file (a tombstone) for 60 days and then
+clears them out. The August rebuild deleted and restored hundreds of thousands
+of files around 10 August. Sixty days later, at midnight on 10 October, the
+clean-up ran (115,000 `GcTask::GcIdRecord` lines in the first minute on
+`linds-dc`) and the two members re-exchanged what was left. The backlog counter
+counts records, not files, so it reads as files queued.
+
+How to tell this from a real backlog:
+
+- The debug log (`C:\Windows\debug\Dfsr*.log`, older ones gzipped) shows
+  `GcTask::GcIdRecord` in bulk at the hour it started, and the receiver logs
+  `Meet::InstallTombstone` for the "backlogged" names.
+- The records carry a version from a database that neither member has now.
+  Compare the GUID in `gvsn:{...}` with
+  `Get-CimInstance -Namespace root\MicrosoftDfs DfsrVolumeInfo`.
+- No 4412 conflict events, nothing new in `ConflictAndDeleted`, and no bytes
+  moving.
+
+It cleared by itself at 09:22, the next time the two members re-established
+their connection.
+
+**To prove the two sites hold the same files**, list both trees and compare
+path and size. This takes about 30 seconds per member for every replicated
+folder:
+
+```powershell
+robocopy 'D:\Photos' NULL /L /S /NJH /NJS /NC /NDL /BYTES /FP /XJ /XD DfsrPrivate /R:0 /W:0 /UNILOG:C:\ADBackup\list-photos.txt
+```
+
+On 10 October: 635,000 files, and the only differences were files the folder
+filter leaves out by design (`~*`, `*.bak`, `*.tmp`, `Thumbs.db`), about 1,030
+of them.
+
+## Runbook: giving space back to the hypervisor when retrim fails
+
+The data disks are thin: a ZFS zvol at JD, an LVM thin volume at LINDS. Windows
+tells the disk about freed space in two ways, and only one of them works here.
+
+- **Deleting a file** sends a TRIM for that file's blocks. This works.
+- **Retrim** (`Optimize-Volume -ReTrim`, and the weekly `ScheduledDefrag` task)
+  re-sends TRIM for all free space. This fails at once with event 264,
+  `Incorrect function (0x80070001)`, on `jd-fs-01`, `jd-dc-01` and `linds-dc`,
+  system and data volumes alike, with virtio drivers from 0.1.240 to 0.1.285.
+  Not yet explained.
+
+So any space whose TRIM was missed when the file was deleted is never handed
+back. By October 2026 the JD zvol held 11.3 TiB for 5.2 TiB of files.
+
+The way round it is to make Windows delete something that covers the free
+space. Allocating a file with `SetLength` reserves clusters without writing to
+them, so it costs no space on the pool and takes milliseconds; deleting it then
+sends the TRIM.
+
+```powershell
+$dir = 'D:\_trimfill'; New-Item -ItemType Directory -Path $dir -Force | Out-Null
+$keep = 300GB; $chunk = 256GB; $i = 0
+while (((Get-PSDrive D).Free - $keep) -gt 16GB) {
+  $size = [Math]::Min($chunk, (Get-PSDrive D).Free - $keep)
+  $fs = [IO.File]::Open((Join-Path $dir ("fill{0:D3}.bin" -f $i)), 'CreateNew', 'Write', 'None')
+  $fs.SetLength($size); $fs.Close(); $i++
+}
+foreach ($f in (Get-ChildItem $dir -File | Sort-Object Name)) { Remove-Item $f.FullName -Force; Start-Sleep -Seconds 45 }
+Remove-Item $dir -Force
+```
+
+Run it from a SYSTEM scheduled task, not a WinRM session; it takes about 20
+minutes. For those minutes the volume has only `$keep` free, so nobody should be
+copying large amounts onto it.
+
+At JD on 10 October 2026 this took `NAS-SSD/vm-1103-disk-0` from 11.3 TiB to
+6.58 TiB and the pool from 77% to 45% full. It has to be repeated whenever the
+gap grows again, until retrim itself is fixed.
+
+The shadow copies came through it. Files deleted from `D:` since a snapshot
+was taken still read back from that snapshot afterwards: two 365 MB database
+dumps, from the 27 August and 6 October copies, decompressed with their
+checksums intact. Check the same way after any future run.
+
+At LINDS the same afternoon (`E:` on `linds-dc`, with `$keep` and the paths
+changed to match) the thin pool `NAS` went from 88% to 66% full: 2.34 TiB
+handed back, 3.65 TiB available. That is about half of what looked
+reclaimable. Roughly 1.7 TiB of free space on `E:` is still mapped in the pool
+and the reason has not been found. One candidate is blocks that the 64 shadow
+copies still hold; a second pass after those have aged out would show.
+
+## Entra Connect on `linds-dc2`
+
+`linds-dc2` runs Entra Connect Sync 2.6.3.0 against the tenant
+`lindtestazuread.onmicrosoft.com`, with pass-through authentication as the
+sign-in method. As found, and partly fixed, on 10 October 2026:
+
+- **The sync service did not survive a reboot.** `ADSync` runs as a managed
+  service account. In the first minute of the 15 August boot its logon failed
+  ("the user name or password is incorrect"), most likely because the directory
+  on the same machine was not up yet, and Windows does not retry a failed
+  start. It stayed stopped until 10 October. **Fixed:** it is set to delayed
+  automatic start and came up by itself after both reboots that day. An Entra
+  Connect upgrade may put the start type back.
+- **Its import from Entra failed on every cycle** once it was running again:
+  run result `stopped-server-down`, event 109 "Error Code: 78 ... An internal
+  error has occurred". Most likely its place in Entra's change feed had
+  expired during the 58 days it was stopped. **Fixed** with one full cycle,
+  which is safe in staging mode because nothing is exported; the delta cycle
+  after it succeeded on both connectors:
+
+  ```powershell
+  Start-ADSyncSyncCycle -PolicyType Initial
+  ```
+
+- **It is in staging mode, and has been since 2 November 2024.** It imports and
+  calculates but sends nothing to Entra. If it were made active today it would
+  add ten groups (the `k8s-*` groups) and change nothing else. **Not fixed:**
+  leaving staging mode is done in the Entra Connect wizard ("Configure staging
+  mode") and needs a tenant administrator sign-in. The wizard does tenant-side
+  work at that point (password hash sync is configured here but still off in
+  the tenant), which is why the setting was not simply flipped with PowerShell.
+- **The pass-through agent looks dead.** Its registration certificate was
+  issued on 2 November 2024, expired on 1 May 2025 and was never renewed; the
+  store holds nothing newer. The service still runs and logs a connection
+  failure most days. **Not fixed:** it has to be reinstalled (the installer is
+  in the Entra portal under Entra Connect, Pass-through authentication), again
+  with a tenant administrator sign-in.
+- **The Connect Health agent's newest certificate expired on 6 December 2025.**
+
+**Working on it over WinRM.** The cmdlets that read run history, global
+settings or tenant features talk to `net.pipe://localhost/ADSyncManagement`,
+which refuses network logons, so over WinRM they fail with "no endpoint
+listening". Run them from a console session, or from a scheduled task
+registered for an `ADSyncAdmins` member with logon type S4U (no password
+needed). `Get-ADSyncScheduler`, `Start-ADSyncSyncCycle` and `csexport.exe` do
+work over WinRM. To see what an export would do while in staging mode:
+
+```powershell
+& 'C:\Program Files\Microsoft Azure AD Sync\Bin\csexport.exe' '<connector name>' C:\ADBackup\pending.xml /f:x
+```
+
+If Entra Connect is not wanted any more, removing it also removes the reason
+for `MSOL_abd8982191a0`, an account that can read every password hash in the
+domain.
+
 ## What is deliberately not managed here
 
 **GPOs are not enforced declaratively.** Re-importing a GPO is not an
@@ -253,14 +441,27 @@ Not automated: this is a repair to one host's DCOM descriptor, not fleet state.
 
 ## Known outstanding
 
-- **`jd-fs-01` runs Server 2025 Evaluation** — expires and then force-reboots
-  hourly.
-- **`jd-dc-01` has ~6.8 GB free on a 39.4 GB `C:`**.
+As of 10 October 2026.
+
+- **Retrim fails on the guests**, so thin space is only handed back by the
+  runbook above. Both sites were done on 10 October; at LINDS about 1.7 TiB
+  did not come back.
+- **Entra Connect is in staging mode and its pass-through agent looks dead**;
+  see the section above. Both need a tenant administrator in the wizard.
+- **`jd-dc-01` has 8.2 GB free on a 39.4 GB `C:`**.
 - **DNS**: `linds.com.au` accepts nonsecure dynamic updates and scavenging is
-  disabled; two stale public IPv6 `AAAA` records for `jd-fs-01` persist as a
-  result.
+  disabled on the servers. The stale public IPv6 `AAAA` records for `jd-fs-01`
+  are gone.
 - **System-state backups are not configured.** Event 2089 reports no partition
   backed up in 90+ days.
-- **`linds-dc2` holds a dozen expired ADFS agent certificates** from a
-  decommissioned deployment. They generate a steady stream of "about to expire"
-  warnings (event 64) that are noise, not enrolment failures.
+- **`E:\server\old_backup` on `linds-dc`** is 248 GB of Veeam backups from
+  2019 to 2021, of hosts that no longer exist.
+- **`linds-dc2` holds ten expired Entra agent certificates** (pass-through and
+  Connect Health). They generate "about to expire" warnings (event 64) that are
+  noise, not enrolment failures.
+- **Dead scheduled tasks**: `jd-dc-01` and `linds-dc` each have two
+  `ShadowCopyVolume{...}` tasks for volumes that no longer exist, failing twice
+  a day. The same one on `linds-dc2`, and its three vCenter tasks, were
+  disabled on 10 October.
+- **VMware Tools is still installed on `linds-dc` and `linds-dc2`.** On
+  `linds-dc2` it writes about 2,500 errors a week to the Application log.
