@@ -56,42 +56,13 @@
 
 # The account exists on this domain controller only. The new machine will
 # authenticate against whichever one is nearest to it, and the operator's
-# Kerberos client against whichever it asks first; until the account has
-# replicated they answer "server not found in Kerberos database". Between
-# sites that is up to 15 minutes, and repadmin /syncall /AdeP reported no
-# errors without moving the object, so each one is told to fetch it.
-- name: Push the new account to every other domain controller
-  ansible.windows.win_powershell:
-    parameters:
-      Machine: "{{ windows_domain_join_machine }}"
-    script: |
-      param([string]$Machine)
-      $ErrorActionPreference = 'Stop'
-      Import-Module ActiveDirectory
-      $here = $env:COMPUTERNAME
-      $dn = (Get-ADComputer -Identity $Machine -Server $here).DistinguishedName
-      $failed = @()
-      foreach ($dc in Get-ADDomainController -Filter * | Where-Object { $_.Name -ne $here }) {
-          try {
-              Sync-ADObject -Object $dn -Source $here -Destination $dc.HostName
-          } catch {
-              $failed += "$($dc.Name): $($_.Exception.Message)"
-          }
-      }
-      # One unreachable domain controller must not block a build: the object
-      # reaches it by normal replication, and the Kerberos plays that follow
-      # say so plainly if the one they ask does not have it yet.
-      $Ansible.Changed = $true
-      [pscustomobject]@{ failed = $failed }
-  register: windows_domain_join_push
-
-- name: Say which domain controllers did not take the account
-  ansible.builtin.debug:
-    msg: >-
-      Not pushed to: {{ windows_domain_join_push.output[0].failed | join('; ') }}.
-      Normal replication will deliver it; a Kerberos logon to the new machine
-      can fail with "server not found" until then.
-  when: windows_domain_join_push.output[0].failed | length > 0
+# Kerberos client against whichever it asks first.
+- name: Get the new account onto every domain controller
+  ansible.builtin.include_role:
+    name: windows_ad_converge
+  vars:
+    windows_ad_converge_computer: "{{ windows_domain_join_machine }}"
+    windows_ad_converge_state: present
 
 - name: Keep the blob for the machine that is joining
   ansible.builtin.set_fact:

@@ -112,6 +112,46 @@
           $Ansible.Changed = $true
       }
 
+# The other site's domain controller, which holds the RID master role, does
+# not know this one exists until the next scheduled replication. Until it
+# does, this one has no RID pool and cannot create users, groups or computers.
+- name: Tell every other domain controller about this one
+  ansible.builtin.include_role:
+    name: windows_ad_converge
+  vars:
+    windows_ad_converge_computer: "{{ windows_hostname | default(inventory_hostname_short) }}"
+    windows_ad_converge_state: present
+
+- name: Wait for its RID pool
+  ansible.windows.win_powershell:
+    parameters:
+      TimeoutSeconds: "{{ windows_dc_rid_pool_timeout | int }}"
+    script: |
+      param([int]$TimeoutSeconds)
+      $Ansible.Changed = $false
+      Import-Module ActiveDirectory
+      $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+      do {
+          $me = Get-ADComputer -Identity $env:COMPUTERNAME -Properties rIDSetReferences -Server $env:COMPUTERNAME -ErrorAction SilentlyContinue
+          $have = [bool]$me.rIDSetReferences
+          if (-not $have) { Start-Sleep -Seconds 20 }
+      } until ($have -or (Get-Date) -gt $deadline)
+      if (-not $have) {
+          throw 'No RID pool yet. The RID master has to know this domain controller and be reachable from it: check replication to it (repadmin /replsummary) and dcdiag /test:RidManager /v here.'
+      }
+  changed_when: false
+
+- name: Run the domain controller health checks
+  ansible.windows.win_powershell:
+    script: |
+      $Ansible.Changed = $false
+      # /q prints failures only.
+      @(dcdiag /q /test:Advertising /test:Replications /test:RidManager /test:NetLogons /test:Services /test:SysVolCheck 2>&1 |
+          ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+  register: windows_dc_health
+  changed_when: false
+  failed_when: windows_dc_health.output | length > 0
+
 - name: Close the pre-domain WinRM opening left by the template
   community.windows.win_firewall_rule:
     name: WinRM bootstrap

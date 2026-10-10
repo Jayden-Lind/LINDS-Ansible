@@ -27,7 +27,11 @@
       only domain controller. Move the roles first (windows_ad_recovery).
   when: windows_dc_retire_state.output[0].is_domain_controller
 
-- name: Demote the domain controller
+# Between the demotion and its restart the server belongs to nothing: the
+# directory is gone and it is not yet a member, so it refuses every new logon
+# ("Access is denied"), including the one a separate restart task would need.
+# The restart is therefore queued from inside the session that demotes.
+- name: Demote the domain controller and restart it
   ansible.windows.win_powershell:
     sensitive_parameters:
       - name: LocalPassword
@@ -38,14 +42,18 @@
       Import-Module ADDSDeployment
       Uninstall-ADDSDomainController -LocalAdministratorPassword $LocalPassword `
           -NoRebootOnCompletion:$true -Force:$true -WarningAction SilentlyContinue | Out-Null
+      # Detached and delayed, so this task returns before the connection goes.
+      Start-Process -FilePath shutdown.exe -ArgumentList '/r', '/t', '10', '/c', '"Demoted: restarting as a member server"'
       $Ansible.Changed = $true
   when: windows_dc_retire_state.output[0].is_domain_controller
   register: windows_dc_retire_demote
 
-- name: Restart as a member server
-  ansible.windows.win_reboot:
-    reboot_timeout: 1800
-    post_reboot_delay: 60
+- name: Wait for it to come back as a member server
+  ansible.builtin.wait_for_connection:
+    delay: 90
+    connect_timeout: 10
+    sleep: 15
+    timeout: 1800
   when: windows_dc_retire_demote is changed
 
 - name: Confirm it is no longer a domain controller

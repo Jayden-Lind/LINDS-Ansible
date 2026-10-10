@@ -33,6 +33,9 @@
           - target in groups['windows']
         fail_msg: Pass -e target=<fqdn>, a host in the windows group of the inventory.
 
+    - name: Pick the domain controller that will act for it
+      ansible.builtin.import_tasks: tasks/windows-partner-dc.yml
+
 - name: Name and address the fresh clone
   hosts: "{{ target | default('unset') }}"
   gather_facts: false
@@ -90,7 +93,7 @@
         windows_build_needs_join: "{{ not windows_build_membership.output[0] }}"
 
 - name: Create its computer account on an existing domain controller
-  hosts: "{{ windows_join_dc | default((groups['windows_dc'] | difference([target | default('unset')])) | first) }}"
+  hosts: windows_partner_dc
   gather_facts: false
   tags: join
   tasks:
@@ -117,7 +120,7 @@
         name: windows_domain_join
         tasks_from: join
       vars:
-        windows_domain_join_blob: "{{ hostvars[windows_join_dc | default((groups['windows_dc'] | difference([target])) | first)].windows_domain_join_blob }}"
+        windows_domain_join_blob: "{{ hostvars[groups['windows_partner_dc'][0]].windows_domain_join_blob }}"
       when: windows_build_needs_join
 
 # From here on the server is a domain member and is reached like every other

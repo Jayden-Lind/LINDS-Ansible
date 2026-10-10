@@ -1,0 +1,76 @@
+---
+- name: Replicate between all domain controllers until they agree
+  ansible.windows.win_powershell:
+    parameters:
+      Computer: "{{ windows_ad_converge_computer }}"
+      State: "{{ windows_ad_converge_state }}"
+      TimeoutSeconds: "{{ windows_ad_converge_timeout | int }}"
+    script: |
+      param([string]$Computer, [string]$State, [int]$TimeoutSeconds)
+      $ErrorActionPreference = 'Stop'
+      Import-Module ActiveDirectory
+      $Ansible.Changed = $false
+      $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+
+      function Get-View([string]$Server) {
+          # What one domain controller believes about the computer.
+          try {
+              $account = Get-ADComputer -Filter "Name -eq '$Computer'" -Server $Server -ErrorAction Stop
+              $isDc = [bool](Get-ADDomainController -Filter "Name -eq '$Computer'" -Server $Server -ErrorAction Stop)
+              [pscustomobject]@{ server = $Server; reachable = $true; guid = "$($account.ObjectGUID)"; dc = $isDc }
+          } catch {
+              [pscustomobject]@{ server = $Server; reachable = $false; guid = ''; dc = $false }
+          }
+      }
+
+      do {
+          $problems = @()
+          $dcs = @(Get-ADDomainController -Filter * -Server $env:COMPUTERNAME | ForEach-Object HostName)
+          # Retiring a domain controller can take away the one the other
+          # site replicated through. Each topology generator notices by
+          # itself within 15 minutes; asking makes it now.
+          foreach ($dc in $dcs) { & repadmin.exe /kcc $dc 2>&1 | Out-Null }
+
+          # Pull mode, on every domain controller: each one fetches from all
+          # of its partners, across the site link too (/e). Twice, because a
+          # change can be two hops away. A push (/P) from the one that has
+          # the change reported success and moved nothing here.
+          foreach ($round in 1, 2) {
+              foreach ($dc in $dcs) {
+                  $out = & repadmin.exe /syncall $dc /Aed 2>&1
+                  if ($LASTEXITCODE -ne 0 -or ($out -match 'Error contacting server|SyncAll exited with fatal')) {
+                      $problems += "${dc}: " + (($out | Where-Object { $_ -match 'rror' } | Select-Object -First 1) -replace '\s+', ' ')
+                  }
+              }
+          }
+
+          $agreed = $true
+          $views = @()
+          if ($Computer) {
+              $views = @($dcs | ForEach-Object { Get-View $_ })
+              $reachable = @($views | Where-Object reachable)
+              if ($State -eq 'absent') {
+                  $agreed = -not ($reachable | Where-Object { $_.guid -or $_.dc })
+              } else {
+                  $mine = (Get-View $env:COMPUTERNAME).guid
+                  $agreed = $mine -and -not ($reachable | Where-Object { $_.guid -ne $mine })
+              }
+              # A domain controller nobody can reach has not agreed to
+              # anything; keep trying until the time runs out.
+              if ($reachable.Count -ne $views.Count) { $agreed = $false }
+          }
+          if (-not $agreed) { Start-Sleep -Seconds 20 }
+      } until ($agreed -or (Get-Date) -gt $deadline)
+
+      if (-not $agreed) {
+          $detail = ($views | ForEach-Object { "$($_.server): reachable=$($_.reachable) account=$([bool]$_.guid) dc=$($_.dc)" }) -join '; '
+          throw "The domain controllers still disagree about $Computer (wanted: $State). $detail. Replication problems: $($problems -join ' | ')"
+      }
+      [pscustomobject]@{ domain_controllers = $dcs; problems = $problems }
+  register: windows_ad_converge_result
+  changed_when: false
+
+- name: Report replication problems that did not stop the agreement
+  ansible.builtin.debug:
+    msg: "{{ windows_ad_converge_result.output[0].problems }}"
+  when: windows_ad_converge_result.output[0].problems | length > 0

@@ -29,3 +29,7 @@ windows_dc_dns_client_servers: "{{ windows_dns_servers + ['127.0.0.1'] }}"
 # How long to wait after the post-promotion restart for the directory and
 # SYSVOL to be served.
 windows_dc_ready_timeout: 1800
+
+# How long to wait, once the other domain controllers know this one, for the
+# RID master to allocate its RID pool.
+windows_dc_rid_pool_timeout: 900
