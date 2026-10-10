@@ -20,7 +20,8 @@ make windows
 ```
 
 No credentials are stored anywhere in this repo. Authentication comes from the
-operator's Kerberos ticket, which expires on its own.
+operator's Kerberos ticket, which expires on its own. The ticket cache is
+`/tmp/krb5cc_<uid>`, so restarting the machine it was taken on loses it.
 
 Two constraints the tooling depends on:
 
@@ -318,34 +319,66 @@ was taken still read back from that snapshot afterwards: two 365 MB database
 dumps, from the 27 August and 6 October copies, decompressed with their
 checksums intact. Check the same way after any future run.
 
+At LINDS the same afternoon (`E:` on `linds-dc`, with `$keep` and the paths
+changed to match) the thin pool `NAS` went from 88% to 66% full: 2.34 TiB
+handed back, 3.65 TiB available. That is about half of what looked
+reclaimable. Roughly 1.7 TiB of free space on `E:` is still mapped in the pool
+and the reason has not been found. One candidate is blocks that the 64 shadow
+copies still hold; a second pass after those have aged out would show.
+
 ## Entra Connect on `linds-dc2`
 
 `linds-dc2` runs Entra Connect Sync 2.6.3.0 against the tenant
 `lindtestazuread.onmicrosoft.com`, with pass-through authentication as the
-sign-in method. As found on 10 October 2026:
+sign-in method. As found, and partly fixed, on 10 October 2026:
 
 - **The sync service did not survive a reboot.** `ADSync` runs as a managed
   service account. In the first minute of the 15 August boot its logon failed
   ("the user name or password is incorrect"), most likely because the directory
   on the same machine was not up yet, and Windows does not retry a failed
-  start. It stayed stopped until 10 October, when it started by hand without
-  complaint. It is now set to delayed automatic start. An Entra Connect upgrade
-  may put that back.
+  start. It stayed stopped until 10 October. **Fixed:** it is set to delayed
+  automatic start and came up by itself after both reboots that day. An Entra
+  Connect upgrade may put the start type back.
+- **Its import from Entra failed on every cycle** once it was running again:
+  run result `stopped-server-down`, event 109 "Error Code: 78 ... An internal
+  error has occurred". Most likely its place in Entra's change feed had
+  expired during the 58 days it was stopped. **Fixed** with one full cycle,
+  which is safe in staging mode because nothing is exported; the delta cycle
+  after it succeeded on both connectors:
+
+  ```powershell
+  Start-ADSyncSyncCycle -PolicyType Initial
+  ```
+
 - **It is in staging mode, and has been since 2 November 2024.** It imports and
   calculates but sends nothing to Entra. If it were made active today it would
-  add ten groups (the `k8s-*` groups) and change nothing else. Turning staging
-  off is done in the Entra Connect wizard and needs a tenant administrator.
+  add ten groups (the `k8s-*` groups) and change nothing else. **Not fixed:**
+  leaving staging mode is done in the Entra Connect wizard ("Configure staging
+  mode") and needs a tenant administrator sign-in. The wizard does tenant-side
+  work at that point (password hash sync is configured here but still off in
+  the tenant), which is why the setting was not simply flipped with PowerShell.
 - **The pass-through agent looks dead.** Its registration certificate was
   issued on 2 November 2024, expired on 1 May 2025 and was never renewed; the
   store holds nothing newer. The service still runs and logs a connection
-  failure most days. The Entra portal will say whether the agent is listed as
-  active. Bringing it back means reinstalling it, again as a tenant
-  administrator.
+  failure most days. **Not fixed:** it has to be reinstalled (the installer is
+  in the Entra portal under Entra Connect, Pass-through authentication), again
+  with a tenant administrator sign-in.
 - **The Connect Health agent's newest certificate expired on 6 December 2025.**
 
-Either finish bringing it back (the wizard, then reinstall the agent), or
-remove Entra Connect. Removing it also removes the reason for
-`MSOL_abd8982191a0`, an account that can read every password hash in the
+**Working on it over WinRM.** The cmdlets that read run history, global
+settings or tenant features talk to `net.pipe://localhost/ADSyncManagement`,
+which refuses network logons, so over WinRM they fail with "no endpoint
+listening". Run them from a console session, or from a scheduled task
+registered for an `ADSyncAdmins` member with logon type S4U (no password
+needed). `Get-ADSyncScheduler`, `Start-ADSyncSyncCycle` and `csexport.exe` do
+work over WinRM. To see what an export would do while in staging mode:
+
+```powershell
+& 'C:\Program Files\Microsoft Azure AD Sync\Bin\csexport.exe' '<connector name>' C:\ADBackup\pending.xml /f:x
+```
+
+If Entra Connect is not wanted any more, removing it also removes the reason
+for `MSOL_abd8982191a0`, an account that can read every password hash in the
 domain.
 
 ## What is deliberately not managed here
@@ -411,11 +444,10 @@ Not automated: this is a repair to one host's DCOM descriptor, not fleet state.
 As of 10 October 2026.
 
 - **Retrim fails on the guests**, so thin space is only handed back by the
-  runbook above. JD was done on 10 October. **LINDS has not been done:**
-  `NAS/vm-102-disk-0` has 9.8 TiB mapped for 5.4 TiB of files, in a thin pool
-  that is 88% full.
+  runbook above. Both sites were done on 10 October; at LINDS about 1.7 TiB
+  did not come back.
 - **Entra Connect is in staging mode and its pass-through agent looks dead**;
-  see the section above. Revive or remove.
+  see the section above. Both need a tenant administrator in the wizard.
 - **`jd-dc-01` has 8.2 GB free on a 39.4 GB `C:`**.
 - **DNS**: `linds.com.au` accepts nonsecure dynamic updates and scavenging is
   disabled on the servers. The stale public IPv6 `AAAA` records for `jd-fs-01`
