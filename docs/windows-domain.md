@@ -344,13 +344,15 @@ zfs get used,logicalreferenced NAS-SSD/vm-1103-disk-0   # JD
 `lindtestazuread.onmicrosoft.com`, with pass-through authentication as the
 sign-in method. As found, and partly fixed, on 10 October 2026:
 
-- **The sync service did not survive a reboot.** `ADSync` runs as a managed
-  service account. In the first minute of the 15 August boot its logon failed
-  ("the user name or password is incorrect"), most likely because the directory
-  on the same machine was not up yet, and Windows does not retry a failed
-  start. It stayed stopped until 10 October. **Fixed:** it is set to delayed
-  automatic start and came up by itself after both reboots that day. An Entra
-  Connect upgrade may put the start type back.
+- **The sync service did not survive a cold start.** On 15 August `ADSync`
+  failed in the first minute of the boot ("the user name or password is
+  incorrect" for its managed service account), and Windows does not retry a
+  failed start, so it stayed stopped until 10 October. The cause was the
+  clock: see "a domain controller that boots with the wrong clock" below.
+  **Fixed twice over:** the service is on delayed automatic start, and came up
+  by itself on 10 October even with the clock still wrong; and the VM now
+  gets a local-time clock. An Entra Connect upgrade may put the start type
+  back.
 - **Its import from Entra failed on every cycle** once it was running again:
   run result `stopped-server-down`, event 109 "Error Code: 78 ... An internal
   error has occurred". Most likely its place in Entra's change feed had
@@ -392,6 +394,36 @@ work over WinRM. To see what an export would do while in staging mode:
 If Entra Connect is not wanted any more, removing it also removes the reason
 for `MSOL_abd8982191a0`, an account that can read every password hash in the
 domain.
+
+## Runbook: a domain controller that boots with the wrong clock
+
+`LINDS-DC2` (VM 110 on `linds-proxmox-01`) had no OS type set in Proxmox.
+Proxmox then gives the guest a hardware clock in UTC, and Windows reads the
+hardware clock as local time, so after every **cold start** the server came up
+10 or 11 hours slow and stayed that way until the time service stepped it: 45
+seconds on 15 August 2026, 17 minutes on 10 October. A guest reboot does not
+do it; the clock survives those.
+
+While the clock is wrong:
+
+- Kerberos to the server fails. Over WinRM that reads "the specified
+  credentials were rejected by the server".
+- Directory replication with it fails with 1398, "there is a time and/or date
+  difference between the client and server".
+- A service that logs on with a domain account early in the boot can be
+  refused. That is what stopped `ADSync` on 15 August.
+
+To see it without logging on, ask the server for the time:
+
+```shell
+ntpdate -q 10.3.1.201      # or any SNTP query; -39600 s is the giveaway
+qm config 110 | grep -E 'ostype|localtime'
+```
+
+Fixed on 10 October with `qm set 110 --localtime 1`, which takes effect at the
+VM's next cold start. `LINDS-DC-01` (VM 102) has `ostype: win11`, which implies
+the same thing. After a skewed boot, `repadmin /syncall <dc> /Ade` clears the
+replication errors once the clock is right.
 
 ## What is deliberately not managed here
 
