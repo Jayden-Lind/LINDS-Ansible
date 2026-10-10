@@ -425,6 +425,44 @@ VM's next cold start. `LINDS-DC-01` (VM 102) has `ostype: win11`, which implies
 the same thing. After a skewed boot, `repadmin /syncall <dc> /Ade` clears the
 replication errors once the clock is right.
 
+## Runbook: a cumulative update that will not install (`linds-dc2`)
+
+`linds-dc2` has been on build 26100.3476 (March 2025) while the other three
+moved on. On 10 October 2026 the reasons came out one behind the other.
+
+1. **No disk space.** 3 GB free of 70; the Windows Update cache alone held
+   15 GB. Fixed: cache reset, disk grown to 100 GB.
+2. **`0x800F0831`, store corruption.** The servicing store listed two packages
+   from a half-installed earlier update but had lost their files. The exact
+   names are in the "Checking System Update Readiness" summary near the end of
+   `C:\Windows\Logs\CBS\CBS.log` (read it with `Get-Content -Tail`; the logs are
+   hundreds of megabytes). `DISM /Online /Cleanup-Image /RestoreHealth` ran for
+   49 minutes and could not fetch them (`0x800f0915`). Fixed by copying the
+   four `.mum` and `.cat` files from a healthy server's
+   `C:\Windows\servicing\Packages`: they were byte-identical on all three and
+   their catalogs carry a valid Microsoft signature. `robocopy /B` writes into
+   that folder; set the owner back to `NT SERVICE\TrustedInstaller`.
+   `dism /online /get-packageinfo /packagename:<name>` then answers instead of
+   failing.
+3. **`0x80070306`, hydration.** Not fixed. The update now gets as far as
+   staging and fails rebuilding files from the deltas it downloads
+   ("Hydration failed ... Forward Delta"). The installed versions of those
+   components (26100.3037) have no reverse-delta files (`r\` under the
+   component's `WinSxS` folder) on this server; healthy servers have them.
+   Emptying `SoftwareDistribution\Download` and letting Windows Update work the
+   payload out again made no difference.
+
+Two things to know when retrying:
+
+- Windows' own updater installs the moment a download completes, so a manual
+  install through the Windows Update API is refused (`0x80240016`). Watch the
+  update history instead of racing it.
+- From a build that old, the download stage alone can take over an hour of
+  CPU-bound work with no network traffic. That is slow, not stuck.
+
+What is left is a repair install of Server 2025 over the top, or replacing
+this domain controller.
+
 ## What is deliberately not managed here
 
 **GPOs are not enforced declaratively.** Re-importing a GPO is not an
@@ -491,6 +529,8 @@ As of 10 October 2026.
   runbook above. Both sites were done on 10 October.
 - **Entra Connect is in staging mode and its pass-through agent looks dead**;
   see the section above. Both need a tenant administrator in the wizard.
+- **`linds-dc2` cannot install cumulative updates** and is still on build
+  26100.3476; see the runbook above. It needs a repair install or replacing.
 - **`jd-dc-01` has 8.2 GB free on a 39.4 GB `C:`**.
 - **DNS**: `linds.com.au` accepts nonsecure dynamic updates and scavenging is
   disabled on the servers. The stale public IPv6 `AAAA` records for `jd-fs-01`
