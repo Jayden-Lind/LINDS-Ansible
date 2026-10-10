@@ -11,6 +11,8 @@ dfsr_folders:
   - Cheryls Files
   - holiday videos
   - Jayden
+  - Music
+  - papa usb
   - Personal Files
   - Photos
   - Zoe
@@ -18,8 +20,8 @@ dfsr_folders:
 # Content path root per member. The folder name is appended to it, so the two
 # members' differing drive letters are the only thing that has to be stated.
 dfsr_members:
-  JD-FS-01: 'D:'
-  LINDS-DC: 'E:'
+  JD-FS-01: "D:"
+  LINDS-DC: "E:"
 
 # Replication is bidirectional: every member both sends and receives.
 dfsr_connections:
@@ -33,10 +35,18 @@ dfsr_connections:
 # the 4 GB default.
 dfsr_staging_quota_mb: 102400
 
+# Folders whose largest files need more than that: the video folder and the two
+# big photo trees. Anything not listed gets dfsr_staging_quota_mb.
+dfsr_staging_quota_overrides_mb:
+  holiday videos: 300000
+  Jayden: 200000
+  Photos: 200000
+
 # Conflict and Deleted holds the losing copy of a conflict and recently deleted
 # files. Once the quota is reached the oldest entries are purged, so this is the
-# window in which a conflict can still be recovered by hand.
-dfsr_conflict_quota_mb: 102400
+# window in which a conflict can still be recovered by hand. Lowering it purges
+# straight away, so it is only ever raised.
+dfsr_conflict_quota_mb: 204800
 
 # Remote Differential Compression sends only the changed blocks of a file. The
 # two sites are joined by a VPN tunnel, so this stays on.

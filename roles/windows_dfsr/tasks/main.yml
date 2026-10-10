@@ -70,10 +70,11 @@
       Folders: "{{ dfsr_folders }}"
       MemberRoots: "{{ dfsr_members }}"
       StagingQuota: "{{ dfsr_staging_quota_mb | int }}"
+      StagingOverrides: "{{ dfsr_staging_quota_overrides_mb }}"
       ConflictQuota: "{{ dfsr_conflict_quota_mb | int }}"
     script: |
       param([string]$Group, [string[]]$Folders, [hashtable]$MemberRoots,
-            [int]$StagingQuota, [int]$ConflictQuota)
+            [int]$StagingQuota, [hashtable]$StagingOverrides, [int]$ConflictQuota)
       $ErrorActionPreference = 'Stop'
       Import-Module DFSR
       $Ansible.Changed = $false
@@ -82,14 +83,17 @@
           $root = $MemberRoots[$member]
           foreach ($f in $Folders) {
               $want = "$root\$f"
-              $have = Get-DfsrMembership -GroupName $Group -FolderName $f `
-                        -ComputerName $member -ErrorAction Stop
+              $staging = if ($StagingOverrides.ContainsKey($f)) { [int]$StagingOverrides[$f] } else { $StagingQuota }
+              # Get-DfsrMembership has no -FolderName; it returns every folder's
+              # membership for the member, so pick this folder's out of that.
+              $have = Get-DfsrMembership -GroupName $Group -ComputerName $member -ErrorAction Stop |
+                        Where-Object { $_.FolderName -eq $f }
 
               # Not $args - that is an automatic variable, and splatting it
               # would not refer to this hashtable.
               $set = @{}
               if ($have.ContentPath -ne $want)                          { $set.ContentPath = $want }
-              if ($have.StagingPathQuotaInMB -ne $StagingQuota)         { $set.StagingPathQuotaInMB = $StagingQuota }
+              if ($have.StagingPathQuotaInMB -ne $staging)              { $set.StagingPathQuotaInMB = $staging }
               if ($have.ConflictAndDeletedQuotaInMB -ne $ConflictQuota) { $set.ConflictAndDeletedQuotaInMB = $ConflictQuota }
               if (-not $have.Enabled)                                   { $set.DisableMembership = $false }
 
