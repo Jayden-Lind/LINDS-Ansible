@@ -319,12 +319,24 @@ was taken still read back from that snapshot afterwards: two 365 MB database
 dumps, from the 27 August and 6 October copies, decompressed with their
 checksums intact. Check the same way after any future run.
 
-At LINDS the same afternoon (`E:` on `linds-dc`, with `$keep` and the paths
-changed to match) the thin pool `NAS` went from 88% to 66% full: 2.34 TiB
-handed back, 3.65 TiB available. That is about half of what looked
-reclaimable. Roughly 1.7 TiB of free space on `E:` is still mapped in the pool
-and the reason has not been found. One candidate is blocks that the 64 shadow
-copies still hold; a second pass after those have aged out would show.
+At LINDS the same afternoon (`E:` on `linds-dc`, paths changed to match) one
+pass was not enough. The first, with 256 GB files 45 seconds apart, took the
+thin pool `NAS` from 88% to 66% full and left about 1.7 TiB of free space still
+mapped. A second pass, with 128 GB files 30 seconds apart, brought it to 52%:
+3.9 TiB handed back in all, 5.2 TiB available. So part of the first pass's
+TRIMs were simply lost on the way to the pool.
+
+Two things it was not: shadow copies holding the blocks (nothing had been
+deleted from `E:` since the oldest copy), and fragmentation (99.8% of the free
+space sits in whole 64K blocks, the pool's chunk size).
+
+**After a run, compare what the pool has mapped with what NTFS uses**, and run
+it again if they are far apart:
+
+```shell
+lvs -o lv_name,lv_size,data_percent NAS/vm-102-disk-0   # LINDS
+zfs get used,logicalreferenced NAS-SSD/vm-1103-disk-0   # JD
+```
 
 ## Entra Connect on `linds-dc2`
 
@@ -444,8 +456,7 @@ Not automated: this is a repair to one host's DCOM descriptor, not fleet state.
 As of 10 October 2026.
 
 - **Retrim fails on the guests**, so thin space is only handed back by the
-  runbook above. Both sites were done on 10 October; at LINDS about 1.7 TiB
-  did not come back.
+  runbook above. Both sites were done on 10 October.
 - **Entra Connect is in staging mode and its pass-through agent looks dead**;
   see the section above. Both need a tenant administrator in the wizard.
 - **`jd-dc-01` has 8.2 GB free on a 39.4 GB `C:`**.
