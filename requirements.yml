@@ -37,4 +37,4 @@ collections:
   - name: community.windows
     version: 3.1.0
   - name: microsoft.ad
-    version: 1.10.0
+    version: 1.12.1
