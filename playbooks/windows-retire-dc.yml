@@ -1,0 +1,50 @@
+---
+# Retire a domain controller: demote it, switch it off, and delete what is
+# left of it in the directory, so that a rebuilt server can take the name.
+#
+#   make windows-retire-dc HOST=<fqdn>
+#
+# Needs a Kerberos ticket (`make kinit`). The VM itself is left alone: stop it
+# from starting again on the hypervisor (`qm set <vmid> --onboot 0`) and delete
+# it when you are sure nothing on it is wanted.
+
+- name: Check the request
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: The host to retire must be named and be a domain controller here
+      ansible.builtin.assert:
+        that:
+          - target is defined
+          - target in groups['windows_dc']
+        fail_msg: Pass -e target=<fqdn>, a host in the windows_dc group of the inventory.
+
+- name: Demote and shut down
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  roles:
+    - windows_dc_retire
+
+- name: Remove what is left of it in the directory
+  hosts: "{{ windows_join_dc | default((groups['windows_dc'] | difference([target | default('unset')])) | first) }}"
+  gather_facts: false
+  tasks:
+    - name: Delete the computer account and check no domain controller record remains
+      ansible.windows.win_powershell:
+        parameters:
+          Machine: "{{ hostvars[target].windows_hostname | default(target.split('.')[0]) }}"
+        script: |
+          param([string]$Machine)
+          $ErrorActionPreference = 'Stop'
+          Import-Module ActiveDirectory
+          $Ansible.Changed = $false
+          if (Get-ADDomainController -Filter "Name -eq '$Machine'") {
+              throw "$Machine is still listed as a domain controller; the demotion did not complete."
+          }
+          $account = Get-ADComputer -Filter "Name -eq '$Machine'"
+          if ($account) {
+              # -Recursive: a computer account can own child objects (service
+              # connection points, BitLocker keys).
+              Remove-ADObject -Identity $account.DistinguishedName -Recursive -Confirm:$false
+              $Ansible.Changed = $true
+          }

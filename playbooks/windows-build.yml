@@ -1,0 +1,130 @@
+---
+# Build a Windows server from a fresh clone of the template, up to and
+# including promotion to a domain controller.
+#
+# The clone comes from LINDS-Terraform (packer/windows builds the template,
+# proxmox/vms-linds.tf clones it). It arrives with a random name, a DHCP
+# address and a local Administrator password that is in the vault. From there:
+#
+#   make windows-build   HOST=<fqdn> ADDRESS=<its DHCP address>
+#       name and address it, apply the baseline and updates, join the domain
+#   make windows-edition HOST=<fqdn>
+#       convert an Evaluation install (asks for the product key)
+#   make windows-promote HOST=<fqdn>
+#       promote it to a domain controller (asks for a restore-mode password)
+#
+# HOST must already be in inventory/windows.yml with its windows_* variables.
+# Needs a Kerberos ticket (`make kinit`) for everything except the first two
+# plays, which talk to the clone as its local Administrator.
+#
+# The first three stages cannot be re-run against a finished domain
+# controller: it has no local Administrator left to connect as.
+
+- name: Check the request
+  hosts: localhost
+  gather_facts: false
+  tags: always
+  tasks:
+    - name: The host to build must be named and known
+      ansible.builtin.assert:
+        that:
+          - target is defined
+          - target in groups['windows']
+        fail_msg: Pass -e target=<fqdn>, a host in the windows group of the inventory.
+
+- name: Name and address the fresh clone
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tags: bootstrap
+  vars:
+    ansible_host: "{{ bootstrap_address }}"
+    ansible_user: Administrator
+    ansible_password: "{{ vault_windows_bootstrap_password }}"
+    ansible_winrm_transport: ntlm
+  roles:
+    - windows_bootstrap
+
+- name: Baseline and updates, before it joins anything
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tags: baseline
+  vars:
+    ansible_host: "{{ windows_ipv4_address }}"
+    ansible_user: Administrator
+    ansible_password: "{{ vault_windows_bootstrap_password }}"
+    ansible_winrm_transport: ntlm
+    windows_baseline_updates: true
+  roles:
+    - windows_baseline
+
+- name: See whether it is already in the domain
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tags: join
+  vars:
+    ansible_host: "{{ windows_ipv4_address }}"
+    ansible_user: Administrator
+    ansible_password: "{{ vault_windows_bootstrap_password }}"
+    ansible_winrm_transport: ntlm
+  tasks:
+    - name: Read the domain membership
+      ansible.windows.win_powershell:
+        script: |
+          $Ansible.Changed = $false
+          [bool](Get-CimInstance Win32_ComputerSystem).PartOfDomain
+      register: windows_build_membership
+      changed_when: false
+
+    - name: Remember whether a join is needed
+      ansible.builtin.set_fact:
+        windows_build_needs_join: "{{ not windows_build_membership.output[0] }}"
+
+- name: Create its computer account on an existing domain controller
+  hosts: "{{ windows_join_dc | default((groups['windows_dc'] | difference([target | default('unset')])) | first) }}"
+  gather_facts: false
+  tags: join
+  tasks:
+    - name: Provision the offline domain join
+      ansible.builtin.include_role:
+        name: windows_domain_join
+        tasks_from: provision
+      vars:
+        windows_domain_join_machine: "{{ hostvars[target].windows_hostname }}"
+      when: hostvars[target].windows_build_needs_join
+
+- name: Join the domain
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tags: join
+  vars:
+    ansible_host: "{{ windows_ipv4_address }}"
+    ansible_user: Administrator
+    ansible_password: "{{ vault_windows_bootstrap_password }}"
+    ansible_winrm_transport: ntlm
+  tasks:
+    - name: Consume the offline domain join
+      ansible.builtin.include_role:
+        name: windows_domain_join
+        tasks_from: join
+      vars:
+        windows_domain_join_blob: "{{ hostvars[windows_join_dc | default((groups['windows_dc'] | difference([target])) | first)].windows_domain_join_blob }}"
+      when: windows_build_needs_join
+
+# From here on the server is a domain member and is reached like every other
+# Windows host: over Kerberos, as the operator.
+
+- name: Make sure it is not an Evaluation install
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tags: [edition, promote]
+  roles:
+    - windows_edition
+
+- name: Promote to a domain controller
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tags: promote
+  roles:
+    - windows_baseline
+    - windows_domain_controller
+    - windows_dc_time

@@ -1,0 +1,16 @@
+---
+# Demotes a domain controller and removes it from the domain, so that a
+# replacement can take its name.
+#
+# Runs on the server being retired, as the operator (delegated Kerberos
+# ticket). After the demotion the server is a plain member with a new local
+# Administrator password; by default that password is random and discarded,
+# because the next step is to switch the machine off.
+
+windows_domain: linds.com.au
+
+windows_dc_retire_local_password: "{{ lookup('ansible.builtin.env', 'WINDOWS_LOCAL_ADMIN_PASSWORD') | default(lookup('ansible.builtin.password', '/dev/null', length=32,
+  chars=['ascii_letters', 'digits']), true) }}"
+
+# Shut the server down once it is out of the domain.
+windows_dc_retire_shutdown: true

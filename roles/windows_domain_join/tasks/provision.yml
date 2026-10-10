@@ -1,0 +1,60 @@
+---
+# Runs on an existing domain controller. Produces the blob for
+# windows_domain_join_machine and leaves it in the fact
+# windows_domain_join_blob.
+
+- name: Refuse to take over the account of a live domain controller
+  ansible.windows.win_powershell:
+    parameters:
+      Machine: "{{ windows_domain_join_machine }}"
+    script: |
+      param([string]$Machine)
+      $ErrorActionPreference = 'Stop'
+      Import-Module ActiveDirectory
+      $Ansible.Changed = $false
+      $account = Get-ADComputer -Filter "Name -eq '$Machine'" -Properties primaryGroupID, userAccountControl
+      # 516 is Domain Controllers; 0x2000 is SERVER_TRUST_ACCOUNT.
+      $isDc = $account -and ($account.primaryGroupID -eq 516 -or ($account.userAccountControl -band 0x2000))
+      [pscustomobject]@{ exists = [bool]$account; is_domain_controller = [bool]$isDc }
+  register: windows_domain_join_account
+  changed_when: false
+
+- name: Stop if that name still belongs to a domain controller
+  ansible.builtin.assert:
+    that: not windows_domain_join_account.output[0].is_domain_controller
+    fail_msg: >-
+      {{ windows_domain_join_machine }} is still a domain controller in AD.
+      Provisioning a join for it would reset the machine password of a live
+      DC. Demote and remove the old one first (playbooks/windows-retire-dc.yml).
+
+- name: Create the computer account and the offline-join blob
+  ansible.windows.win_powershell:
+    parameters:
+      Machine: "{{ windows_domain_join_machine }}"
+      Domain: "{{ windows_domain }}"
+      Ou: "{{ windows_domain_join_ou }}"
+    script: |
+      param([string]$Machine, [string]$Domain, [string]$Ou)
+      $ErrorActionPreference = 'Stop'
+      $file = Join-Path $env:TEMP ("odj-" + [guid]::NewGuid().ToString('N') + '.txt')
+      # /reuse: a leftover, non-DC account with this name is reset rather than
+      # refused. The assert above has already ruled out a live DC.
+      $djoinArgs = @('/provision', '/domain', $Domain, '/machine', $Machine, '/savefile', $file, '/reuse')
+      if ($Ou) { $djoinArgs += @('/machineou', $Ou) }
+      $out = & djoin.exe @djoinArgs 2>&1
+      if ($LASTEXITCODE -ne 0) { throw "djoin /provision failed ($LASTEXITCODE): $($out -join ' ')" }
+      try {
+          # djoin writes UTF-16; the blob itself is base64 text.
+          $blob = [IO.File]::ReadAllText($file, [Text.Encoding]::Unicode).Trim([char]0, "`r", "`n", ' ')
+      } finally {
+          Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
+      }
+      $Ansible.Changed = $true
+      $blob
+  register: windows_domain_join_provision
+  no_log: true
+
+- name: Keep the blob for the machine that is joining
+  ansible.builtin.set_fact:
+    windows_domain_join_blob: "{{ windows_domain_join_provision.output[0] }}"
+  no_log: true

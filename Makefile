@@ -28,3 +28,27 @@ windows:
 
 windows-check:
 	KRB5_CONFIG=$(CURDIR)/krb5.conf ./.venv/bin/ansible-playbook playbooks/windows.yml --check --diff
+
+# --- Building a Windows server from the template -----------------------------
+# The VM comes from LINDS-Terraform (packer/windows, proxmox/vms-linds.tf).
+# HOST is its inventory name; ADDRESS is the DHCP address the fresh clone has
+# (terraform output windows_bootstrap_addresses). See docs/windows-domain.md.
+WINDOWS_PLAY = KRB5_CONFIG=$(CURDIR)/krb5.conf ./.venv/bin/ansible-playbook
+
+windows-build:
+	$(WINDOWS_PLAY) playbooks/windows-build.yml --tags bootstrap,baseline,join \
+	  -e target=$(HOST) -e bootstrap_address=$(ADDRESS)
+
+# The product key is typed here and passed in the environment. It is not
+# stored, logged or put on a command line.
+windows-edition:
+	@bash -c 'read -r -s -p "Product key for the edition to convert to: " key && echo && \
+	  WINDOWS_PRODUCT_KEY="$$key" $(WINDOWS_PLAY) playbooks/windows-build.yml --tags edition -e target=$(HOST)'
+
+windows-promote:
+	@bash -c 'read -r -s -p "New Directory Services Restore Mode password for $(HOST): " pw && echo && \
+	  WINDOWS_DSRM_PASSWORD="$$pw" $(WINDOWS_PLAY) playbooks/windows-build.yml --tags promote -e target=$(HOST)'
+
+windows-retire-dc:
+	$(WINDOWS_PLAY) playbooks/windows-retire-dc.yml -e target=$(HOST)
+

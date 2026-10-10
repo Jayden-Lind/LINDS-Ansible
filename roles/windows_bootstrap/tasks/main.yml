@@ -1,0 +1,64 @@
+---
+# First contact with a fresh clone of the Windows template: it has a random
+# name and a DHCP address. Give it its real name and its static address.
+#
+# Both changes need care over WinRM: re-addressing cuts the connection the
+# change is being made over, and a rename needs a restart. So the guest is
+# handed a script and a few seconds' notice, does both itself and restarts,
+# and the play picks it up again on the new address.
+
+- name: Wait for the clone to answer on its bootstrap address
+  ansible.builtin.wait_for_connection:
+    timeout: 600
+
+- name: Hand over the name and address, to be applied in 20 seconds
+  ansible.windows.win_powershell:
+    parameters:
+      Hostname: "{{ windows_hostname }}"
+      Address: "{{ windows_ipv4_address }}"
+      Prefix: "{{ windows_ipv4_prefix | int }}"
+      Gateway: "{{ windows_ipv4_gateway }}"
+      Dns: "{{ windows_dns_servers }}"
+    script: |
+      param([string]$Hostname, [string]$Address, [int]$Prefix, [string]$Gateway, [string[]]$Dns)
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+
+      $nic = Get-NetAdapter -Physical | Where-Object Status -eq 'Up' | Select-Object -First 1
+      $addressed = [bool](Get-NetIPAddress -InterfaceIndex $nic.ifIndex -AddressFamily IPv4 |
+                          Where-Object { $_.IPAddress -eq $Address -and $_.PrefixOrigin -eq 'Manual' })
+      $named = $env:COMPUTERNAME -ieq $Hostname
+      if ($addressed -and $named) { return }
+
+      $dnsList = ($Dns | ForEach-Object { "'$_'" }) -join ', '
+      @"
+      `$ErrorActionPreference = 'Continue'
+      Start-Transcript -Path C:\Windows\Temp\set-identity.log -Force
+      `$nic = Get-NetAdapter -Physical | Where-Object Status -eq 'Up' | Select-Object -First 1
+      Set-NetIPInterface -InterfaceIndex `$nic.ifIndex -AddressFamily IPv4 -Dhcp Disabled
+      Get-NetIPAddress -InterfaceIndex `$nic.ifIndex -AddressFamily IPv4 | Remove-NetIPAddress -Confirm:`$false
+      Get-NetRoute -InterfaceIndex `$nic.ifIndex -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Remove-NetRoute -Confirm:`$false
+      New-NetIPAddress -InterfaceIndex `$nic.ifIndex -IPAddress '$Address' -PrefixLength $Prefix -DefaultGateway '$Gateway'
+      Set-DnsClientServerAddress -InterfaceIndex `$nic.ifIndex -ServerAddresses $dnsList
+      if (`$env:COMPUTERNAME -ine '$Hostname') { Rename-Computer -NewName '$Hostname' -Force }
+      Unregister-ScheduledTask -TaskName 'set-identity' -Confirm:`$false
+      Stop-Transcript
+      Restart-Computer -Force
+      "@ | Set-Content -Path C:\Windows\Temp\set-identity.ps1 -Encoding UTF8
+
+      $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
+          -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\Windows\Temp\set-identity.ps1'
+      $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(20)
+      $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
+      Register-ScheduledTask -TaskName 'set-identity' -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null
+      $Ansible.Changed = $true
+  register: windows_bootstrap_identity
+
+- name: Wait for the machine to come back on its own address
+  ansible.builtin.wait_for:
+    host: "{{ windows_ipv4_address }}"
+    port: 5985
+    delay: 45
+    timeout: "{{ windows_bootstrap_return_timeout }}"
+  delegate_to: localhost
+  when: windows_bootstrap_identity is changed

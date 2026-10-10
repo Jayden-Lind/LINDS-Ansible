@@ -1,0 +1,20 @@
+---
+# The template is built from Evaluation media. An Evaluation install stops
+# working after 180 days, and one that has been promoted to a domain controller
+# can no longer be converted: it has to be demoted first. So this role sits
+# between the domain join and the promotion and will not let an Evaluation
+# install through.
+#
+# Converting needs a product key for the target edition. It is never stored:
+# `make windows-edition` asks for it and passes it in the environment.
+
+# Edition to convert an Evaluation install to (ServerStandard or
+# ServerDatacenter).
+windows_edition_target: ServerStandard
+
+# Read from the environment so it never appears in a file, in shell history or
+# on a command line.
+windows_product_key: "{{ lookup('ansible.builtin.env', 'WINDOWS_PRODUCT_KEY') }}"
+
+# Set to true to let an Evaluation install continue (for a throwaway server).
+windows_edition_allow_evaluation: false

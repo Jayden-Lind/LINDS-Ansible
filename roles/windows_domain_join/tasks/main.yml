@@ -1,0 +1,9 @@
+---
+# This role is used in two halves from playbooks/windows-build.yml, because the
+# two halves run on different machines over different connections:
+#
+#   tasks_from: provision   on an existing domain controller (Kerberos)
+#   tasks_from: join        on the new machine (bootstrap connection)
+- name: Explain how this role is used
+  ansible.builtin.fail:
+    msg: Use this role with tasks_from provision or join; see playbooks/windows-build.yml.

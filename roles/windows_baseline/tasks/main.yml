@@ -1,0 +1,89 @@
+---
+# Works the same over the bootstrap connection (local Administrator, before the
+# domain) and over Kerberos afterwards.
+
+- name: Turn Windows Firewall on for every profile
+  ansible.windows.win_firewall:
+    state: enabled
+    profiles: "{{ windows_baseline_firewall_profiles }}"
+
+- name: Turn Microsoft Defender real-time protection on
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      if ((Get-MpPreference).DisableRealtimeMonitoring) {
+          Set-MpPreference -DisableRealtimeMonitoring $false
+          $Ansible.Changed = $true
+      }
+  when: windows_baseline_defender_realtime | bool
+
+- name: Remove the SMB1 feature
+  ansible.windows.win_feature:
+    name: FS-SMB1
+    state: absent
+  register: windows_baseline_smb1
+
+- name: Refuse SMB1 on the server side
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      if ((Get-SmbServerConfiguration).EnableSMB1Protocol) {
+          Set-SmbServerConfiguration -EnableSMB1Protocol $false -Force
+          $Ansible.Changed = $true
+      }
+
+- name: Stop and disable the Print Spooler
+  ansible.windows.win_service:
+    name: Spooler
+    state: stopped
+    start_mode: disabled
+  when: windows_baseline_disable_spooler | bool
+
+- name: Size the event logs
+  ansible.windows.win_eventlog:
+    name: "{{ item.key }}"
+    maximum_size: "{{ item.value }}"
+    overflow_action: OverwriteAsNeeded
+    state: present
+  loop: "{{ windows_baseline_event_logs | dict2items }}"
+  loop_control:
+    label: "{{ item.key }} {{ item.value }}"
+
+- name: Allow Remote Desktop
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server
+    name: fDenyTSConnections
+    data: 0
+    type: dword
+  when: windows_baseline_rdp | bool
+
+- name: Require Network Level Authentication for Remote Desktop
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp
+    name: UserAuthentication
+    data: 1
+    type: dword
+  when: windows_baseline_rdp | bool
+
+- name: Open the Remote Desktop firewall rules
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      $closed = @(Get-NetFirewallRule -DisplayGroup 'Remote Desktop' | Where-Object Enabled -ne 'True')
+      if ($closed.Count) {
+          Enable-NetFirewallRule -DisplayGroup 'Remote Desktop'
+          $Ansible.Changed = $true
+      }
+  when: windows_baseline_rdp | bool
+
+- name: Install Windows updates
+  ansible.windows.win_updates:
+    category_names: "{{ windows_baseline_update_categories }}"
+    state: installed
+    reboot: true
+    reboot_timeout: 3600
+  when: windows_baseline_updates | bool
+  tags: updates

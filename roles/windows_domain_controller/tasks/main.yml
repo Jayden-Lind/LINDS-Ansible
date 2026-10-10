@@ -1,0 +1,125 @@
+---
+- name: Install the directory, DNS and management features
+  ansible.windows.win_feature:
+    name:
+      - AD-Domain-Services
+      - DNS
+      - GPMC
+      - RSAT-AD-Tools
+      - RSAT-DNS-Server
+    state: present
+    include_management_tools: true
+  register: windows_dc_features
+
+- name: Restart if the features asked for it
+  ansible.windows.win_reboot:
+    reboot_timeout: 900
+  when: windows_dc_features.reboot_required
+
+- name: See whether this server is already a domain controller
+  ansible.windows.win_powershell:
+    script: |
+      $Ansible.Changed = $false
+      # 4 and 5 are backup and primary domain controller.
+      (Get-CimInstance Win32_ComputerSystem).DomainRole -ge 4
+  register: windows_dc_state
+  changed_when: false
+
+- name: A new restore-mode password is needed to promote
+  ansible.builtin.assert:
+    that: windows_dsrm_password | length >= 12
+    fail_msg: >-
+      Promotion needs a Directory Services Restore Mode password of at least
+      12 characters for this server. Run `make windows-promote HOST=...`, which
+      asks for one.
+  when: not windows_dc_state.output[0]
+
+- name: Promote to an additional domain controller
+  ansible.windows.win_powershell:
+    parameters:
+      Domain: "{{ windows_domain }}"
+      Site: "{{ windows_dc_site }}"
+    sensitive_parameters:
+      - name: SafeModePassword
+        value: "{{ windows_dsrm_password }}"
+    script: |
+      param([string]$Domain, [string]$Site, [securestring]$SafeModePassword)
+      $ErrorActionPreference = 'Stop'
+      Import-Module ADDSDeployment
+      Install-ADDSDomainController -DomainName $Domain -SiteName $Site `
+          -InstallDns:$true -NoGlobalCatalog:$false -CreateDnsDelegation:$false `
+          -SafeModeAdministratorPassword $SafeModePassword `
+          -NoRebootOnCompletion:$true -Force:$true -WarningAction SilentlyContinue | Out-Null
+      $Ansible.Changed = $true
+  when: not windows_dc_state.output[0]
+  register: windows_dc_promote
+
+- name: Restart as a domain controller
+  ansible.windows.win_reboot:
+    reboot_timeout: 1800
+    post_reboot_delay: 60
+  when: windows_dc_promote is changed
+
+- name: Wait for the directory and SYSVOL to be served
+  ansible.windows.win_powershell:
+    parameters:
+      TimeoutSeconds: "{{ windows_dc_ready_timeout | int }}"
+    script: |
+      param([int]$TimeoutSeconds)
+      $Ansible.Changed = $false
+      $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+      do {
+          $ready = $false
+          try {
+              Import-Module ActiveDirectory -ErrorAction Stop
+              $dc = Get-ADDomainController -Identity $env:COMPUTERNAME -ErrorAction Stop
+              $shares = @(Get-SmbShare -Name SYSVOL, NETLOGON -ErrorAction Stop)
+              $ready = $dc -and $shares.Count -eq 2
+          } catch { }
+          if (-not $ready) { Start-Sleep -Seconds 20 }
+      } until ($ready -or (Get-Date) -gt $deadline)
+      if (-not $ready) { throw 'The directory or SYSVOL was not being served when the wait ran out.' }
+      [pscustomobject]@{ site = $dc.Site; global_catalog = $dc.IsGlobalCatalog }
+  register: windows_dc_ready
+  changed_when: false
+
+- name: Set the DNS server's forwarders
+  ansible.windows.win_powershell:
+    parameters:
+      Forwarders: "{{ windows_dc_dns_forwarders }}"
+    script: |
+      param([string[]]$Forwarders)
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      $have = @((Get-DnsServerForwarder).IPAddress | ForEach-Object { $_.IPAddressToString })
+      if (Compare-Object $have $Forwarders -SyncWindow 0) {
+          Set-DnsServerForwarder -IPAddress $Forwarders
+          $Ansible.Changed = $true
+      }
+
+- name: Point the server's own resolver at a partner first, then itself
+  ansible.windows.win_powershell:
+    parameters:
+      Servers: "{{ windows_dc_dns_client_servers }}"
+    script: |
+      param([string[]]$Servers)
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      $nic = Get-NetAdapter -Physical | Where-Object Status -eq 'Up' | Select-Object -First 1
+      $have = @((Get-DnsClientServerAddress -InterfaceIndex $nic.ifIndex -AddressFamily IPv4).ServerAddresses)
+      if (Compare-Object $have $Servers -SyncWindow 0) {
+          Set-DnsClientServerAddress -InterfaceIndex $nic.ifIndex -ServerAddresses $Servers
+          $Ansible.Changed = $true
+      }
+
+- name: Close the pre-domain WinRM opening left by the template
+  community.windows.win_firewall_rule:
+    name: WinRM bootstrap
+    state: absent
+
+- name: Report the result
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }} is a domain controller in site
+      {{ windows_dc_ready.output[0].site }}, global catalog
+      {{ windows_dc_ready.output[0].global_catalog }}.

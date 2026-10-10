@@ -1,0 +1,66 @@
+---
+- name: Check what this server is and what it holds
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      Import-Module ActiveDirectory
+      $Ansible.Changed = $false
+      $isDc = (Get-CimInstance Win32_ComputerSystem).DomainRole -ge 4
+      $roles = @(); $others = 0
+      if ($isDc) {
+          $me = Get-ADDomainController -Identity $env:COMPUTERNAME
+          $roles = @($me.OperationMasterRoles | ForEach-Object { "$_" })
+          $others = @(Get-ADDomainController -Filter * | Where-Object Name -ne $env:COMPUTERNAME).Count
+      }
+      [pscustomobject]@{ is_domain_controller = $isDc; fsmo_roles = $roles; other_domain_controllers = $others }
+  register: windows_dc_retire_state
+  changed_when: false
+
+- name: Refuse to demote a role holder or the last domain controller
+  ansible.builtin.assert:
+    that:
+      - windows_dc_retire_state.output[0].fsmo_roles | length == 0
+      - windows_dc_retire_state.output[0].other_domain_controllers >= 1
+    fail_msg: >-
+      {{ inventory_hostname }} holds FSMO roles
+      ({{ windows_dc_retire_state.output[0].fsmo_roles | join(', ') }}) or is the
+      only domain controller. Move the roles first (windows_ad_recovery).
+  when: windows_dc_retire_state.output[0].is_domain_controller
+
+- name: Demote the domain controller
+  ansible.windows.win_powershell:
+    sensitive_parameters:
+      - name: LocalPassword
+        value: "{{ windows_dc_retire_local_password }}"
+    script: |
+      param([securestring]$LocalPassword)
+      $ErrorActionPreference = 'Stop'
+      Import-Module ADDSDeployment
+      Uninstall-ADDSDomainController -LocalAdministratorPassword $LocalPassword `
+          -NoRebootOnCompletion:$true -Force:$true -WarningAction SilentlyContinue | Out-Null
+      $Ansible.Changed = $true
+  when: windows_dc_retire_state.output[0].is_domain_controller
+  register: windows_dc_retire_demote
+
+- name: Restart as a member server
+  ansible.windows.win_reboot:
+    reboot_timeout: 1800
+    post_reboot_delay: 60
+  when: windows_dc_retire_demote is changed
+
+- name: Confirm it is no longer a domain controller
+  ansible.windows.win_powershell:
+    script: |
+      $Ansible.Changed = $false
+      (Get-CimInstance Win32_ComputerSystem).DomainRole
+  register: windows_dc_retire_role
+  failed_when: windows_dc_retire_role.output[0] >= 4
+  changed_when: false
+
+- name: Shut the retired server down
+  ansible.windows.win_powershell:
+    script: |
+      $Ansible.Changed = $true
+      # Detached and delayed, so this task returns before the connection goes.
+      Start-Process -FilePath shutdown.exe -ArgumentList '/s', '/t', '20', '/c', '"Retired: replaced by a rebuilt server"'
+  when: windows_dc_retire_shutdown | bool
