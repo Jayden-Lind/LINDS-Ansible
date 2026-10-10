@@ -33,7 +33,7 @@ collections:
   - name: community.vmware
     version: 6.1.0
   - name: ansible.windows
-    version: 3.3.0
+    version: 3.8.0
   - name: community.windows
     version: 3.1.0
   - name: microsoft.ad
