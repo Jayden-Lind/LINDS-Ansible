@@ -29,7 +29,7 @@ collections:
   - name: vyos.vyos
     version: 6.0.0
   - name: community.crypto
-    version: 3.0.5
+    version: 3.5.0
   - name: community.vmware
     version: 6.1.0
   - name: ansible.windows
