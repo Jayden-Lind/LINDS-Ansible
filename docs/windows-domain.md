@@ -1,7 +1,9 @@
 # Windows domain (linds.com.au)
 
 Four Server 2025 guests, managed over WinRM with Kerberos. Terraform owns the
-VMs (`LINDS-Terraform/proxmox/vms-jd.tf`); Ansible owns what runs inside them.
+VMs (`LINDS-Terraform/proxmox/vms-jd.tf`, `vms-linds.tf`); Ansible owns what
+runs inside them, and can build one from nothing: see "Building a server from
+the template" below.
 
 | Host | Address | Site | Role |
 | --- | --- | --- | --- |
@@ -46,6 +48,16 @@ server-side change.
 - **`windows_dc_time`** — domain time hierarchy. Reads the current PDC from AD
   rather than taking it as a variable, so moving the role moves the time
   authority with it.
+- **`windows_baseline`** — firewall on for all profiles, Defender real-time
+  protection on, SMB1 removed, Print Spooler off, event logs big enough to
+  hold more than a day, Remote Desktop with NLA, and (only when asked) Windows
+  updates. A server built from the template gets it as it is built. The
+  servers that were here before do not, until `make windows-baseline
+  HOST=<fqdn>` is run against them; `make windows` does not apply it.
+- **`windows_bootstrap`, `windows_domain_join`, `windows_edition`,
+  `windows_domain_controller`, `windows_dc_retire`** — the stages of building
+  and replacing a server. They run from `playbooks/windows-build.yml` and
+  `playbooks/windows-retire-dc.yml`, not from `make windows`.
 - **`windows_dfsr`** — the NAS replication group: group, replicated folders,
   members, content paths, staging and conflict quotas, and connections.
   `PrimaryMember` is deliberately not declared; it is a one-shot initial-sync
@@ -53,6 +65,125 @@ server-side change.
   every run. Staging quotas are per folder (`dfsr_staging_quota_overrides_mb`);
   the conflict quota is one value and is only ever raised, because lowering it
   purges the oldest conflict copies at once.
+
+## Building a server from the template
+
+Three tools, each doing the part it is good at:
+
+| Step | Tool | Where |
+| --- | --- | --- |
+| Install Windows unattended, add VirtIO drivers and the guest agent, sysprep, leave a template | Packer | `LINDS-Terraform/packer/windows/` |
+| Clone the template into a VM with the right CPU, memory, disk and VLAN | Terraform | `LINDS-Terraform/proxmox/vms-linds.tf` |
+| Name, address, baseline, updates, domain join, edition, promotion | Ansible | `playbooks/windows-build.yml` |
+
+The host has to be in `inventory/windows.yml` first, with its `windows_*`
+variables (`linds-dc2` is the example). Then:
+
+```shell
+# in LINDS-Terraform/proxmox
+terraform apply -target=proxmox_virtual_environment_vm.linds_dc2
+terraform output windows_bootstrap_addresses     # the clone's DHCP address
+
+# here
+make kinit
+make windows-build   HOST=linds-dc2.linds.com.au ADDRESS=<that address>
+make windows-edition HOST=linds-dc2.linds.com.au     # asks for the product key
+make windows-promote HOST=linds-dc2.linds.com.au
+```
+
+What each one does:
+
+- **`windows-build`** talks to the clone as its local Administrator over NTLM
+  (the password is `vault_windows_bootstrap_password`, the same one the
+  template was built with). It gives the machine its name and static address,
+  applies `windows_baseline` including Windows updates, and joins the domain.
+  The join is offline: an existing domain controller creates the computer
+  account and a one-time blob (`djoin /provision`), the new machine consumes
+  it (`djoin /requestodj`). No domain credential ever reaches the new machine,
+  and nothing has to delegate one to it.
+- **`windows-edition`** converts an Evaluation install to the full edition
+  with `dism /online /set-edition`, using a product key typed at the prompt.
+  The key is passed in the environment for that one run; it is not stored,
+  logged or put on a command line. On a server that is already a full edition
+  it does nothing.
+- **`windows-promote`** installs AD DS and DNS, promotes the member to an
+  additional domain controller and global catalog in its site, waits for
+  SYSVOL, sets the DNS forwarders and the server's own resolver order, puts it
+  in the time hierarchy and closes the template's bootstrap WinRM rule. The
+  restore-mode password is `vault_windows_dsrm_password` unless one is typed.
+
+From the promote stage on, the server is managed like the others: `make
+windows` covers it.
+
+Things that were learned the hard way and are now built in:
+
+- **An Evaluation install cannot be converted once it is a domain
+  controller.** The promote stage therefore refuses an Evaluation edition.
+  `-e windows_edition_allow_evaluation=true` overrides that for a throwaway;
+  an Evaluation server stops working 180 days after it was installed.
+- **A new computer account exists on one domain controller only**, and for up
+  to 15 minutes the other site's has never heard of it. Kerberos then answers
+  "Server not found in Kerberos database" to whoever asked the wrong one.
+  `repadmin /syncall /AdeP` reported success and moved nothing; the join role
+  uses `Sync-ADObject` for that one object, to every other domain controller.
+- **Server 2025 locks the local Administrator out** for ten minutes after ten
+  bad logons, and refuses all logons while setup is still running. A clone
+  therefore does not answer WinRM at all until setup has finished (that is in
+  the template), and the bootstrap stage simply waits for it.
+- **Renaming and re-addressing over the connection being used** cannot be done
+  as two ordinary tasks. The bootstrap stage hands the machine a script and 20
+  seconds' notice; it does both and restarts, and the next stage waits for it
+  on the new address.
+- **Group variables must sit beside the inventory** (`inventory/group_vars/`).
+  A `group_vars/` at the top of the repository is not read by
+  `ansible-playbook playbooks/x.yml`.
+- **The inventory connects by address, Kerberos needs the name.**
+  `ansible_winrm_kerberos_hostname_override` in the group variables supplies
+  it. Variables set on a play also apply to its `delegate_to: localhost`
+  tasks, which is why the bootstrap plays have none.
+- **The first three stages cannot be re-run against a finished domain
+  controller.** It has no local Administrator left to connect as. They are
+  idempotent up to that point.
+
+A rehearsal identity is the safe way to try a change to any of this: a second
+inventory file with a different name and address for the same VM, passed with
+`-i inventory/ -i <file>`, and `make windows-retire-dc` to take it out again.
+
+## Runbook: replacing a domain controller
+
+Written for `linds-dc2` in October 2026, whose component store could no longer
+take a cumulative update (see that runbook further down). The replacement
+takes the old one's name and address, so nothing that refers to it changes:
+the DNS forwarders on the router, the Keycloak LDAP URLs, `krb5.conf` and this
+inventory.
+
+Before starting, check what the old server holds that the directory does not:
+
+- **FSMO roles**: `netdom query fsmo`. The retire role refuses a role holder;
+  move the roles first (`windows_ad_recovery`).
+- **DNS zones that are not AD-integrated**: `Get-DnsServerZone | Where-Object
+  { -not $_.IsDsIntegrated -and -not $_.IsAutoCreated }`. Anything listed
+  would be lost. Forwarders are per server and are set by the promote stage.
+- **Shares other than SYSVOL and NETLOGON**, scheduled tasks, installed
+  software, certificates with private keys.
+
+Then, with the site's other domain controller healthy (`repadmin
+/replsummary`):
+
+```shell
+make windows-retire-dc HOST=linds-dc2.linds.com.au
+```
+
+That demotes the old server, shuts it down and deletes its computer account.
+It refuses a FSMO role holder and the last domain controller. On the
+hypervisor, stop the old VM from coming back (`qm set <vmid> --onboot 0`) and
+keep it until the new one has been in service for a while. Then build the new
+one as above. The site runs on one domain controller in between, which for
+LINDS is about an hour, most of it Windows updates.
+
+Afterwards the operator's ticket cache holds a service ticket for the old
+server under the same name, and connections to the new one fail with a
+decrypt-integrity error until it is renewed: `kinit -R`, or `make kinit`.
 
 ## Runbook: the DFS-R stale junction trap
 

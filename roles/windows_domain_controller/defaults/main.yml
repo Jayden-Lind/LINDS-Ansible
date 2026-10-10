@@ -4,16 +4,18 @@
 # than in the directory.
 #
 # The promotion runs as the operator, through the delegated Kerberos ticket,
-# so no domain credential is passed. The one secret it needs is a new
-# Directory Services Restore Mode password for this server, which
-# `make windows-promote` asks for.
+# so no domain credential is passed. The one secret it needs is the
+# Directory Services Restore Mode password for the new domain controller. It
+# comes from the vault (vault_windows_dsrm_password, in
+# inventory/group_vars/windows/vault.yml); `make windows-promote` offers to
+# take a different one for this server instead.
 
 windows_domain: linds.com.au
 
 # AD site to promote into. Host variable (ad_site) in inventory/windows.yml.
 windows_dc_site: "{{ ad_site }}"
 
-windows_dsrm_password: "{{ lookup('ansible.builtin.env', 'WINDOWS_DSRM_PASSWORD') }}"
+windows_dsrm_password: "{{ lookup('ansible.builtin.env', 'WINDOWS_DSRM_PASSWORD') | default(vault_windows_dsrm_password | default(''), true) }}"
 
 # DNS server forwarders. Zones are AD-integrated and arrive by replication;
 # forwarders are per server.

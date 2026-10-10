@@ -45,9 +45,15 @@ windows-edition:
 	@bash -c 'read -r -s -p "Product key for the edition to convert to: " key && echo && \
 	  WINDOWS_PRODUCT_KEY="$$key" $(WINDOWS_PLAY) playbooks/windows-build.yml --tags edition -e target=$(HOST)'
 
+# The restore-mode password comes from the vault unless one is typed here.
 windows-promote:
-	@bash -c 'read -r -s -p "New Directory Services Restore Mode password for $(HOST): " pw && echo && \
+	@bash -c 'read -r -s -p "Restore-mode password for $(HOST) (Enter for the one in the vault): " pw && echo && \
 	  WINDOWS_DSRM_PASSWORD="$$pw" $(WINDOWS_PLAY) playbooks/windows-build.yml --tags promote -e target=$(HOST)'
+
+# One existing server at a time; see the header of the playbook.
+windows-baseline:
+	$(WINDOWS_PLAY) playbooks/windows-baseline.yml -e target=$(HOST) \
+	  -e windows_baseline_updates=$(or $(UPDATES),false)
 
 windows-retire-dc:
 	$(WINDOWS_PLAY) playbooks/windows-retire-dc.yml -e target=$(HOST)

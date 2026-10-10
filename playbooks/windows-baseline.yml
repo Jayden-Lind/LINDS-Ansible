@@ -1,0 +1,27 @@
+---
+# Apply the server baseline (roles/windows_baseline) to one existing server.
+#
+#   make windows-baseline HOST=<fqdn>
+#   make windows-baseline HOST=<fqdn> UPDATES=true     # and install updates
+#
+# Servers built by playbooks/windows-build.yml get this as they are built. The
+# ones that were here before do not until this is run against them, one at a
+# time: it turns Windows Firewall and Defender on, which is a change worth
+# watching on a server that has run without either.
+
+- name: Check the request
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: The host must be named and known
+      ansible.builtin.assert:
+        that:
+          - target is defined
+          - target in groups['windows']
+        fail_msg: Pass -e target=<fqdn>, a host in the windows group of the inventory.
+
+- name: Server baseline
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  roles:
+    - windows_baseline

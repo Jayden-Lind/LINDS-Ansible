@@ -25,13 +25,13 @@
   register: windows_dc_state
   changed_when: false
 
-- name: A new restore-mode password is needed to promote
+- name: A restore-mode password is needed to promote
   ansible.builtin.assert:
     that: windows_dsrm_password | length >= 12
     fail_msg: >-
       Promotion needs a Directory Services Restore Mode password of at least
-      12 characters for this server. Run `make windows-promote HOST=...`, which
-      asks for one.
+      12 characters. vault_windows_dsrm_password is missing from the vault and
+      none was typed at `make windows-promote HOST=...`.
   when: not windows_dc_state.output[0]
 
 - name: Promote to an additional domain controller

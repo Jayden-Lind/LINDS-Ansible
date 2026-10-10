@@ -4,12 +4,18 @@
 #
 # Both changes need care over WinRM: re-addressing cuts the connection the
 # change is being made over, and a rename needs a restart. So the guest is
-# handed a script and a few seconds' notice, does both itself and restarts,
-# and the play picks it up again on the new address.
+# handed a script and a few seconds' notice, does both itself and restarts.
+# Whatever runs next has to wait for it on the new address
+# (windows_ipv4_address); playbooks/windows-build.yml does.
 
+# The template opens WinRM to this network only when Windows setup has
+# finished, so there is nothing to answer, and nothing to lock out, before
+# the clone is ready.
 - name: Wait for the clone to answer on its bootstrap address
   ansible.builtin.wait_for_connection:
-    timeout: 600
+    connect_timeout: 10
+    sleep: 10
+    timeout: 900
 
 - name: Hand over the name and address, to be applied in 20 seconds
   ansible.windows.win_powershell:
@@ -53,12 +59,3 @@
       Register-ScheduledTask -TaskName 'set-identity' -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null
       $Ansible.Changed = $true
   register: windows_bootstrap_identity
-
-- name: Wait for the machine to come back on its own address
-  ansible.builtin.wait_for:
-    host: "{{ windows_ipv4_address }}"
-    port: 5985
-    delay: 45
-    timeout: "{{ windows_bootstrap_return_timeout }}"
-  delegate_to: localhost
-  when: windows_bootstrap_identity is changed

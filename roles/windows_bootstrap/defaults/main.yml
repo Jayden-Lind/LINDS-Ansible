@@ -8,7 +8,3 @@
 #   windows_ipv4_gateway   default gateway
 #   windows_dns_servers    list of resolvers; for a domain member these must be
 #                          domain controllers, or the join cannot find the domain
-
-# How long to wait for the machine to come back on its new address after it
-# renames, re-addresses and restarts itself.
-windows_bootstrap_return_timeout: 900
