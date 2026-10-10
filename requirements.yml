@@ -21,7 +21,7 @@ collections:
   - name: community.general
     version: 12.1.0
   - name: devsec.hardening
-    version: 10.6.0
+    version: 11.0.0
   - name: kubernetes.core
     version: 6.2.0
   - name: arensb.truenas
