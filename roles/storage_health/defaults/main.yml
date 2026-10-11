@@ -31,7 +31,7 @@ storage_health_zfs_scrub_weekly_calendar: "Wed 03:00"
 
 # How old a pool's last finished scrub may get before StorageZfsScrubOverdue.
 # Weekly plus two days' grace; monthly is up to 35 days between second Sundays,
-# plus the fourteen hours the 22 TB mirror takes, plus grace.
+# plus the fifteen hours the 22 TB mirror takes, plus grace.
 storage_health_zfs_scrub_max_age_days:
   weekly: 9
   monthly: 40

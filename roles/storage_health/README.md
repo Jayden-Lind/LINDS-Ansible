@@ -55,14 +55,15 @@ NFS, iSCSI targets), which linds-proxmox-01 must never get.
 | linds | Consistency check | VD 1 `OS` | weekly, Saturday 15:00 UTC | the controller |
 
 How long they take, for judging a change to the schedule: a scrub of `VM` is a
-quarter of an hour, `NAS-SSD` two hours, `HDD-20T` about fourteen. A long
+quarter of an hour, `NAS-SSD` two hours, `HDD-20T` nearly fifteen. A long
 self-test is 2 minutes on the HP SSDs, 1.5 to 5.5 hours on the Samsungs, 8 to
 10 hours on the 4 TB disks at linds and 31 hours on each 22 TB disk.
 
 `VM` is scrubbed weekly because it is quick and because one of its three
 drives is a worn consumer SSD that has already replaced 1,231 sectors. The
 scrub of 2026-10-11 raised the control plane's disk write latency from 1.5 ms
-to 1.7 ms and did not show in API latency.
+to 1.7 ms and did not show in API latency. A long self-test of that SSD the
+same afternoon ran its 160 minutes without showing in either, and passed.
 
 ## Layout
 
