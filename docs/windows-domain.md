@@ -897,8 +897,14 @@ As of 11 October 2026.
 - **DNS**: `linds.com.au` accepts nonsecure dynamic updates and scavenging is
   disabled on the servers. The stale public IPv6 `AAAA` records for `jd-fs-01`
   are gone.
-- **System-state backups are not configured.** Event 2089 reports no partition
-  backed up in 90+ days.
+- **There are no system-state backups, by decision** (12 October 2026). They
+  were set up for a night and removed: each is about 20 GB whatever the size
+  of the domain, because Windows defines a system state to include all of its
+  own system files. A lost domain controller is rebuilt from the template and
+  filled by replication. If the directory itself were lost or damaged beyond
+  the Recycle Bin, the domain would be rebuilt from this repository, and the
+  NAS permissions and every joined machine redone. Event 2089 on the domain
+  controllers ("not backed up") is therefore expected.
 - **`E:\server\old_backup` on `linds-dc`** is 248 GB of Veeam backups from
   2019 to 2021, of hosts that no longer exist.
 - **Dead scheduled tasks**: `jd-dc-01` and `linds-dc` each have two
