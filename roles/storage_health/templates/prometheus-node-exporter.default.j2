@@ -1,0 +1,5 @@
+{{ ansible_managed | comment }}
+# node_exporter serves one file on this host: the storage health metrics that
+# storage-health-exporter writes every ten minutes. Its own collectors are
+# off; roles/storage_health/defaults/main.yml says why.
+ARGS="--collector.disable-defaults --collector.textfile --collector.textfile.directory=/run/node-exporter-textfile{% for collector in storage_health_node_exporter_collectors %} --collector.{{ collector }}{% endfor %} --web.disable-exporter-metrics --web.listen-address={{ storage_health_node_exporter_listen }}"

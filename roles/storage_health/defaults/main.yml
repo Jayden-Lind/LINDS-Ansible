@@ -1,0 +1,61 @@
+---
+# Disk patrol and storage health metrics. README.md says what each part is for
+# and what reads it; the values that differ per host are in
+# inventory/storage_health.yml.
+
+# --- what Prometheus scrapes ---------------------------------------------------
+# node_exporter is installed to serve one file: the one storage-health-exporter
+# writes. Its own collectors stay off. On a 128-thread hypervisor they are
+# several thousand series a minute, written to a TSDB that lives on the very
+# SSDs this role looks after, and the cluster's node alerts (NodeMemoryHigh and
+# the like, written for the Talos nodes) would start judging a host whose RAM
+# is mostly ZFS ARC. Name collectors here only with both of those in mind.
+storage_health_node_exporter_collectors: []
+storage_health_node_exporter_listen: ":9100"
+
+# --- ZFS -----------------------------------------------------------------------
+# The pools the host must have imported, and how each is scrubbed:
+#   monthly  by /etc/cron.d/zfsutils-linux, which Debian ships: every pool, on
+#            the second Sunday of the month at 00:24
+#   weekly   by zfs-scrub-weekly@<pool>.timer as well, at the time below
+# Listing a pool is what lets its absence be noticed: one that fails to import
+# is not in `zpool status` at all.
+storage_health_zfs_pools: []
+#   - name: VM
+#     scrub: weekly
+#   - name: HDD-20T
+#     scrub: monthly
+
+# systemd calendar expression for the weekly scrubs.
+storage_health_zfs_scrub_weekly_calendar: "Wed 03:00"
+
+# How old a pool's last finished scrub may get before StorageZfsScrubOverdue.
+# Weekly plus two days' grace; monthly is up to 35 days between second Sundays,
+# plus the fourteen hours the 22 TB mirror takes, plus grace.
+storage_health_zfs_scrub_max_age_days:
+  weekly: 9
+  monthly: 40
+
+# --- SMART self-tests ------------------------------------------------------------
+# smartd's -s expression, T/MM/DD/d/HH: a long test on the third Friday of the
+# month from 21:00, each drive three hours after the one before it (":003").
+# That weekend is clear of the monthly trim (first Sunday) and scrub (second
+# Sunday), and the two 31-hour tests on the 22 TB disks finish in the small
+# hours of Monday. `smartd -q showtests` prints the dates an expression works
+# out to.
+storage_health_selftest_schedule: "L/../(15|16|17|18|19|20|21)/5/21:003"
+
+# How long a drive may go without a long self-test before
+# StorageSmartSelfTestOverdue: five weeks between third Fridays, the stagger,
+# the test itself, and a week's grace.
+storage_health_selftest_max_age_days: 45
+
+# --- hardware RAID (PERC / MegaRAID) ---------------------------------------------
+# What the controller's own patrol should look like, for hosts that have one.
+# The role only compares: see tasks/raid-patrol.yml for why it does not set.
+storage_health_raid_patrol: {}
+#   controller: 0
+#   patrol_read_mode: Auto
+#   patrol_read_excluded_vds: [1]
+#   consistency_check_mode: Sequential
+#   consistency_check_excluded_vds: [0, 3]

@@ -1,0 +1,25 @@
+---
+# Nothing reads the whole surface of a drive unless it is told to. A scrub or a
+# RAID patrol reads what the pool or array has allocated; a long self-test has
+# the drive read all of itself, free space and unused spares included, and
+# leaves a pass or a fail in its own log. smartd starts them; the exporter
+# reads the verdicts.
+#
+# validate: smartd loads the candidate file, lists the tests it would run over
+# the next 90 days and exits. It starts nothing and writes no state, and it
+# refuses an expression it cannot parse.
+- name: Schedule a monthly long self-test on every drive
+  ansible.builtin.template:
+    src: smartd.conf.j2
+    dest: /etc/smartd.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/smartd -q showtests -c %s
+  notify: Restart smartd
+
+- name: Run smartd
+  ansible.builtin.systemd:
+    name: smartmontools
+    enabled: true
+    state: started

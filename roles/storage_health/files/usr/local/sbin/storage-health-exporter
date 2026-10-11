@@ -1,0 +1,685 @@
+#!/usr/bin/env python3
+"""Storage health as Prometheus metrics, for node_exporter's textfile collector.
+
+Asks the tools already on the host what they know about its disks and writes
+the answers to one .prom file:
+
+  zfs    zpool, zfs          pool and device state, error counters, when the
+                             last scrub finished
+  smart  smartctl            the drive's own verdict, the counters that mean it
+                             is losing sectors, wear, self-test results
+  raid   perccli / storcli   controller, virtual and physical disks, bad block
+                             table, whether anything patrols each virtual disk
+  lvm    lvs                 thin pool data and metadata usage
+
+A collector whose tool is not installed, or that finds nothing to report on,
+writes nothing, so the same script runs on a ZFS host and on a hardware RAID
+one. One that fails says so in storage_health_collector_success and leaves the
+others alone.
+
+The file is written whole and renamed into place, and
+storage_health_last_run_timestamp_seconds says how old it is.
+
+Installed by LINDS-Ansible roles/storage_health (read its README first). The
+alert rules that read these metrics are in LINDS-Kubernetes,
+base/monitoring/proxmox-storage-health.yaml.
+"""
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+DAY = 86400
+
+CONFIG_DEFAULTS = {
+    # Pools this host must have imported, each with how old its last finished
+    # scrub may get: {"VM": {"scrub_max_age_days": 9}}. A pool that fails to
+    # import is simply absent from `zpool status`, so only a list of what
+    # should be there can notice.
+    'zfs_pools': {},
+    # For a pool that is imported but not listed above.
+    'zfs_scrub_max_age_days': 40,
+    'smart_long_selftest_max_age_days': 45,
+    # Whether this host has a RAID controller. Finding none is then a failure
+    # of the collector, not a reason to say nothing.
+    'raid_expected': False,
+    # Path of perccli/storcli if it is not one of RAID_CLIS.
+    'raid_cli': None,
+}
+
+RAID_CLIS = ('perccli', 'perccli64', 'storcli', 'storcli64',
+             '/opt/MegaRAID/perccli/perccli64', '/opt/MegaRAID/storcli/storcli64')
+
+# Physical disk states that need nobody's attention: a member, an unused
+# disk, a global or dedicated hot spare, a pass-through disk.
+RAID_PD_STATES_OK = 'Onln|UGood|GHS|DHS|JBOD'
+
+
+class CollectorError(Exception):
+    pass
+
+
+class Metrics:
+    """Gauges grouped by family, rendered in the text exposition format."""
+
+    def __init__(self):
+        self._families = {}
+
+    def add(self, name, text, value, /, **labels):
+        """Record one sample. A value of None means "not known" and adds nothing."""
+        if value is None:
+            return
+        if isinstance(value, bool):
+            value = int(value)
+        self._families.setdefault(name, (text, []))[1].append((labels, value))
+
+    def render(self):
+        lines = []
+        for name, (text, samples) in self._families.items():
+            lines.append('# HELP %s %s' % (name, text))
+            lines.append('# TYPE %s gauge' % name)
+            for labels, value in samples:
+                pairs = ','.join('%s="%s"' % (k, _escape(v)) for k, v in sorted(labels.items()))
+                lines.append('%s%s %s' % (name, '{%s}' % pairs if pairs else '', value))
+        return '\n'.join(lines) + '\n'
+
+
+class State:
+    """The little this script has to remember between runs. Without a path it
+    remembers for one run only."""
+
+    def __init__(self, path):
+        self.path = path
+        self.dirty = False
+        self.data = {}
+        try:
+            with open(path or os.devnull) as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                self.data = loaded
+        except (OSError, ValueError):
+            pass
+
+    def newest(self, key, value):
+        """Keep the largest value seen for key and return it (None if never seen)."""
+        if value is not None and value > self.data.get(key, 0):
+            self.data[key] = value
+            self.dirty = True
+        return self.data.get(key)
+
+    def save(self):
+        if self.dirty and self.path:
+            _write(self.path, json.dumps(self.data, indent=1, sort_keys=True) + '\n')
+
+
+def _escape(value):
+    return str(value).replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+
+
+def _write(path, text):
+    tmp = os.path.join(os.path.dirname(path) or '.', '.%s.tmp' % os.path.basename(path))
+    with open(tmp, 'w') as f:
+        f.write(text)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+
+
+def _int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _first(*values):
+    """The first value that is known."""
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def run(argv, timeout=60):
+    """Run a command and return (exit status, stdout). The status is None when
+    the program is not installed and -1 when it did not finish in time."""
+    try:
+        done = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                              stdin=subprocess.DEVNULL, timeout=timeout, check=False)
+    except FileNotFoundError:
+        return None, ''
+    except subprocess.TimeoutExpired:
+        return -1, ''
+    return done.returncode, done.stdout.decode('utf-8', 'replace')
+
+
+def run_json(runner, argv, timeout=60):
+    """The command's JSON output, or None if the program is not installed. The
+    exit status is not looked at: smartctl's is a bit mask of findings, not a
+    verdict on whether it ran."""
+    status, out = runner(argv, timeout)
+    if status is None:
+        return None
+    try:
+        return json.loads(out)
+    except ValueError:
+        raise CollectorError('%s: exit status %s and no JSON' % (' '.join(argv), status))
+
+
+# --- zfs ---------------------------------------------------------------------
+
+def collect_zfs(m, runner, cfg, state):
+    status = run_json(runner, ['zpool', 'status', '-j', '--json-int', '--json-flat-vdevs'])
+    if status is None:
+        return False
+    pools = status.get('pools') or {}
+    expected = cfg['zfs_pools']
+    for name in sorted(expected):
+        m.add('storage_zfs_pool_expected',
+              'Pools this host is configured to have imported; always 1.', 1, pool=name)
+    if not pools:
+        return bool(expected)
+
+    listed = (run_json(runner, ['zpool', 'list', '-j', '--json-int']) or {}).get('pools') or {}
+    created = {}
+    _, out = runner(['zfs', 'get', '-Hp', '-o', 'name,value', 'creation'] + sorted(pools), 60)
+    for line in out.splitlines():
+        name, _, value = line.partition('\t')
+        created[name] = _int(value)
+
+    for name in sorted(pools):
+        pool = pools[name]
+        m.add('storage_zfs_pool_state',
+              'Pool state, as the state label of a series that is always 1.',
+              1, pool=name, state=pool.get('state') or 'UNKNOWN')
+        m.add('storage_zfs_pool_data_errors',
+              'Permanent errors: blocks ZFS could neither read nor rebuild.',
+              _int(pool.get('error_count')), pool=name)
+
+        props = (listed.get(name) or {}).get('properties') or {}
+        m.add('storage_zfs_pool_size_bytes', 'Pool size, parity included.',
+              _int((props.get('size') or {}).get('value')), pool=name)
+        m.add('storage_zfs_pool_allocated_bytes', 'Space allocated in the pool, parity included.',
+              _int((props.get('allocated') or {}).get('value')), pool=name)
+
+        for vdev in (pool.get('vdevs') or {}).values():
+            kind = vdev.get('vdev_type')
+            if kind == 'root':
+                continue
+            labels = {'pool': name, 'vdev': vdev.get('name'), 'type': kind}
+            m.add('storage_zfs_vdev_state',
+                  'State of a disk or of a raidz/mirror group, as the state label of a '
+                  'series that is always 1.',
+                  1, state=vdev.get('state') or 'UNKNOWN', **labels)
+            for what in ('read', 'write', 'checksum'):
+                m.add('storage_zfs_vdev_errors',
+                      'Errors ZFS has counted against the device since the last zpool clear.',
+                      _int(vdev.get(what + '_errors')), kind=what, **labels)
+
+        # scan_stats only describes the most recent scan. While a scrub is
+        # running, paused or cancelled, or after a resilver, it no longer says
+        # when a scrub last ran to the end, so that is remembered here.
+        scan = pool.get('scan_stats') or {}
+        scrub = scan.get('function') == 'SCRUB'
+        finished = _int(scan.get('end_time')) if scrub and scan.get('state') == 'FINISHED' else None
+        m.add('storage_zfs_scrub_last_end_timestamp_seconds',
+              'When the last scrub that ran to the end finished.',
+              state.newest('zfs_scrub_end/' + name, finished or None), pool=name)
+        m.add('storage_zfs_scrub_last_start_timestamp_seconds',
+              'When the most recent scrub started, whether or not it has finished.',
+              (_int(scan.get('start_time')) or None) if scrub else None, pool=name)
+        m.add('storage_zfs_scrub_in_progress', 'Whether a scrub is running (or paused) now.',
+              scrub and scan.get('state') == 'SCANNING', pool=name)
+        m.add('storage_zfs_pool_created_timestamp_seconds',
+              'When the pool was created: what a pool that has never been scrubbed is '
+              'measured from.', created.get(name), pool=name)
+        max_age = (expected.get(name) or {}).get('scrub_max_age_days', cfg['zfs_scrub_max_age_days'])
+        m.add('storage_zfs_scrub_max_age_seconds',
+              'How old the last finished scrub may get before the schedule has failed.',
+              max_age * DAY, pool=name)
+    return True
+
+
+# --- smart -------------------------------------------------------------------
+
+def _device_statistic(data, name):
+    for page in (data.get('ata_device_statistics') or {}).get('pages') or []:
+        for row in page.get('table') or []:
+            if row.get('name') == name and (row.get('flags') or {}).get('valid', True):
+                return row.get('value')
+    return None
+
+
+def _self_tests(data):
+    """Logged self-tests, newest first, as (long?, verdict, power-on hours when
+    it ran, value the drive's hour counter wraps at). The verdict is True for
+    passed, False for failed and None for a test that proves nothing either
+    way: aborted, interrupted by a reset, or still running."""
+    def verdict(code, failed):
+        return True if code == 0 else False if code in failed else None
+
+    log = data.get('ata_smart_self_test_log') or {}
+    for entry in (log.get('extended') or log.get('standard') or {}).get('table') or []:
+        kind = ((entry.get('type') or {}).get('value') or 0) & 0x7f   # 0x80: captive
+        if kind not in (1, 2, 3, 4):        # short, extended, conveyance, selective
+            continue
+        code = ((entry.get('status') or {}).get('value') or 0) >> 4
+        # The log's hour stamp is 16 bits wide and starts again after 65535.
+        yield kind == 2, verdict(code, (3, 4, 5, 6, 7, 8)), entry.get('lifetime_hours'), 65536
+
+    for entry in (data.get('nvme_self_test_log') or {}).get('table') or []:
+        kind = (entry.get('self_test_code') or {}).get('value')
+        if kind not in (1, 2):
+            continue
+        code = (entry.get('self_test_result') or {}).get('value')
+        yield kind == 2, verdict(code, (5, 6, 7)), entry.get('power_on_hours'), None
+
+    keys = [k for k in data if re.fullmatch(r'scsi_self_test_\d+', k)]
+    for key in sorted(keys, key=lambda k: int(k.rsplit('_', 1)[1])):
+        entry = data[key]
+        kind = (entry.get('code') or {}).get('value')
+        if kind not in (1, 2, 5, 6):        # background/foreground, short/long
+            continue
+        code = (entry.get('result') or {}).get('value')
+        yield kind in (2, 6), verdict(code, (3, 4, 5, 6, 7)), \
+            (entry.get('power_on_time') or {}).get('hours'), None
+
+
+def _hours_since(now, then, wrap):
+    """Power-on hours between two readings of the drive's hour counter."""
+    if now is None or then is None:
+        return None
+    if wrap and now >= wrap:
+        return (now - then) % wrap
+    if then > now:
+        return None             # the drive's two clocks disagree; no way to tell
+    return now - then
+
+
+def _smart_device(m, data, label, protocol):
+    """Metrics for one drive from its `smartctl -j -x` output."""
+    base = {
+        'device': label,
+        'model': (data.get('model_name') or data.get('scsi_model_name') or '').strip(),
+        'serial': (data.get('serial_number') or '').strip(),
+    }
+    rotation = data.get('rotation_rate')
+    media = 'nvme' if protocol == 'NVMe' else 'ssd' if rotation == 0 else 'hdd' if rotation else ''
+    m.add('storage_smart_device_info', 'What the drive is; always 1.', 1,
+          firmware=(data.get('firmware_version') or data.get('scsi_revision') or '').strip(),
+          media=media, protocol=protocol or '', **base)
+    m.add('storage_smart_healthy',
+          "The drive's own verdict: 1 unless it predicts its own failure.",
+          (data.get('smart_status') or {}).get('passed'), **base)
+
+    table = (data.get('ata_smart_attributes') or {}).get('table') or []
+    attrs = {a.get('id'): a for a in table}
+
+    def raw(attr_id):
+        return ((attrs.get(attr_id) or {}).get('raw') or {}).get('value')
+
+    if table:
+        m.add('storage_smart_attributes_failing',
+              'SMART attributes at or below their failure threshold right now.',
+              sum(1 for a in table if a.get('when_failed') == 'now'), **base)
+
+    nvme = data.get('nvme_smart_health_information_log') or {}
+    m.add('storage_smart_nvme_critical_warning',
+          'NVMe critical warning bits; 0 when the drive has nothing to say.',
+          nvme.get('critical_warning'), **base)
+
+    scsi_errors = data.get('scsi_error_counter_log') or {}
+    scsi_uncorrected = [(scsi_errors.get(op) or {}).get('total_uncorrected_errors')
+                        for op in ('read', 'write', 'verify')]
+    scsi_uncorrected = sum(n for n in scsi_uncorrected if n is not None) if scsi_errors else None
+
+    # The same four questions asked of each kind of drive. An ATA drive answers
+    # in its attribute table, or failing that in its device statistics; a SAS
+    # one in its defect list and error counters; an NVMe one in its health log.
+    m.add('storage_smart_reallocated_sectors',
+          'Sectors the drive has given up on and replaced from its spare area.',
+          _first(raw(5), _device_statistic(data, 'Number of Reallocated Logical Sectors'),
+                 data.get('scsi_grown_defect_list')), **base)
+    m.add('storage_smart_uncorrectable_errors',
+          'Reads the drive has reported it could not correct, over its life.',
+          _first(raw(187), _device_statistic(data, 'Number of Reported Uncorrectable Errors'),
+                 scsi_uncorrected, nvme.get('media_errors')), **base)
+    m.add('storage_smart_pending_sectors',
+          'Sectors the drive could not read and has not yet replaced.',
+          _first(raw(197), _device_statistic(data, 'Number of Realloc. Candidate Logical Sectors')),
+          **base)
+    m.add('storage_smart_offline_uncorrectable_sectors',
+          'Sectors found unreadable by the drive\'s own offline scan.', raw(198), **base)
+    m.add('storage_smart_crc_errors',
+          'Transfers damaged between drive and controller: cabling or backplane, not media.',
+          _first(raw(199), _device_statistic(data, 'Number of Interface CRC Errors')), **base)
+
+    used = (data.get('endurance_used') or {}).get('current_percent')
+    m.add('storage_smart_endurance_used_ratio',
+          'Share of the rated write endurance an SSD has used; 1 is all of it.',
+          None if used is None else used / 100, **base)
+    spare = data.get('spare_available') or {}
+    for key, name, text in (
+            ('current_percent', 'storage_smart_spare_available_ratio',
+             'Share of the spare area still unused.'),
+            ('threshold_percent', 'storage_smart_spare_threshold_ratio',
+             'Spare level at which the drive declares itself failing.')):
+        m.add(name, text, None if spare.get(key) is None else spare[key] / 100, **base)
+    if (attrs.get(177) or {}).get('name') == 'Wear_Leveling_Count':
+        m.add('storage_smart_wear_leveling_cycles',
+              'Average program/erase cycles per block (Samsung attribute 177).', raw(177), **base)
+
+    sectors = _device_statistic(data, 'Logical Sectors Written')
+    if sectors is None and (attrs.get(241) or {}).get('name') == 'Total_LBAs_Written':
+        sectors = raw(241)
+    if sectors is not None:
+        written = sectors * (data.get('logical_block_size') or 512)
+    elif nvme.get('data_units_written') is not None:
+        written = nvme['data_units_written'] * 512000        # units of 1000 sectors
+    else:
+        try:
+            written = int(float(scsi_errors['write']['gigabytes_processed']) * 1e9)
+        except (KeyError, TypeError, ValueError):
+            written = None
+    m.add('storage_smart_written_bytes', 'Bytes the host has written to the drive, over its life.',
+          written, **base)
+
+    m.add('storage_smart_temperature_celsius', 'Drive temperature.',
+          (data.get('temperature') or {}).get('current'), **base)
+    hours = (data.get('power_on_time') or {}).get('hours')
+    m.add('storage_smart_power_on_hours', 'Hours the drive has been powered, over its life.',
+          hours, **base)
+
+    tests = list(_self_tests(data))
+    decided = [t for t in tests if t[1] is not None]
+    if decided:
+        m.add('storage_smart_selftest_last_passed',
+              'Result of the most recent self-test that ran to a verdict: 1 passed, 0 failed.',
+              decided[0][1], **base)
+    # A drive with no long test on record has gone its whole powered life
+    # without one, so that is its age: a new drive gets as long as any other
+    # before it is overdue, and a used one put into service is overdue at once.
+    long_tests = [t for t in decided if t[0]]
+    age = _hours_since(hours, long_tests[0][2], long_tests[0][3]) if long_tests else hours
+    m.add('storage_smart_selftest_long_age_seconds',
+          'Powered time since the last long self-test that ran to a verdict; the '
+          'whole powered life if there is none on record.',
+          None if age is None else age * 3600, **base)
+
+    running = ((((data.get('ata_smart_data') or {}).get('self_test') or {}).get('status') or {})
+               .get('value') or 0) >> 4 == 15
+    running = running or bool(((data.get('nvme_self_test_log') or {})
+                               .get('current_self_test_operation') or {}).get('value'))
+    running = running or ((data.get('scsi_self_test_0') or {}).get('result') or {}).get('value') == 15
+    m.add('storage_smart_selftest_in_progress', 'Whether a self-test is running now.',
+          running, **base)
+
+
+def collect_smart(m, runner, cfg):
+    scan = run_json(runner, ['smartctl', '--scan-open', '-j'])
+    if scan is None:
+        return False
+    readable = 0
+    for dev in scan.get('devices') or []:
+        name, kind = dev.get('name'), dev.get('type') or 'auto'
+        # megaraid,N is the drive's ID on the controller, which is its bay.
+        label = kind.replace('sat+', '') if 'megaraid' in kind else os.path.basename(name or '')
+        try:
+            # -n standby: a disk that has been spun down is left asleep.
+            data = run_json(runner, ['smartctl', '-j', '-x', '-n', 'standby', '-d', kind, name], 30)
+        except CollectorError:
+            m.add('storage_smart_read_success',
+                  'Whether smartctl got an answer from the device.', 0, device=label)
+            continue
+        if (data.get('smart_support') or {}).get('available') is False:
+            continue        # a RAID controller's virtual disk; its members are listed too
+        if 'smart_status' not in data:
+            if 'power_mode' in data:
+                continue    # asleep
+            m.add('storage_smart_read_success',
+                  'Whether smartctl got an answer from the device.', 0, device=label)
+            continue
+        m.add('storage_smart_read_success',
+              'Whether smartctl got an answer from the device.', 1, device=label)
+        readable += 1
+        _smart_device(m, data, label, dev.get('protocol'))
+    m.add('storage_smart_devices', 'Drives that answered smartctl on this run.', readable)
+    m.add('storage_smart_selftest_long_max_age_seconds',
+          'How long a drive may go without a long self-test before the schedule has failed.',
+          cfg['smart_long_selftest_max_age_days'] * DAY)
+    return True
+
+
+# --- raid --------------------------------------------------------------------
+
+def _by_controller(doc):
+    """{controller number: response} for the controllers a command succeeded on."""
+    found = {}
+    for entry in (doc or {}).get('Controllers') or []:
+        status = entry.get('Command Status') or {}
+        if status.get('Status') == 'Success' and 'Controller' in status:
+            found[status['Controller']] = entry.get('Response Data')
+    return found
+
+
+def _properties(response):
+    """perccli's [{"Ctrl_Prop": name, "Value": value}, ...] as a dict."""
+    rows = (response or {}).get('Controller Properties') or []
+    return {row.get('Ctrl_Prop'): row.get('Value') for row in rows}
+
+
+def _number_list(text):
+    """VD numbers out of "1", "0,3" or "0-2,5"; anything else names none."""
+    numbers = set()
+    for part in re.findall(r'\d+(?:-\d+)?', str(text or '')):
+        low, _, high = part.partition('-')
+        numbers.update(range(int(low), int(high or low) + 1))
+    return numbers
+
+
+def collect_raid(m, runner, cfg):
+    candidates = [cfg['raid_cli']] if cfg.get('raid_cli') else RAID_CLIS
+    overview = None
+    for cli in candidates:
+        overview = run_json(runner, [cli, '/call', 'show', 'all', 'J', 'nolog'])
+        if overview is not None:
+            break
+    controllers = _by_controller(overview)
+    if not controllers:
+        if cfg.get('raid_expected'):
+            raise CollectorError('no controller answered: is perccli or storcli installed?')
+        return False
+
+    def ask(*words):
+        return _by_controller(run_json(runner, [cli] + list(words) + ['J', 'nolog']))
+
+    patrol_read = ask('/call', 'show', 'patrolread')
+    consistency = ask('/call', 'show', 'cc')
+    bad_blocks = ask('/call/vall', 'show', 'bbmt')
+    drives = ask('/call/eall/sall', 'show', 'all')
+
+    for number in sorted(controllers):
+        info = controllers[number] or {}
+        ctrl = {'controller': str(number)}
+        m.add('storage_raid_controller_state',
+              'Controller status, as the state label of a series that is always 1.', 1,
+              model=(info.get('Basics') or {}).get('Model') or '',
+              state=(info.get('Status') or {}).get('Controller Status') or 'Unknown', **ctrl)
+        for battery in info.get('BBU_Info') or []:
+            m.add('storage_raid_battery_state',
+                  'Cache battery state, as the state label of a series that is always 1.', 1,
+                  state=battery.get('State') or 'Unknown', **ctrl)
+
+        pr = _properties(patrol_read.get(number))
+        cc = _properties(consistency.get(number))
+        m.add('storage_raid_patrol_read_iterations', 'Patrol reads the controller has completed.',
+              _int(pr.get('PR iterations completed')), **ctrl)
+        m.add('storage_raid_consistency_check_iterations',
+              'Scheduled consistency check rounds the controller has completed.',
+              _int(cc.get('CC Number of iterations')), **ctrl)
+        pr_on = pr.get('PR Mode') == 'Auto'
+        pr_excluded = _number_list(pr.get('PR Excluded VDs'))
+        pr_ssd = str(pr.get('PR on SSD') or '')
+        cc_on = cc.get('CC Operation Mode') in ('Sequential', 'Concurrent')
+        cc_excluded = _number_list(cc.get('CC Excluded VDs'))
+
+        media = {}      # drive group -> the kinds of media in it
+        for disk in info.get('PD LIST') or []:
+            media.setdefault(disk.get('DG'), set()).add(disk.get('Med'))
+        corrected = {row.get('VD'): row for row in bad_blocks.get(number) or []
+                     if isinstance(row, dict)}
+
+        for row in info.get('VD LIST') or []:
+            group, _, vd = str(row.get('DG/VD') or '').partition('/')
+            labels = dict(ctrl, vd=vd, name=row.get('Name') or '')
+            m.add('storage_raid_vd_state',
+                  'Virtual disk state (Optl is healthy), as the state label of a series '
+                  'that is always 1.', 1,
+                  raid=row.get('TYPE') or '', state=row.get('State') or 'Unknown', **labels)
+            # Patrol read skips SSDs unless told otherwise, and "OnlyMixed"
+            # means it reads them only where they share an array with HDDs.
+            kinds = media.get(_int(group), set())
+            if kinds == {'SSD'}:
+                reads_media = pr_ssd in ('Enabled', 'On', 'Yes')
+            elif 'SSD' in kinds:
+                reads_media = pr_ssd in ('Enabled', 'On', 'Yes', 'OnlyMixed')
+            else:
+                reads_media = True
+            m.add('storage_raid_vd_patrol_read_scheduled',
+                  'Whether scheduled patrol read covers the virtual disk.',
+                  pr_on and reads_media and _int(vd) not in pr_excluded, **labels)
+            m.add('storage_raid_vd_consistency_check_scheduled',
+                  'Whether scheduled consistency check covers the virtual disk.',
+                  cc_on and _int(vd) not in cc_excluded, **labels)
+            table = corrected.get(_int(vd)) or {}
+            for kind, key in (('corrected', 'Corrected entries'),
+                              ('uncorrected', 'Un-Corrected entries')):
+                m.add('storage_raid_vd_bad_blocks',
+                      'Entries in the virtual disk\'s bad block table. An uncorrected one '
+                      'is a block the controller knows it cannot return.',
+                      _int(table.get(key)), kind=kind, **labels)
+
+        details = drives.get(number) or {}
+        for key in sorted(details):
+            match = re.fullmatch(r'Drive (/c\d+(?:/e\d+)?/s\d+)', key)
+            if not match or not details[key]:
+                continue
+            path = match.group(1)
+            row = details[key][0]
+            more = details.get('Drive %s - Detailed Information' % path) or {}
+            identity = more.get('Drive %s Device attributes' % path) or {}
+            counters = more.get('Drive %s State' % path) or {}
+            labels = dict(ctrl, slot=str(row.get('EID:Slt') or ''),
+                          model=(identity.get('Model Number') or row.get('Model') or '').strip(),
+                          serial=(identity.get('SN') or '').strip())
+            m.add('storage_raid_pd_state',
+                  'Physical disk state as the controller sees it, as the state label of '
+                  'a series that is always 1.', 1,
+                  state=row.get('State') or 'Unknown', **labels)
+            m.add('storage_raid_pd_media_errors',
+                  'Media errors the controller has counted against the disk.',
+                  _int(counters.get('Media Error Count')), **labels)
+            m.add('storage_raid_pd_other_errors',
+                  'Other errors (resets, timeouts) the controller has counted against the disk.',
+                  _int(counters.get('Other Error Count')), **labels)
+            m.add('storage_raid_pd_predictive_failures',
+                  'Failure predictions the controller has received from the disk.',
+                  _int(counters.get('Predictive Failure Count')), **labels)
+            alert = counters.get('S.M.A.R.T alert flagged by drive')
+            m.add('storage_raid_pd_smart_alert', 'Whether the disk has raised a SMART alert.',
+                  None if alert is None else alert == 'Yes', **labels)
+    return True
+
+
+# --- lvm ---------------------------------------------------------------------
+
+def collect_lvm(m, runner):
+    report = run_json(runner, ['lvs', '--reportformat', 'json', '--units', 'b', '--nosuffix',
+                               '-o', 'lv_name,vg_name,lv_attr,lv_size,data_percent,'
+                                     'metadata_percent,lv_health_status'])
+    if report is None:
+        return False
+    found = False
+    for section in report.get('report') or []:
+        for lv in section.get('lv') or []:
+            if not str(lv.get('lv_attr') or '').startswith('t'):    # thin pools only
+                continue
+            found = True
+            labels = {'vg': lv.get('vg_name'), 'lv': lv.get('lv_name')}
+            for space in ('data', 'metadata'):
+                try:
+                    used = round(float(lv[space + '_percent']) / 100, 4)
+                except (KeyError, TypeError, ValueError):
+                    continue
+                m.add('storage_lvm_thin_used_ratio',
+                      'Share of the thin pool\'s data or metadata space in use. A pool '
+                      'that runs out of either stops taking writes.',
+                      used, space=space, **labels)
+            m.add('storage_lvm_thin_size_bytes', 'Size of the thin pool\'s data space.',
+                  _int(lv.get('lv_size')), **labels)
+            m.add('storage_lvm_thin_healthy',
+                  'Whether device-mapper reports the thin pool healthy.',
+                  not lv.get('lv_health_status'), **labels)
+    return found
+
+
+# --- main --------------------------------------------------------------------
+
+def load_config(path):
+    cfg = dict(CONFIG_DEFAULTS)
+    try:
+        with open(path) as f:
+            cfg.update(json.load(f))
+    except FileNotFoundError:
+        pass
+    return cfg
+
+
+def collect(runner, cfg, state):
+    """Run every collector and return the Metrics."""
+    m = Metrics()
+    collectors = (
+        ('zfs', lambda: collect_zfs(m, runner, cfg, state)),
+        ('smart', lambda: collect_smart(m, runner, cfg)),
+        ('raid', lambda: collect_raid(m, runner, cfg)),
+        ('lvm', lambda: collect_lvm(m, runner)),
+    )
+    for name, collector in collectors:
+        try:
+            applies = collector()
+            succeeded = True
+        except Exception as exc:    # one tool misbehaving must not cost the others their metrics
+            print('storage-health-exporter: %s: %s: %s' % (name, type(exc).__name__, exc),
+                  file=sys.stderr)
+            applies, succeeded = True, False
+        if applies:
+            m.add('storage_health_collector_success',
+                  'Whether the collector ran to the end on the last run.',
+                  succeeded, collector=name)
+    m.add('storage_health_last_run_timestamp_seconds', 'When this file was written.',
+          int(time.time()))
+    return m
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
+    parser.add_argument('--config', default='/etc/storage-health/config.json')
+    parser.add_argument('--state', default='/var/lib/storage-health/state.json')
+    parser.add_argument('--output', default='-',
+                        help='file to write (renamed into place); "-" prints instead')
+    args = parser.parse_args(argv)
+
+    state = State(args.state)
+    text = collect(run, load_config(args.config), state).render()
+    if args.output == '-':
+        sys.stdout.write(text)
+    else:
+        _write(args.output, text)
+        state.save()
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

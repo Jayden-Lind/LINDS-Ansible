@@ -1,0 +1,123 @@
+---
+- name: Install node_exporter and smartmontools
+  ansible.builtin.apt:
+    name:
+      - prometheus-node-exporter
+      - smartmontools
+    state: present
+    # node_exporter recommends its collectors package, which brings timers of
+    # its own (SMART, NVMe, IPMI, apt) writing a second set of metrics under
+    # other names.
+    install_recommends: false
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Keep the metrics directory across reboots
+  ansible.builtin.copy:
+    src: etc/tmpfiles.d/node-exporter-textfile.conf
+    dest: /etc/tmpfiles.d/node-exporter-textfile.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Create the metrics directory
+  ansible.builtin.file:
+    path: /run/node-exporter-textfile
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Have node_exporter serve the metrics directory and nothing else
+  ansible.builtin.template:
+    src: prometheus-node-exporter.default.j2
+    dest: /etc/default/prometheus-node-exporter
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart node_exporter
+
+- name: Install storage-health-exporter
+  ansible.builtin.copy:
+    src: usr/local/sbin/storage-health-exporter
+    dest: /usr/local/sbin/storage-health-exporter
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create /etc/storage-health
+  ansible.builtin.file:
+    path: /etc/storage-health
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Tell the exporter what this host should have
+  ansible.builtin.template:
+    src: config.json.j2
+    dest: /etc/storage-health/config.json
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the exporter's service and timer
+  ansible.builtin.copy:
+    src: "etc/systemd/system/{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - storage-health-exporter.service
+    - storage-health-exporter.timer
+  register: storage_health_units
+
+- name: Run the exporter every ten minutes
+  ansible.builtin.systemd:
+    name: storage-health-exporter.timer
+    enabled: true
+    state: "{{ 'restarted' if storage_health_units is changed else 'started' }}"
+    daemon_reload: "{{ storage_health_units is changed }}"
+
+- name: Start node_exporter
+  ansible.builtin.systemd:
+    name: prometheus-node-exporter
+    enabled: true
+    state: started
+
+- name: Restart node_exporter now if its arguments changed
+  ansible.builtin.meta: flush_handlers
+
+# Not left to the timer: this is the run that shows the script works on this
+# host. The unit fails, and the play with it, only if the metrics file could
+# not be written; a collector that failed says so in the file.
+- name: Write the metrics once now
+  ansible.builtin.systemd:
+    name: storage-health-exporter.service
+    state: started
+  changed_when: false
+
+- name: Read the metrics back through node_exporter
+  ansible.builtin.uri:
+    url: "http://{{ 'localhost' if storage_health_node_exporter_listen.startswith(':') else '' }}{{ storage_health_node_exporter_listen }}/metrics"
+    return_content: true
+  register: storage_health_scrape
+  # node_exporter may have been restarted a moment ago.
+  retries: 5
+  delay: 2
+  until: storage_health_scrape.status == 200
+  when: not ansible_check_mode
+
+- name: Check that every collector with something to report ran to the end
+  when: not ansible_check_mode
+  ansible.builtin.assert:
+    that:
+      - "'storage_health_last_run_timestamp_seconds' in storage_health_scrape.content"
+      - storage_health_scrape.content is not search('storage_health_collector_success\\{[^}]*\\} 0')
+      - storage_health_scrape.content is search('node_textfile_scrape_error 0')
+    fail_msg: >-
+      node_exporter is not serving a clean set of storage health metrics. Run
+      /usr/local/sbin/storage-health-exporter by hand: it prints the metrics,
+      and the reason for a failed collector on stderr.
+    quiet: true

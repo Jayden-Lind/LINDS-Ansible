@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh storage health metrics every ten minutes
+Documentation=https://github.com/Jayden-Lind/LINDS-Ansible/blob/main/roles/storage_health/README.md
+
+[Timer]
+OnCalendar=*:0/10
+# The metrics file is on /run, so a boot starts without one.
+OnBootSec=1min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
