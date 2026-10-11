@@ -1,0 +1,83 @@
+---
+# Runs on a domain controller that is staying, in the same site as the one
+# being retired, before the demotion.
+#
+# Replication between two sites goes through one domain controller at each
+# end, chosen by the topology generator. If that is the server being retired,
+# the other site loses its only partner the moment it is demoted, cannot hear
+# that it was demoted, and by default waits two hours before trying another.
+# Everything after the demotion needs the sites to agree within minutes.
+#
+# So the surviving domain controller is made the site's preferred bridgehead,
+# the topology is recalculated everywhere, and nothing goes on until
+# replication has been seen to work through it in both directions.
+# bridgehead-release.yml takes the preference away again afterwards.
+
+- name: Move replication between the sites onto this domain controller
+  ansible.windows.win_powershell:
+    parameters:
+      Retiring: "{{ windows_dc_retire_machine }}"
+      TimeoutSeconds: "{{ windows_dc_retire_bridgehead_timeout | int }}"
+    script: |
+      param([string]$Retiring, [int]$TimeoutSeconds)
+      $ErrorActionPreference = 'Stop'
+      Import-Module ActiveDirectory
+      $Ansible.Changed = $false
+
+      $me = Get-ADDomainController -Identity $env:COMPUTERNAME
+      $all = @(Get-ADDomainController -Filter *)
+      $leaving = $all | Where-Object { $_.Name -ieq $Retiring }
+      $outside = @($all | Where-Object { $_.Site -ne $me.Site })
+      if (-not $leaving -or $leaving.Site -ne $me.Site -or -not $outside) {
+          # Already demoted, a different site, or a single-site domain.
+          return 'nothing to move'
+      }
+
+      $ip = 'CN=IP,CN=Inter-Site Transports,CN=Sites,' + (Get-ADRootDSE).configurationNamingContext
+      $mine = Get-ADObject -Identity $me.ServerObjectDN -Properties bridgeheadTransportList
+      if ($mine.bridgeheadTransportList -notcontains $ip) {
+          Set-ADObject -Identity $me.ServerObjectDN -Add @{ bridgeheadTransportList = $ip }
+          $Ansible.Changed = $true
+      }
+
+      function Get-Links([string]$Server) {
+          & repadmin.exe /showrepl $Server /csv 2>$null | ConvertFrom-Csv |
+              Where-Object { $_.'Last Success Time' -match '^\d{4}-' }
+      }
+
+      $started = (Get-Date).AddSeconds(-5)
+      $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+      do {
+          # Twice round: the other site has to receive the preference before
+          # its topology generator can act on it.
+          foreach ($round in 1, 2) {
+              foreach ($dc in $all) { & repadmin.exe /kcc $dc.HostName 2>&1 | Out-Null }
+              foreach ($dc in $all) { & repadmin.exe /syncall $dc.HostName /Aed 2>&1 | Out-Null }
+          }
+
+          # Proof, not topology: a successful pull through this server, in
+          # each direction, since this task began.
+          $waiting = @()
+          foreach ($dc in $outside) {
+              $viaMe = Get-Links $dc.HostName | Where-Object {
+                  $_.'Source DSA' -ieq $me.Name -and [datetime]$_.'Last Success Time' -ge $started
+              }
+              if (-not $viaMe) { $waiting += "$($dc.Name) has not pulled from $($me.Name)" }
+          }
+          $inbound = Get-Links $me.HostName | Where-Object {
+              $_.'Source DSA Site' -ne $me.Site -and [datetime]$_.'Last Success Time' -ge $started
+          }
+          if (-not $inbound) { $waiting += "$($me.Name) has not pulled from another site" }
+
+          if ($waiting) { Start-Sleep -Seconds 20 }
+      } until (-not $waiting -or (Get-Date) -gt $deadline)
+
+      if ($waiting) {
+          throw "Replication between the sites still depends on ${Retiring}: $($waiting -join '; '). Not demoting it. Look at repadmin /showrepl on both sides; the preferred bridgehead setting on $($me.Name) is still in place."
+      }
+      "replication between the sites runs through $($me.Name)"
+  register: windows_dc_retire_bridgehead
+
+- name: Report where replication between the sites now runs
+  ansible.builtin.debug:
+    msg: "{{ windows_dc_retire_bridgehead.output | default([]) }}"

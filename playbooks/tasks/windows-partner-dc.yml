@@ -1,0 +1,17 @@
+---
+# Chooses the existing domain controller that creates, or cleans up, the
+# directory objects of the server named in `target`, and puts it in the group
+# windows_partner_dc. One in the same AD site if there is one: that is the one
+# the server itself talks to. `-e windows_join_dc=<fqdn>` overrides the choice.
+- name: Pick the domain controller that will act for it
+  ansible.builtin.add_host:
+    name: "{{ windows_join_dc | default((same_site + others) | first) }}"
+    groups: windows_partner_dc
+  vars:
+    # reject, not difference: difference does not keep the inventory's order.
+    others: "{{ groups['windows_dc'] | reject('equalto', target) | list }}"
+    same_site: >-
+      {{ others | map('extract', hostvars) | selectattr('ad_site', 'defined')
+         | selectattr('ad_site', 'equalto', hostvars[target].ad_site | default(''))
+         | map(attribute='inventory_hostname') | list }}
+  changed_when: false

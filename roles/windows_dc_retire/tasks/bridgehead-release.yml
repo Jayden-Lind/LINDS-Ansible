@@ -1,0 +1,17 @@
+---
+# Undoes the preference set by bridgehead.yml. Left in place it would stop the
+# topology generator from choosing another bridgehead if this one went down.
+- name: Let the topology generator choose the site's bridgehead again
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      Import-Module ActiveDirectory
+      $Ansible.Changed = $false
+      $me = Get-ADDomainController -Identity $env:COMPUTERNAME
+      $mine = Get-ADObject -Identity $me.ServerObjectDN -Properties bridgeheadTransportList
+      foreach ($transport in @($mine.bridgeheadTransportList)) {
+          Set-ADObject -Identity $me.ServerObjectDN -Remove @{ bridgeheadTransportList = $transport }
+          $Ansible.Changed = $true
+      }
+      # Tell the other site now rather than at its next scheduled pull.
+      foreach ($dc in Get-ADDomainController -Filter *) { & repadmin.exe /syncall $dc.HostName /Aed 2>&1 | Out-Null }

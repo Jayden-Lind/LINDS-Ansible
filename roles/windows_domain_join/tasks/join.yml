@@ -1,0 +1,37 @@
+---
+# Runs on the machine that is joining, over the bootstrap connection.
+# Expects windows_domain_join_blob (from provision.yml, via hostvars).
+
+- name: Consume the offline-join blob
+  ansible.windows.win_powershell:
+    parameters:
+      Blob: "{{ windows_domain_join_blob }}"
+    script: |
+      param([string]$Blob)
+      $ErrorActionPreference = 'Stop'
+      $file = Join-Path $env:TEMP ("odj-" + [guid]::NewGuid().ToString('N') + '.txt')
+      try {
+          [IO.File]::WriteAllText($file, $Blob, [Text.Encoding]::Unicode)
+          $out = & djoin.exe /requestodj /loadfile $file /windowspath $env:SystemRoot /localos 2>&1
+          if ($LASTEXITCODE -ne 0) { throw "djoin /requestodj failed ($LASTEXITCODE): $($out -join ' ')" }
+      } finally {
+          Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
+      }
+      $Ansible.Changed = $true
+  no_log: true
+
+- name: Restart into the domain
+  ansible.windows.win_reboot:
+    reboot_timeout: 900
+
+- name: Confirm the machine is a member of the domain
+  ansible.windows.win_powershell:
+    script: |
+      $Ansible.Changed = $false
+      $cs = Get-CimInstance Win32_ComputerSystem
+      [pscustomobject]@{ part_of_domain = [bool]$cs.PartOfDomain; domain = $cs.Domain }
+  register: windows_domain_join_result
+  failed_when: >-
+    not windows_domain_join_result.output[0].part_of_domain
+    or windows_domain_join_result.output[0].domain | lower != windows_domain | lower
+  changed_when: false

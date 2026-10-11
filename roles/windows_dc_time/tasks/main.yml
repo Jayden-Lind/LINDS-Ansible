@@ -7,6 +7,9 @@
       $pdc = (Get-ADDomain).PDCEmulator
       "$env:COMPUTERNAME.$env:USERDNSDOMAIN".ToLower() -eq $pdc.ToLower()
   changed_when: false
+  # Read-only, and the two tasks below cannot be evaluated without its answer:
+  # under --check this was skipped and the play stopped here.
+  check_mode: false
   register: pdc_check
 
 - name: Configure the PDC emulator as the domain's external time source

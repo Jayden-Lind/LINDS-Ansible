@@ -1,0 +1,205 @@
+---
+# Retire a domain controller: demote it, switch it off, and delete what is
+# left of it in the directory, so that a rebuilt server can take the name.
+#
+#   make windows-retire-dc HOST=<fqdn>
+#
+# Needs a Kerberos ticket (`make kinit`). The VM itself is left alone: stop it
+# from starting again on the hypervisor (`qm set <vmid> --onboot 0`) and delete
+# it when you are sure nothing on it is wanted.
+#
+# `--tags cleanup` runs only the last play, for a server that has already been
+# demoted and switched off. `--tags bridgehead` runs only the first step
+# (moving replication between the sites onto the domain controller that
+# stays), which changes nothing about the server to be retired;
+# `--tags bridgehead-release` undoes it.
+
+- name: Check the request
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: always
+  tasks:
+    - name: The host to retire must be named and be a domain controller here
+      ansible.builtin.assert:
+        that:
+          - target is defined
+          - target in groups['windows_dc']
+        fail_msg: Pass -e target=<fqdn>, a host in the windows_dc group of the inventory.
+
+    - name: Pick the domain controller that will act for it
+      ansible.builtin.import_tasks: tasks/windows-partner-dc.yml
+
+- name: Take replication between the sites off it first
+  hosts: windows_partner_dc
+  gather_facts: false
+  tags: bridgehead
+  tasks:
+    - name: Make the domain controller that stays the site's bridgehead
+      ansible.builtin.include_role:
+        name: windows_dc_retire
+        tasks_from: bridgehead
+      vars:
+        windows_dc_retire_machine: "{{ hostvars[target].windows_hostname | default(target.split('.')[0]) }}"
+
+- name: Demote and shut down
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  roles:
+    - windows_dc_retire
+
+- name: Remove what is left of it in the directory
+  hosts: windows_partner_dc
+  gather_facts: false
+  tags: cleanup
+  vars:
+    windows_retire_machine: "{{ hostvars[target].windows_hostname | default(target.split('.')[0]) }}"
+  pre_tasks:
+    # The demotion was recorded on one domain controller, not necessarily
+    # this one.
+    - name: Bring every domain controller up to date first
+      ansible.builtin.include_role:
+        name: windows_ad_converge
+  tasks:
+    # A demotion removes the domain controller's own records but leaves the
+    # computer account (now a member's) and the empty server object under its
+    # site.
+    - name: Delete the computer account and the server object
+      ansible.windows.win_powershell:
+        parameters:
+          Machine: "{{ windows_retire_machine }}"
+        script: |
+          param([string]$Machine)
+          $ErrorActionPreference = 'Stop'
+          Import-Module ActiveDirectory
+          $Ansible.Changed = $false
+          $removed = @()
+
+          if (Get-ADDomainController -Filter "Name -eq '$Machine'") {
+              throw "$Machine is still listed as a domain controller; the demotion did not complete."
+          }
+
+          $account = Get-ADComputer -Filter "Name -eq '$Machine'"
+          if ($account) {
+              # -Recursive: a computer account can own child objects (service
+              # connection points, BitLocker keys).
+              Remove-ADObject -Identity $account.DistinguishedName -Recursive -Confirm:$false
+              $removed += "computer account"
+          }
+
+          $sites = 'CN=Sites,' + (Get-ADRootDSE).configurationNamingContext
+          foreach ($server in Get-ADObject -SearchBase $sites -LDAPFilter "(&(objectClass=server)(cn=$Machine))") {
+              # Only an empty one: NTDS Settings underneath means it is still
+              # a domain controller as far as replication is concerned.
+              if (-not (Get-ADObject -SearchBase $server.DistinguishedName -SearchScope OneLevel -Filter *)) {
+                  Remove-ADObject -Identity $server.DistinguishedName -Confirm:$false
+                  $removed += "server object in $(($server.DistinguishedName -split ',')[2])"
+              }
+          }
+
+          $Ansible.Changed = $removed.Count -gt 0
+          $removed
+      register: windows_retire_cleanup
+
+    - name: Report what was removed
+      ansible.builtin.debug:
+        msg: "{{ windows_retire_cleanup.output | default([]) }}"
+
+    # Otherwise a domain controller that has not heard yet goes on handing
+    # out tickets for the old machine, and a rebuilt server of the same name
+    # cannot be reached or joined.
+    - name: Wait until no domain controller knows it any more
+      ansible.builtin.include_role:
+        name: windows_ad_converge
+      vars:
+        windows_ad_converge_computer: "{{ windows_retire_machine }}"
+        windows_ad_converge_state: absent
+
+    # Seen on a rehearsal: the demotion and a clean-up on one DNS server left
+    # nothing behind, and a minute later all three DNS servers again held ten
+    # records for the retired machine, among them the domain's own address
+    # record and the global catalog's, pointing at a server that was off.
+    #
+    # The likely reason: all the records of one name are a single attribute in
+    # the directory, each DNS server keeps its own copy in memory and reads
+    # changes from the directory only every three minutes, and a server that
+    # updates any record of that name before it has read the removal writes
+    # the dead entry back. Whatever the reason, the cure is to delete on every
+    # DNS server and to finish only when all of them have stayed clean for
+    # longer than that interval.
+    - name: Remove its DNS records from every DNS server until they stay gone
+      ansible.windows.win_powershell:
+        parameters:
+          Machine: "{{ windows_retire_machine }}"
+          Address: "{{ hostvars[target].windows_ipv4_address | default(hostvars[target].ansible_host) }}"
+          Domain: "{{ windows_domain | default('linds.com.au') }}"
+          SettleSeconds: "{{ windows_retire_dns_settle | default(200) | int }}"
+          TimeoutSeconds: "{{ windows_retire_dns_timeout | default(1800) | int }}"
+        script: |
+          param([string]$Machine, [string]$Address, [string]$Domain, [int]$SettleSeconds, [int]$TimeoutSeconds)
+          $ErrorActionPreference = 'Stop'
+          Import-Module ActiveDirectory
+          $Ansible.Changed = $false
+          $fqdn = "$Machine.$Domain."
+          # The address records a domain controller registers for itself.
+          # Any other name at that address was put there by a person and is
+          # left alone, in case the replacement is to answer to it too.
+          $ownNames = @($Machine, '@', 'DomainDnsZones', 'ForestDnsZones', 'gc', 'gc._msdcs')
+          $removed = @()
+          $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+          $cleanScans = 0
+
+          do {
+              $found = 0
+              $unreachable = @()
+              foreach ($server in (Get-ADDomainController -Filter * | ForEach-Object HostName)) {
+                  try {
+                      $zones = Get-DnsServerZone -ComputerName $server | Where-Object {
+                          $_.ZoneType -eq 'Primary' -and -not $_.IsAutoCreated -and $_.ZoneName -ne 'TrustAnchors'
+                      }
+                      foreach ($zone in $zones) {
+                          $stale = Get-DnsServerResourceRecord -ComputerName $server -ZoneName $zone.ZoneName | Where-Object {
+                              $d = $_.RecordData
+                              ($_.RecordType -eq 'A' -and $d.IPv4Address.IPAddressToString -eq $Address -and $_.HostName -in $ownNames) -or
+                              ($_.RecordType -eq 'NS' -and $d.NameServer -ieq $fqdn) -or
+                              ($_.RecordType -eq 'CNAME' -and $d.HostNameAlias -ieq $fqdn) -or
+                              ($_.RecordType -eq 'SRV' -and $d.DomainName -ieq $fqdn) -or
+                              ($_.RecordType -eq 'PTR' -and $d.PtrDomainName -ieq $fqdn)
+                          }
+                          foreach ($record in $stale) {
+                              $found++
+                              try {
+                                  $record | Remove-DnsServerResourceRecord -ComputerName $server -ZoneName $zone.ZoneName -Force
+                                  $removed += "$($record.RecordType) $($record.HostName) in $($zone.ZoneName) on $(($server -split '\.')[0])"
+                              } catch {
+                                  # Already gone by replication between the listing and the delete.
+                              }
+                          }
+                      }
+                  } catch {
+                      $unreachable += "$(($server -split '\.')[0]): $($_.Exception.Message)"
+                  }
+              }
+              if ($found -or $unreachable) { $cleanScans = 0 } else { $cleanScans++ }
+              if ($cleanScans -lt 2) { Start-Sleep -Seconds $SettleSeconds }
+          } until ($cleanScans -ge 2 -or (Get-Date) -gt $deadline)
+
+          if ($cleanScans -lt 2) {
+              throw "DNS records for $Machine kept coming back, or a DNS server could not be asked. $($unreachable -join '; ')"
+          }
+          $Ansible.Changed = $removed.Count -gt 0
+          $removed
+      register: windows_retire_dns
+
+    - name: Report the DNS records removed
+      ansible.builtin.debug:
+        msg: "{{ windows_retire_dns.output | default([]) }}"
+
+    - name: Give the choice of bridgehead back to the topology generator
+      ansible.builtin.include_role:
+        name: windows_dc_retire
+        tasks_from: bridgehead-release
+        # A tag on an include does not reach the tasks it includes.
+        apply:
+          tags: [cleanup, bridgehead-release]
+      tags: [cleanup, bridgehead-release]

@@ -1,0 +1,41 @@
+---
+# Promotes a domain member to an additional domain controller (with DNS and
+# the global catalog) and sets the few things that live on the server rather
+# than in the directory.
+#
+# The promotion runs as the operator, through the delegated Kerberos ticket,
+# so no domain credential is passed. The one secret it needs is the
+# Directory Services Restore Mode password for the new domain controller. It
+# comes from the vault (vault_windows_dsrm_password, in
+# inventory/group_vars/windows/vault.yml); `make windows-promote` offers to
+# take a different one for this server instead.
+
+windows_domain: linds.com.au
+
+# AD site to promote into. Host variable (ad_site) in inventory/windows.yml.
+windows_dc_site: "{{ ad_site }}"
+
+windows_dsrm_password: "{{ lookup('ansible.builtin.env', 'WINDOWS_DSRM_PASSWORD') | default(vault_windows_dsrm_password | default(''), true) }}"
+
+# DNS server forwarders. Zones are AD-integrated and arrive by replication;
+# forwarders are per server.
+windows_dc_dns_forwarders:
+  - 10.0.50.1
+
+# Resolver order for the server itself: another domain controller first, then
+# itself. A domain controller that only asks itself can deadlock at boot.
+windows_dc_dns_client_servers: "{{ windows_dns_servers + ['127.0.0.1'] }}"
+
+# How long to wait after the post-promotion restart for the directory and
+# SYSVOL to be served.
+windows_dc_ready_timeout: 1800
+
+# How long to wait, once the other domain controllers know this one, for the
+# RID master to allocate its RID pool.
+windows_dc_rid_pool_timeout: 900
+
+# A domain controller here must answer LDAPS (Keycloak's user federation uses
+# it), so promotion is not finished until its certificate from the domain's CA
+# is in place. Set to false in a domain with no enterprise CA.
+windows_dc_require_ldaps: true
+windows_dc_ldaps_timeout: 600

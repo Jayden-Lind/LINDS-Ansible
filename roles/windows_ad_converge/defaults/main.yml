@@ -1,0 +1,22 @@
+---
+# Makes every domain controller pull from its partners now, instead of at the
+# next scheduled replication (15 minutes between the sites), and optionally
+# waits until they all agree about one computer.
+#
+# Runs on any domain controller, as the operator (delegated Kerberos ticket).
+#
+# Why it exists: a change made on one domain controller is unknown to the
+# others for a while, and building or retiring a server trips over that at
+# every step. The operator's Kerberos client asks the JD domain controller for
+# a ticket to a server whose account was just created at LINDS and is told
+# "server not found"; or, when a name is reused, is handed a ticket for the
+# old machine of that name.
+
+# A computer to wait for agreement on, and which way: present (every domain
+# controller holds the same object) or absent (none holds one, and none lists
+# it as a domain controller). Empty: just replicate.
+windows_ad_converge_computer: ""
+windows_ad_converge_state: present
+
+# How long to keep replicating and re-checking before giving up.
+windows_ad_converge_timeout: 900

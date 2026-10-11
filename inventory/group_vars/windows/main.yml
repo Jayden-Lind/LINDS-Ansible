@@ -16,6 +16,10 @@ ansible_connection: winrm
 ansible_port: 5985
 ansible_winrm_transport: kerberos
 ansible_winrm_kerberos_delegation: true
+# The inventory connects by address, and Kerberos has no service principal for
+# an address ("Server not found in Kerberos database"). Ask for the ticket by
+# name instead; inventory names are the FQDNs for exactly this reason.
+ansible_winrm_kerberos_hostname_override: "{{ inventory_hostname }}"
 ansible_winrm_message_encryption: always
 ansible_winrm_read_timeout_sec: 900
 ansible_winrm_operation_timeout_sec: 840
