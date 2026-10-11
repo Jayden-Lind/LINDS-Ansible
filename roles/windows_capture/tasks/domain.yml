@@ -1,0 +1,38 @@
+---
+# Runs on one domain controller: the directory is the same on all of them.
+- name: Read the directory
+  ansible.windows.win_powershell:
+    script: "{{ lookup('ansible.builtin.file', role_path ~ '/files/domain.ps1') }}"
+  register: windows_capture_domain
+  changed_when: false
+  check_mode: false
+
+- name: Read the DNS zones
+  ansible.windows.win_powershell:
+    script: "{{ lookup('ansible.builtin.file', role_path ~ '/files/dns.ps1') }}"
+  register: windows_capture_dns
+  changed_when: false
+  check_mode: false
+
+- name: Report on and back up every Group Policy object
+  ansible.windows.win_powershell:
+    script: "{{ lookup('ansible.builtin.file', role_path ~ '/files/gpo.ps1') }}"
+  register: windows_capture_gpo
+  changed_when: false
+  check_mode: false
+
+- name: Collect the Group Policy archive, and remove it from the server
+  block:
+    - name: Fetch the archive
+      ansible.builtin.fetch:
+        src: "{{ (windows_capture_gpo.output[0] | from_json).archive }}"
+        dest: "{{ windows_capture_work }}/gpo.zip"
+        flat: true
+      check_mode: false
+  always:
+    - name: Remove the archive from the server
+      ansible.windows.win_file:
+        path: "{{ (windows_capture_gpo.output[0] | from_json).archive }}"
+        state: absent
+      changed_when: false
+      check_mode: false

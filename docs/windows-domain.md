@@ -291,6 +291,78 @@ session, a script host) still holds a service ticket for the old server, and
 its connections to the new one are rejected until that ticket expires or is
 renewed: `kinit -R`, or `klist purge` on Windows.
 
+## The state of the domain, captured
+
+```shell
+make windows-capture                        # into ./windows-state
+make windows-capture WINDOWS_STATE=<dir>    # somewhere else
+git -C <state dir> diff                     # what changed since the last one
+```
+
+Reads the domain as it is and writes it out as a few dozen YAML files (and
+the GPO backups) with a fixed layout and ordering. It changes nothing on the
+servers. A capture of an unchanged domain produces an empty diff: logon
+times, free space, update revisions and everything else that moves by itself
+is left out. So whatever the diff shows was changed by somebody, or by
+something, since the last capture, whether through this repository or in a
+console.
+
+| Folder | What is in it |
+| --- | --- |
+| `domain/` | The domain (levels, FSMO holders, password policy), sites and subnets, OUs with their GPO links in order, every group with its members, every user and computer with the flags that matter (delegation, pre-authentication, password never expires, SPNs), service accounts, who is in the powerful groups with nesting followed, and the explicit permissions on the domain root, AdminSDHolder and each OU |
+| `gpo/` | One folder per GPO: `report.xml` (the settings, readable), `gpo.yml` (versions, status, who may edit or apply it), `backup/` (what `Import-GPO` restores from). A backup is replaced only when the GPO's version has moved |
+| `dns/` | Zones and their settings (dynamic updates, transfers, aging), and the records somebody created. Records machines register for themselves are counted, not listed |
+| `ca/` | The CA's settings and who may manage it, every certificate template with who may enrol and the three settings that make a template dangerous, and the directory's trust stores |
+| `hosts/<server>/` | Features, shares with share and NTFS permissions one level down, NFS exports, services that are not Windows' own or log on as an account, scheduled tasks, installed software, and security settings as they are on the server (firewall, Defender, SMB, LSA, RDP, SSH, time) |
+
+It runs from `jd-dc-01` for the directory, every server in the `windows` group
+for the per-server part, and the `windows_ca` group for the CA. About five
+minutes.
+
+**The files are plain text and say who the users are, who is privileged, what
+is shared with whom and what is switched off.** Decide who can read the
+repository they are committed to before committing them.
+
+### Backing up the CA
+
+```shell
+make windows-ca-backup [WINDOWS_STATE=<dir>]
+```
+
+Writes into `<state dir>/ca/backup/`:
+
+| File | What | Stored |
+| --- | --- | --- |
+| `linds-CA.p12` | The CA's certificate and private key | Ansible vault |
+| `linds-CA-database.zip` | What it has issued and revoked | Ansible vault |
+| `linds-CA-configuration.reg` | Its registry settings | Plain text |
+| `password.yml` | The password of the `.p12` | Ansible vault |
+
+and ends by opening what it stored and checking that the private key belongs
+to the certificate. The `.p12` is password-protected from the moment the CA
+writes it and never exists unprotected; the password is generated here, kept
+for later runs, and stored separately.
+
+The key only changes when the CA certificate is renewed. The database changes
+with every certificate issued or revoked: run this after anything that
+matters, and always immediately before moving the CA to another server.
+
+The backup has to run as the CA server's own SYSTEM account (`become` with
+`runas`). The CA refuses to hand its database to a network logon, which is
+what a WinRM session is: `Backup-CARoleService` fails in `BackupDatabase` with
+"Access is denied" for a domain administrator.
+
+To restore onto a server that has the CA role installed but not configured:
+`ansible-vault decrypt` the three files, unzip the database into `DataBase\`
+beside the `.p12`, then `Restore-CARoleService -Path <folder> -Password
+<password> -Force` and `reg import` the settings. The CA keeps its name, so
+everything it has issued stays valid.
+
+**Once the key is in the vault it is exactly as safe as the vault password,
+and as private as the repository it is committed to.** Whoever has both can
+issue certificates the whole domain trusts, including logon certificates for
+any account.
+
 ## Runbook: the DFS-R stale junction trap
 
 Not automated — this is a one-off repair for a storage move, not desired state.
@@ -726,10 +798,12 @@ this domain controller.
 
 **GPOs are not enforced declaratively.** Re-importing a GPO is not an
 idempotent operation and must not run unattended against a live domain.
-Authoring stays in GPMC; the intended treatment is scheduled `Backup-GPO` into
-git plus a drift report.
+Authoring stays in GPMC. They are captured instead: `make windows-capture`
+backs up every one and its settings report into the state directory, and the
+diff is the drift report.
 
-**AD users, groups and OUs** are out of scope.
+**AD users, groups and OUs** are not managed yet. They are captured, which is
+the baseline that managing them will start from.
 
 **FSMO roles cannot be made highly available.** They are single-master by
 design; forcing a role onto a second DC while the original lives causes

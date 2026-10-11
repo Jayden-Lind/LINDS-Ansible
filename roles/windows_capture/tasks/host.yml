@@ -1,0 +1,7 @@
+---
+- name: Read what this server is, shares and runs
+  ansible.windows.win_powershell:
+    script: "{{ lookup('ansible.builtin.file', role_path ~ '/files/host.ps1') }}"
+  register: windows_capture_host
+  changed_when: false
+  check_mode: false

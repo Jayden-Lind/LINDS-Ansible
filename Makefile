@@ -57,6 +57,17 @@ windows-promote:
 	@bash -c 'read -r -s -p "Restore-mode password for $(HOST) (Enter for the one in the vault): " pw && echo && \
 	  WINDOWS_DSRM_PASSWORD="$$pw" $(WINDOWS_PLAY) playbooks/windows-build.yml --tags promote -e target=$(HOST)'
 
+# Where the captured state of the domain is written (see the playbook).
+WINDOWS_STATE ?= $(CURDIR)/windows-state
+
+windows-capture:
+	$(WINDOWS_PLAY) playbooks/windows-capture.yml -e windows_state_dir=$(WINDOWS_STATE)
+
+# The CA's key, database and settings, encrypted with the vault, into the
+# state directory.
+windows-ca-backup:
+	$(WINDOWS_PLAY) playbooks/windows-ca-backup.yml -e windows_state_dir=$(WINDOWS_STATE)
+
 # One existing server at a time; see the header of the playbook.
 windows-baseline:
 	$(WINDOWS_PLAY) playbooks/windows-baseline.yml -e target=$(HOST) \

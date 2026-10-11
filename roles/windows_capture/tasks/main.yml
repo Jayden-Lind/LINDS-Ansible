@@ -1,0 +1,4 @@
+---
+- name: This role is used through its task files
+  ansible.builtin.fail:
+    msg: Use playbooks/windows-capture.yml (make windows-capture), which includes domain.yml, host.yml and ca.yml.

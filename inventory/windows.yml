@@ -33,3 +33,9 @@ windows:
         jd-fs-01.linds.com.au:
           ansible_host: 10.0.50.201
           ad_site: JD
+
+    # The enterprise root CA, linds-CA. A server is in every group whose role
+    # it carries: this one is also a domain controller above.
+    windows_ca:
+      hosts:
+        linds-dc.linds.com.au:

@@ -1,0 +1,14 @@
+---
+# The certification authority. For now this role only backs it up; installing
+# and configuring it from code comes with the rebuild of the server it is on.
+#
+# backup.yml takes what a CA cannot be rebuilt without:
+#   * its certificate and private key, as a PKCS#12 file protected by a
+#     generated password;
+#   * its database (what it has issued and revoked);
+#   * its registry configuration.
+# The playbook encrypts the first two and the password with the Ansible vault.
+
+# Set by playbooks/windows-ca-backup.yml.
+windows_ca_backup_password: ""
+windows_ca_backup_work: ""
