@@ -11,6 +11,7 @@
 
 - name: Check the request
   hosts: localhost
+  connection: local
   gather_facts: false
   tasks:
     - name: The host must be named and known
