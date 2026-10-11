@@ -145,8 +145,9 @@ Things that were learned the hard way and are now built in:
   /AdeP`) reported success and moved nothing.
 - **The connection between the sites moves.** While a third domain
   controller existed at LINDS, JD's inbound connection was re-pointed at it,
-  and JD was left without a partner when it went. The topology generator
-  repairs that by itself; the `repadmin /kcc` above makes it immediate.
+  and JD was left without a partner when it went. The retirement moves it
+  onto the domain controller that stays before it demotes anything; see
+  "replacing a domain controller".
 - **A ticket can outlive the key it was issued under.** A machine changes
   its password as it joins, at the nearest domain controller. A ticket for it
   requested a minute later from the other site was issued under the previous
@@ -219,19 +220,43 @@ terraform apply -target=proxmox_virtual_environment_vm.linds_dc2 \
 make windows-prepare HOST=linds-dc2.linds.com.au ADDRESS=<its DHCP address>
 make windows-edition HOST=linds-dc2.linds.com.au ADDRESS=<its DHCP address>
 
-# The swap. About 40 minutes, with `repadmin /replsummary` clean beforehand.
+# The swap. About 50 minutes, with `repadmin /replsummary` clean beforehand.
 make windows-retire-dc HOST=linds-dc2.linds.com.au
 make windows-build     HOST=linds-dc2.linds.com.au ADDRESS=<its DHCP address>
 make windows-promote   HOST=linds-dc2.linds.com.au
 ```
 
-`windows-retire-dc` demotes the old server, restarts it as a member and shuts
-it down. Then, on the site's other domain controller, it deletes the computer
-account and the empty server object a demotion leaves under the site, waits
-until no domain controller at either site knows the name any more, and
-removes the server's DNS records. It refuses a FSMO role holder and the last
-domain controller. About 15 minutes. `--tags cleanup` runs the second half
-alone, for a server that is already demoted and off.
+`windows-retire-dc` does four things, the first and last on the site's other
+domain controller:
+
+1. Moves replication between the sites onto the domain controller that is
+   staying, and proves it works in both directions (see below).
+2. Demotes the old server, restarts it as a member and shuts it down. It
+   refuses a FSMO role holder and the last domain controller.
+3. Deletes the computer account and the empty server object a demotion
+   leaves under the site, and waits until no domain controller at either
+   site knows the name any more.
+4. Removes the server's DNS records from every DNS server, and gives the
+   choice of bridgehead back to the topology generator.
+
+About 20 minutes, a third of it waiting to see that the DNS records stay
+gone. `--tags cleanup` runs steps 3 and 4 alone, for a server that is already
+demoted and off; `--tags bridgehead` runs step 1 alone and touches nothing on
+the server to be retired; `--tags bridgehead-release` undoes it.
+
+Step 1 exists because replication between two sites runs through one domain
+controller at each end, chosen by the topology generator, and the choice
+moves: on 11 October it sat on `linds-dc`, then on a rehearsal server while
+that existed, then on `linds-dc2`. If the server being retired holds it, the
+other site loses its only partner at the demotion, cannot hear that the
+partner was demoted, and by default waits two hours before trying another.
+Everything after the demotion needs the sites to agree within minutes. So
+the domain controller that stays is made the site's preferred bridgehead
+(`bridgeheadTransportList` on its server object), every topology generator
+is run, and the demotion does not start until a pull through that server has
+succeeded in each direction. A preferred bridgehead left in place would stop
+the generator choosing another one if that server went down, which is why it
+is removed again at the end.
 
 The DNS part is slower than it looks, on purpose. On a rehearsal the demotion
 and a clean-up on one DNS server left nothing behind, and a minute later all
