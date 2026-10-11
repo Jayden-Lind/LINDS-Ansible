@@ -1,0 +1,19 @@
+{{ ansible_managed | comment }}
+# One line, as Debian ships it, plus a self-test schedule (-s). -a is what
+# smartd assumes when a line names no checks; it is spelled out here so the
+# line says what it does.
+#
+#   -d removable   a drive that is gone after a restart is not an error
+#   -n standby     a drive that has spun down is left asleep
+#   -m, -M         mail root through /etc/smartmontools/run.d
+#   -s             {{ storage_health_selftest_schedule }}
+#                  T/MM/DD/d/HH: a long test on the third Friday of the month
+#                  from 21:00; ":003" starts each drive three hours after the
+#                  one before it, in the order smartd lists them at startup.
+#
+# smartd keeps the test results in the drives' own logs. Whether a test failed,
+# and whether every drive has had one lately, is read from those logs by
+# storage-health-exporter and alerted on from Prometheus.
+#
+# To see the dates this works out to:  smartd -q showtests
+DEVICESCAN -a -d removable -n standby -m root -M exec /usr/share/smartmontools/smartd-runner -s ({{ storage_health_selftest_schedule }})

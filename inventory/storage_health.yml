@@ -1,0 +1,40 @@
+---
+# Hosts whose disks are patrolled and reported on by roles/storage_health.
+#
+# A group of its own, on purpose. playbooks/proxmox.yml gives everything in
+# `proxmox` the JD storage role - ZFS datasets, NFS exports, iSCSI targets -
+# and linds-proxmox-01 must never get that. Being listed here gives a host
+# this role and nothing else.
+storage_health:
+  hosts:
+    # jd-proxmox-02: ZFS on ten drives behind an Adaptec HBA, and the NVMe it
+    # boots from. inventory/proxmox.yml has always called it this, and its
+    # address comes from there.
+    jd-proxmox-01.linds.com.au:
+      storage_health_zfs_pools:
+        # Three SSDs, one of them a worn consumer drive that has already
+        # replaced 1,231 sectors. A scrub takes a quarter of an hour.
+        - name: VM
+          scrub: weekly
+        - name: NAS-SSD
+          scrub: monthly
+        - name: HDD-20T
+          scrub: monthly
+
+    # Dell T630: a PERC H730 in RAID mode, LVM thin pools on its virtual disks.
+    linds-proxmox-01:
+      ansible_host: 192.168.6.205
+      # As set on the controller on 2026-10-10. Until then patrol read excluded
+      # every virtual disk and consistency check was off, so nothing had read
+      # the arrays end to end in years, and a rebuild of the mirror found
+      # thousands of sectors nobody knew were unreadable.
+      storage_health_raid_patrol:
+        controller: 0
+        # VD 0 "NAS" and VD 3 "RAID-5", the two four-disk RAID 5 arrays, get
+        # patrol read. VD 1 "OS" is the SSD mirror: patrol read skips arrays
+        # made only of SSDs ("PR on SSD: OnlyMixed"), so it is excluded there
+        # and gets the consistency check instead. Both run weekly.
+        patrol_read_mode: Auto
+        patrol_read_excluded_vds: [1]
+        consistency_check_mode: Sequential
+        consistency_check_excluded_vds: [0, 3]

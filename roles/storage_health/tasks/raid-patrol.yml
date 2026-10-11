@@ -1,0 +1,68 @@
+---
+# The controller patrols its own arrays: patrol read for the disk arrays, and a
+# consistency check for the SSD mirror, which patrol read skips. Both are set
+# on the controller and kept in its NVRAM, so there is no file to manage. These
+# tasks compare what the controller reports with storage_health_raid_patrol and
+# stop the play if they differ.
+#
+# They do not set anything. The commands are one line each and README.md has
+# them, but the controller accepts a wrong one without complaint, an exclusion
+# list given to it replaces the one it had, and a start time is in the
+# controller's clock, which is UTC on this one. That is a change to make by
+# hand, looking at the result.
+#
+# Between runs the same thing is watched from Prometheus: the exporter reports
+# for every virtual disk whether either patrol covers it, and
+# StorageRaidNotPatrolled fires for one that neither does.
+- name: Read the controller's patrol read settings
+  ansible.builtin.command:
+    argv:
+      - perccli
+      - "/c{{ storage_health_raid_patrol.controller }}"
+      - show
+      - patrolread
+      - J
+      - nolog
+    chdir: /tmp
+  register: storage_health_patrol_read
+  changed_when: false
+  check_mode: false
+
+- name: Read the controller's consistency check settings
+  ansible.builtin.command:
+    argv:
+      - perccli
+      - "/c{{ storage_health_raid_patrol.controller }}"
+      - show
+      - cc
+      - J
+      - nolog
+    chdir: /tmp
+  register: storage_health_consistency_check
+  changed_when: false
+  check_mode: false
+
+- name: Compare them with what this host is meant to have
+  ansible.builtin.assert:
+    that:
+      - storage_health_pr['PR Mode'] == storage_health_raid_patrol.patrol_read_mode
+      - storage_health_pr_excluded == storage_health_raid_patrol.patrol_read_excluded_vds | sort
+      - storage_health_cc['CC Operation Mode'] == storage_health_raid_patrol.consistency_check_mode
+      - storage_health_cc_excluded == storage_health_raid_patrol.consistency_check_excluded_vds | sort
+    fail_msg: >-
+      The controller's patrol settings are not the ones in
+      storage_health_raid_patrol. Patrol read is {{ storage_health_pr['PR Mode'] }}
+      and excludes virtual disks {{ storage_health_pr_excluded }}; consistency
+      check is {{ storage_health_cc['CC Operation Mode'] }} and excludes
+      {{ storage_health_cc_excluded }}. Either the inventory is out of date or
+      the controller is: roles/storage_health/README.md has the commands.
+    quiet: true
+  vars:
+    storage_health_pr: >-
+      {{ (storage_health_patrol_read.stdout | from_json).Controllers[0]['Response Data']['Controller Properties']
+         | items2dict(key_name='Ctrl_Prop', value_name='Value') }}
+    storage_health_cc: >-
+      {{ (storage_health_consistency_check.stdout | from_json).Controllers[0]['Response Data']['Controller Properties']
+         | items2dict(key_name='Ctrl_Prop', value_name='Value') }}
+    storage_health_pr_excluded: "{{ storage_health_pr['PR Excluded VDs'] | regex_findall('[0-9]+') | map('int') | sort }}"
+    storage_health_cc_excluded: "{{ storage_health_cc['CC Excluded VDs'] | regex_findall('[0-9]+') | map('int') | sort }}"

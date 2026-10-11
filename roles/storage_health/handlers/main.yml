@@ -1,0 +1,12 @@
+---
+- name: Restart node_exporter
+  ansible.builtin.systemd:
+    name: prometheus-node-exporter
+    state: restarted
+
+# smartd rereads its configuration and registers the drives again. A self-test
+# that is already running carries on: it runs in the drive, not in smartd.
+- name: Restart smartd
+  ansible.builtin.systemd:
+    name: smartmontools
+    state: restarted

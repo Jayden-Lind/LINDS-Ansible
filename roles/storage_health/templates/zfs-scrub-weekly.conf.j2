@@ -1,0 +1,7 @@
+{{ ansible_managed | comment }}
+# zfs-scrub-weekly@.timer as shipped fires on Monday at 00:00 plus up to an
+# hour, which is when the day's snapshots are replicated off the host.
+[Timer]
+OnCalendar=
+OnCalendar={{ storage_health_zfs_scrub_weekly_calendar }}
+RandomizedDelaySec=0

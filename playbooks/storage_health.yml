@@ -1,0 +1,13 @@
+---
+# Disk patrol and storage health metrics for the Proxmox hosts at both sites
+# (roles/storage_health, which has the README).
+#
+# Unlike playbooks/proxmox.yml this is safe to run in full, on both hosts, at
+# any time. It installs node_exporter and a script, restarts smartd and
+# node_exporter when their configuration changes, and touches nothing that
+# serves storage.
+- name: Storage patrol and health metrics
+  hosts: storage_health
+  remote_user: root
+  roles:
+    - storage_health

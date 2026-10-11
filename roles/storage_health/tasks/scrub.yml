@@ -1,0 +1,41 @@
+---
+# Debian's cron job scrubs every pool once a month. For a pool that is quick to
+# read and built on drives worth watching, a month is a long time for a block
+# to sit unread. OpenZFS ships zfs-scrub-weekly@<pool>.timer for exactly this;
+# the drop-in only moves it to a quieter hour.
+#
+# The monthly cron job is left alone and still covers these pools too. One
+# extra scrub a month is cheap, and it is what remains if a timer here is ever
+# disabled.
+- name: Create the drop-in directory for each weekly scrub timer
+  ansible.builtin.file:
+    path: "/etc/systemd/system/zfs-scrub-weekly@{{ item.name }}.timer.d"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ storage_health_zfs_pools | selectattr('scrub', 'defined') | selectattr('scrub', 'equalto', 'weekly') }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Set when the weekly scrubs start
+  ansible.builtin.template:
+    src: zfs-scrub-weekly.conf.j2
+    dest: "/etc/systemd/system/zfs-scrub-weekly@{{ item.name }}.timer.d/when.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ storage_health_zfs_pools | selectattr('scrub', 'defined') | selectattr('scrub', 'equalto', 'weekly') }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: storage_health_scrub_dropins
+
+- name: Scrub the weekly pools every week
+  ansible.builtin.systemd:
+    name: "zfs-scrub-weekly@{{ item.name }}.timer"
+    enabled: true
+    state: "{{ 'restarted' if storage_health_scrub_dropins is changed else 'started' }}"
+    daemon_reload: "{{ storage_health_scrub_dropins is changed }}"
+  loop: "{{ storage_health_zfs_pools | selectattr('scrub', 'defined') | selectattr('scrub', 'equalto', 'weekly') }}"
+  loop_control:
+    label: "{{ item.name }}"

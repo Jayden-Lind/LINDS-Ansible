@@ -1,0 +1,17 @@
+---
+- name: Export storage health to Prometheus
+  ansible.builtin.import_tasks: exporter.yml
+  tags: exporter
+
+- name: Schedule SMART long self-tests
+  ansible.builtin.import_tasks: selftests.yml
+  tags: selftests
+
+- name: Schedule weekly ZFS scrubs
+  ansible.builtin.import_tasks: scrub.yml
+  tags: scrub
+
+- name: Compare the RAID controller's patrol settings
+  ansible.builtin.import_tasks: raid-patrol.yml
+  when: storage_health_raid_patrol | length > 0
+  tags: raid

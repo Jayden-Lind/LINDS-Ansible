@@ -1,0 +1,12 @@
+{#- /etc/storage-health/config.json: what storage-health-exporter should expect
+    of this host. JSON has no comments; roles/storage_health/README.md has them. -#}
+{
+  "zfs_pools": {
+{% for pool in storage_health_zfs_pools %}
+    {{ pool.name | to_json }}: {"scrub_max_age_days": {{ storage_health_zfs_scrub_max_age_days[pool.scrub | default('monthly')] }}}{{ "," if not loop.last }}
+{% endfor %}
+  },
+  "zfs_scrub_max_age_days": {{ storage_health_zfs_scrub_max_age_days.monthly }},
+  "smart_long_selftest_max_age_days": {{ storage_health_selftest_max_age_days }},
+  "raid_expected": {{ (storage_health_raid_patrol | length > 0) | to_json }}
+}

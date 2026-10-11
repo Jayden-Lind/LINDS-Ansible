@@ -1,0 +1,18 @@
+[Unit]
+Description=Write storage health metrics for node_exporter
+Documentation=https://github.com/Jayden-Lind/LINDS-Ansible/blob/main/roles/storage_health/README.md
+After=zfs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/storage-health-exporter --output /run/node-exporter-textfile/storage_health.prom
+# /var/lib/storage-health: when each pool's last scrub finished.
+StateDirectory=storage-health
+# perccli writes scratch files into whatever directory it is started from.
+RuntimeDirectory=storage-health
+WorkingDirectory=/run/storage-health
+Nice=10
+IOSchedulingClass=idle
+# A run takes about three seconds. One that takes minutes is stuck on a drive
+# that has stopped answering, and the next run should get its turn.
+TimeoutStartSec=5min
