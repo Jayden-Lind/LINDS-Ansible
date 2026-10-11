@@ -6,19 +6,24 @@
 # proxmox/vms-linds.tf clones it). It arrives with a random name, a DHCP
 # address and a local Administrator password that is in the vault. From there:
 #
-#   make windows-build   HOST=<fqdn> ADDRESS=<its DHCP address>
-#       name and address it, apply the baseline and updates, join the domain
-#   make windows-edition HOST=<fqdn>
+#   make windows-prepare HOST=<fqdn> ADDRESS=<its DHCP address>
+#       baseline and Windows updates, where it stands (about an hour)
+#   make windows-edition HOST=<fqdn> ADDRESS=<its DHCP address>
 #       convert an Evaluation install (asks for the product key)
+#   make windows-build   HOST=<fqdn> ADDRESS=<its DHCP address>
+#       give it its name and address, join the domain
 #   make windows-promote HOST=<fqdn>
-#       promote it to a domain controller (restore-mode password from the
-#       vault, or typed)
+#       promote it to a domain controller
+#
+# The first two touch nothing but the clone, so when it replaces a server of
+# the same name they are done while the old one is still in service; see
+# "replacing a domain controller" in docs/windows-domain.md.
 #
 # HOST must already be in inventory/windows.yml with its windows_* variables.
-# Needs a Kerberos ticket (`make kinit`) for everything except the first two
-# plays, which talk to the clone as its local Administrator.
+# Needs a Kerberos ticket (`make kinit`) for the join and everything after it;
+# before that the plays talk to the clone as its local Administrator.
 #
-# The first three stages cannot be re-run against a finished domain
+# Nothing before the promotion can be re-run against a finished domain
 # controller: it has no local Administrator left to connect as.
 
 - name: Check the request
@@ -35,6 +40,39 @@
 
     - name: Pick the domain controller that will act for it
       ansible.builtin.import_tasks: tasks/windows-partner-dc.yml
+
+# Before it has its name: nothing here is visible to the domain or to a server
+# that still holds the name.
+- name: Baseline and updates on the clone, where it stands
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tags: [never, prepare]
+  vars:
+    ansible_host: "{{ bootstrap_address }}"
+    ansible_user: Administrator
+    ansible_password: "{{ vault_windows_bootstrap_password }}"
+    ansible_winrm_transport: ntlm
+    windows_baseline_updates: true
+  pre_tasks:
+    - name: Wait for the clone to answer
+      ansible.builtin.wait_for_connection:
+        connect_timeout: 10
+        sleep: 10
+        timeout: 900
+  roles:
+    - windows_baseline
+
+- name: Convert an Evaluation install before it joins
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tags: [never, edition-local]
+  vars:
+    ansible_host: "{{ bootstrap_address }}"
+    ansible_user: Administrator
+    ansible_password: "{{ vault_windows_bootstrap_password }}"
+    ansible_winrm_transport: ntlm
+  roles:
+    - windows_edition
 
 - name: Name and address the fresh clone
   hosts: "{{ target | default('unset') }}"

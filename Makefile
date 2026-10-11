@@ -35,15 +35,22 @@ windows-check:
 # (terraform output windows_bootstrap_addresses). See docs/windows-domain.md.
 WINDOWS_PLAY = KRB5_CONFIG=$(CURDIR)/krb5.conf ./.venv/bin/ansible-playbook
 
+windows-prepare:
+	$(WINDOWS_PLAY) playbooks/windows-build.yml --tags prepare \
+	  -e target=$(HOST) -e bootstrap_address=$(ADDRESS)
+
 windows-build:
 	$(WINDOWS_PLAY) playbooks/windows-build.yml --tags bootstrap,baseline,join \
 	  -e target=$(HOST) -e bootstrap_address=$(ADDRESS)
 
 # The product key is typed here and passed in the environment. It is not
-# stored, logged or put on a command line.
+# stored, logged or put on a command line. With ADDRESS the conversion is done
+# on a clone that has not joined yet, as its local Administrator; without, on
+# a domain member over Kerberos.
 windows-edition:
 	@bash -c 'read -r -s -p "Product key for the edition to convert to: " key && echo && \
-	  WINDOWS_PRODUCT_KEY="$$key" $(WINDOWS_PLAY) playbooks/windows-build.yml --tags edition -e target=$(HOST)'
+	  WINDOWS_PRODUCT_KEY="$$key" $(WINDOWS_PLAY) playbooks/windows-build.yml -e target=$(HOST) \
+	  $(if $(ADDRESS),--tags edition-local -e bootstrap_address=$(ADDRESS),--tags edition)'
 
 # The restore-mode password comes from the vault unless one is typed here.
 windows-promote:

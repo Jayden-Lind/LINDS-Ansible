@@ -86,34 +86,41 @@ terraform apply -target=proxmox_virtual_environment_vm.linds_dc2
 terraform output windows_bootstrap_addresses     # the clone's DHCP address
 
 # here
+make windows-prepare HOST=linds-dc2.linds.com.au ADDRESS=<that address>
+make windows-edition HOST=linds-dc2.linds.com.au ADDRESS=<that address>   # asks for the product key
 make kinit
 make windows-build   HOST=linds-dc2.linds.com.au ADDRESS=<that address>
-make windows-edition HOST=linds-dc2.linds.com.au     # asks for the product key
 make windows-promote HOST=linds-dc2.linds.com.au
 ```
 
 What each one does:
 
-- **`windows-build`** talks to the clone as its local Administrator over NTLM
-  (the password is `vault_windows_bootstrap_password`, the same one the
-  template was built with). It gives the machine its name and static address,
-  applies `windows_baseline` including Windows updates, and joins the domain.
-  The join is offline: an existing domain controller creates the computer
-  account and a one-time blob (`djoin /provision`), the new machine consumes
-  it (`djoin /requestodj`). No domain credential ever reaches the new machine,
-  and nothing has to delegate one to it.
+- **`windows-prepare`** talks to the clone as its local Administrator over
+  NTLM (the password is `vault_windows_bootstrap_password`, the same one the
+  template was built with) at the address DHCP gave it, and applies
+  `windows_baseline` including Windows updates. About an hour on
+  `linds-proxmox-01`, nearly all of it the cumulative update. Nothing in the
+  domain, and no server that still has the name, can tell it is happening.
 - **`windows-edition`** converts an Evaluation install to the full edition
   with `dism /online /set-edition`, using a product key typed at the prompt.
   The key is passed in the environment for that one run; it is not stored,
   logged or put on a command line. On a server that is already a full edition
-  it does nothing.
+  it does nothing. With `ADDRESS` it works on the clone before it has joined;
+  without, on a domain member over Kerberos.
+- **`windows-build`** gives the machine its name and static address, runs the
+  baseline again (minutes, if `windows-prepare` has been run) and joins the
+  domain. The join is offline: an existing domain controller creates the
+  computer account and a one-time blob (`djoin /provision`), the new machine
+  consumes it (`djoin /requestodj`). No domain credential ever reaches the new
+  machine, and nothing has to delegate one to it.
 - **`windows-promote`** installs AD DS and DNS, promotes the member to an
   additional domain controller and global catalog in its site, waits for
   SYSVOL, sets the DNS forwarders and the server's own resolver order, tells
   the other domain controllers about it, waits for its RID pool, runs
-  `dcdiag`, puts it in the time hierarchy and closes the template's bootstrap
+  `dcdiag`, enrols its certificate from the domain's CA and checks that LDAPS
+  answers, puts it in the time hierarchy and closes the template's bootstrap
   WinRM rule. The restore-mode password is `vault_windows_dsrm_password`
-  unless one is typed.
+  unless one is typed. About 25 minutes.
 
 From the promote stage on, the server is managed like the others: `make
 windows` covers it.
@@ -140,6 +147,22 @@ Things that were learned the hard way and are now built in:
   controller existed at LINDS, JD's inbound connection was re-pointed at it,
   and JD was left without a partner when it went. The topology generator
   repairs that by itself; the `repadmin /kcc` above makes it immediate.
+- **A ticket can outlive the key it was issued under.** A machine changes
+  its password as it joins, at the nearest domain controller. A ticket for it
+  requested a minute later from the other site was issued under the previous
+  key. The member accepted it, because a member remembers its previous
+  password; once promoted it refused it, and the restart after promotion sat
+  on "the specified credentials were rejected by the server". The same
+  happens, sooner, when a name is reused. The join stage therefore replicates
+  the new key everywhere and then runs `kinit -R`, which keeps the
+  ticket-granting ticket and drops every service ticket.
+- **"Update for Windows Security platform" (KB5007651) installs, reports
+  success and is offered again.** `win_updates` calls that a loop and fails
+  after everything else has gone in. It is in
+  `windows_baseline_update_reject` and left to Windows' own updater.
+- **A domain controller certificate has an empty subject**; its names are in
+  the alternative-name extension. A check for LDAPS that looks at the subject
+  never passes.
 - **A demoted server refuses new logons until it has restarted** ("Access is
   denied"): it is no longer a domain controller and not yet a member. The
   demotion therefore queues its own restart from inside the session that
@@ -159,9 +182,9 @@ Things that were learned the hard way and are now built in:
   `ansible_winrm_kerberos_hostname_override` in the group variables supplies
   it. Variables set on a play also apply to its `delegate_to: localhost`
   tasks, which is why the bootstrap plays have none.
-- **The first three stages cannot be re-run against a finished domain
-  controller.** It has no local Administrator left to connect as. They are
-  idempotent up to that point.
+- **Nothing before the promotion can be re-run against a finished domain
+  controller.** It has no local Administrator left to connect as. Each stage
+  can be repeated up to that point.
 
 A rehearsal identity is the safe way to try a change to any of this: a second
 inventory file with a different name and address for the same VM, passed with
@@ -185,15 +208,25 @@ Before starting, check what the old server holds that the directory does not:
 - **Shares other than SYSVOL and NETLOGON**, scheduled tasks, installed
   software, certificates with private keys.
 
-Then, with the site's other domain controller healthy (`repadmin
-/replsummary`):
+Then the order matters, because the site has one domain controller fewer
+from the retirement until the promotion has finished:
 
 ```shell
+# While the old server is still in service. An hour or more, and the product
+# key; none of it touches the domain.
+terraform apply -target=proxmox_virtual_environment_vm.linds_dc2 \
+                -replace=proxmox_virtual_environment_vm.linds_dc2    # LINDS-Terraform/proxmox
+make windows-prepare HOST=linds-dc2.linds.com.au ADDRESS=<its DHCP address>
+make windows-edition HOST=linds-dc2.linds.com.au ADDRESS=<its DHCP address>
+
+# The swap. About 40 minutes, with `repadmin /replsummary` clean beforehand.
 make windows-retire-dc HOST=linds-dc2.linds.com.au
+make windows-build     HOST=linds-dc2.linds.com.au ADDRESS=<its DHCP address>
+make windows-promote   HOST=linds-dc2.linds.com.au
 ```
 
-That demotes the old server, restarts it as a member and shuts it down, then
-on the site's other domain controller deletes what a demotion leaves behind:
+`windows-retire-dc` demotes the old server, restarts it as a member and shuts
+it down, then on the site's other domain controller deletes what a demotion leaves behind:
 the computer account, the empty server object under the site, and the DNS
 records a domain controller registers for itself (its host record and the
 `DomainDnsZones`, `ForestDnsZones` and `gc` address records). It finishes
@@ -206,12 +239,14 @@ On the hypervisor, stop the old VM from coming back (`qm set <vmid> --onboot
 not be started again on the network: it would come up as a member whose
 account no longer exists, at the address the new one now has.
 
-Then build the new one as above. The site runs on one domain controller in
-between, which for LINDS is about an hour, most of it Windows updates.
+The new server's `windows-build` renews the operator's Kerberos ticket once
+it has joined, so that no ticket issued for the old server of that name is
+offered to the new one.
 
-Afterwards the operator's ticket cache holds a service ticket for the old
-server under the same name, and connections to the new one fail with a
-decrypt-integrity error until it is renewed: `kinit -R`, or `make kinit`.
+Any other machine with a ticket cache of its own (another administrator's
+session, a script host) still holds a service ticket for the old server, and
+its connections to the new one are rejected until that ticket expires or is
+renewed: `kinit -R`, or `klist purge` on Windows.
 
 ## Runbook: the DFS-R stale junction trap
 
