@@ -34,3 +34,9 @@ windows_baseline_update_categories:
   - CriticalUpdates
   - UpdateRollups
   - DefinitionUpdates
+
+# Updates left to Windows' own updater. These report success, are offered
+# again at the next search, and so on; win_updates rightly calls that a loop
+# and fails the run after everything else has gone in.
+windows_baseline_update_reject:
+  - KB5007651 # Update for Windows Security platform

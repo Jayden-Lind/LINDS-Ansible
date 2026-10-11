@@ -82,6 +82,7 @@
 - name: Install Windows updates
   ansible.windows.win_updates:
     category_names: "{{ windows_baseline_update_categories }}"
+    reject_list: "{{ windows_baseline_update_reject }}"
     state: installed
     reboot: true
     reboot_timeout: 3600

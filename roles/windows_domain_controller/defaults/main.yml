@@ -33,3 +33,9 @@ windows_dc_ready_timeout: 1800
 # How long to wait, once the other domain controllers know this one, for the
 # RID master to allocate its RID pool.
 windows_dc_rid_pool_timeout: 900
+
+# A domain controller here must answer LDAPS (Keycloak's user federation uses
+# it), so promotion is not finished until its certificate from the domain's CA
+# is in place. Set to false in a domain with no enterprise CA.
+windows_dc_require_ldaps: true
+windows_dc_ldaps_timeout: 600

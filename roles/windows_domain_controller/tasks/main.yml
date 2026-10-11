@@ -152,6 +152,72 @@
   changed_when: false
   failed_when: windows_dc_health.output | length > 0
 
+# Keycloak binds to the domain controllers over LDAPS, which needs the
+# certificate a domain controller autoenrols from the domain's CA. Left alone
+# that happens some time in the next eight hours.
+- name: Enrol the domain controller certificates now
+  ansible.windows.win_powershell:
+    parameters:
+      TimeoutSeconds: "{{ windows_dc_ldaps_timeout | int }}"
+    script: |
+      param([int]$TimeoutSeconds)
+      $Ansible.Changed = $false
+      function Get-ServerCertificate {
+          # 1.3.6.1.5.5.7.3.1 is Server Authentication.
+          Get-ChildItem Cert:\LocalMachine\My | Where-Object {
+              $_.HasPrivateKey -and $_.NotAfter -gt (Get-Date) -and
+              ($_.EnhancedKeyUsageList.ObjectId -contains '1.3.6.1.5.5.7.3.1')
+          } | Sort-Object NotAfter -Descending | Select-Object -First 1
+      }
+      $certificate = Get-ServerCertificate
+      if (-not $certificate) {
+          gpupdate.exe /target:computer /force | Out-Null
+          $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+          do {
+              certutil.exe -pulse | Out-Null
+              Start-Sleep -Seconds 20
+              $certificate = Get-ServerCertificate
+          } until ($certificate -or (Get-Date) -gt $deadline)
+          $Ansible.Changed = [bool]$certificate
+      }
+      if (-not $certificate) {
+          throw 'No server certificate was enrolled. See "certificate autoenrollment and machine-wide DCOM" in docs/windows-domain.md, and the CertificateServicesClient-AutoEnrollment events in the Application log here.'
+      }
+      [pscustomobject]@{
+          subject = $certificate.Subject
+          issuer  = $certificate.Issuer
+          expires = $certificate.NotAfter.ToString('yyyy-MM-dd')
+      }
+  register: windows_dc_certificate
+  when: windows_dc_require_ldaps | bool
+
+- name: Wait for LDAPS to answer with it
+  ansible.windows.win_powershell:
+    parameters:
+      TimeoutSeconds: "{{ windows_dc_ldaps_timeout | int }}"
+    script: |
+      param([int]$TimeoutSeconds)
+      $Ansible.Changed = $false
+      $name = "$env:COMPUTERNAME.$env:USERDNSDOMAIN".ToLower()
+      $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+      do {
+          $subject = $null; $tcp = $null
+          try {
+              $tcp = New-Object Net.Sockets.TcpClient($name, 636)
+              # The chain is not judged here; only that the directory
+              # presents a certificate at all.
+              $ssl = New-Object Net.Security.SslStream($tcp.GetStream(), $false, { $true })
+              $ssl.AuthenticateAsClient($name)
+              $subject = $ssl.RemoteCertificate.Subject
+          } catch { } finally { if ($tcp) { $tcp.Close() } }
+          if (-not $subject) { Start-Sleep -Seconds 15 }
+      } until ($subject -or (Get-Date) -gt $deadline)
+      if (-not $subject) { throw "LDAPS on ${name}:636 did not complete a TLS handshake." }
+      $subject
+  register: windows_dc_ldaps
+  changed_when: false
+  when: windows_dc_require_ldaps | bool
+
 - name: Close the pre-domain WinRM opening left by the template
   community.windows.win_firewall_rule:
     name: WinRM bootstrap
@@ -163,3 +229,6 @@
       {{ inventory_hostname }} is a domain controller in site
       {{ windows_dc_ready.output[0].site }}, global catalog
       {{ windows_dc_ready.output[0].global_catalog }}.
+      {% if windows_dc_require_ldaps | bool %}LDAPS certificate from
+      {{ windows_dc_certificate.output[0].issuer }}, expires
+      {{ windows_dc_certificate.output[0].expires }}.{% endif %}
