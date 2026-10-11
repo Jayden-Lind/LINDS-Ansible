@@ -226,13 +226,26 @@ make windows-promote   HOST=linds-dc2.linds.com.au
 ```
 
 `windows-retire-dc` demotes the old server, restarts it as a member and shuts
-it down, then on the site's other domain controller deletes what a demotion leaves behind:
-the computer account, the empty server object under the site, and the DNS
-records a domain controller registers for itself (its host record and the
-`DomainDnsZones`, `ForestDnsZones` and `gc` address records). It finishes
-only when no domain controller at either site knows the name any more. It
-refuses a FSMO role holder and the last domain controller. `--tags cleanup`
-runs the second half alone, for a server that is already demoted and off.
+it down. Then, on the site's other domain controller, it deletes the computer
+account and the empty server object a demotion leaves under the site, waits
+until no domain controller at either site knows the name any more, and
+removes the server's DNS records. It refuses a FSMO role holder and the last
+domain controller. About 15 minutes. `--tags cleanup` runs the second half
+alone, for a server that is already demoted and off.
+
+The DNS part is slower than it looks, on purpose. On a rehearsal the demotion
+and a clean-up on one DNS server left nothing behind, and a minute later all
+three DNS servers again held ten records for the retired machine: its
+entries under `_kerberos._tcp`, `_ldap._tcp.gc` and the rest, the global
+catalog's address record, and the domain's own (`linds.com.au` resolving, one
+time in four, to a server that was switched off). A DNS server reads changes
+from the directory only every three minutes and writes back all the records
+of a name when it touches one, so a server that has not yet read a removal
+can undo it. The playbook deletes on every DNS server and ends only when two
+scans of all of them, more than three minutes apart, find nothing. If a
+domain controller has been removed by other means, check for the same
+leftovers: `Get-DnsServerResourceRecord -ZoneName linds.com.au | Where-Object
+{ $_.RecordData.DomainName -like '<name>.*' }`, on each DNS server.
 
 On the hypervisor, stop the old VM from coming back (`qm set <vmid> --onboot
 0`) and keep it until the new one has been in service for a while. It must
