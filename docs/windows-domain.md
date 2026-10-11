@@ -9,7 +9,7 @@ the template" below.
 | --- | --- | --- | --- |
 | `jd-dc-01` | 10.0.50.200 | JD | DC, GC, DNS, **PDC emulator + RID master** |
 | `linds-dc` | 10.3.1.200 | LINDS | DC, GC, DNS, schema + naming master, `linds-CA` |
-| `linds-dc2` | 10.3.1.201 | LINDS | DC, GC, DNS |
+| `linds-dc2` | 10.3.1.201 | LINDS | DC, GC, DNS. Rebuilt from the template on 11 October 2026 |
 | `jd-fs-01` | 10.0.50.201 | JD | file server, 12 TB `D:` |
 
 ## Running it
@@ -120,7 +120,7 @@ What each one does:
   `dcdiag`, enrols its certificate from the domain's CA and checks that LDAPS
   answers, puts it in the time hierarchy and closes the template's bootstrap
   WinRM rule. The restore-mode password is `vault_windows_dsrm_password`
-  unless one is typed. About 25 minutes.
+  unless one is typed. Eleven to seventeen minutes.
 
 From the promote stage on, the server is managed like the others: `make
 windows` covers it.
@@ -193,11 +193,14 @@ inventory file with a different name and address for the same VM, passed with
 
 ## Runbook: replacing a domain controller
 
-Written for `linds-dc2` in October 2026, whose component store could no longer
-take a cumulative update (see that runbook further down). The replacement
-takes the old one's name and address, so nothing that refers to it changes:
-the DNS forwarders on the router, the Keycloak LDAP URLs, `krb5.conf` and this
-inventory.
+Done for `linds-dc2` on 11 October 2026, whose component store could no
+longer take a cumulative update (see that runbook further down). The
+replacement takes the old one's name and address, so nothing that refers to it
+changes: the DNS forwarders on the router, the Keycloak LDAP URLs, `krb5.conf`
+and this inventory. That swap took 31 minutes from start to a healthy domain
+controller: 13 for the retirement, 7 for name, address and join, 11 for the
+promotion. Keycloak logged no LDAP errors meanwhile; it has all three domain
+controllers in its URL list.
 
 Before starting, check what the old server holds that the directory does not:
 
@@ -220,7 +223,7 @@ terraform apply -target=proxmox_virtual_environment_vm.linds_dc2 \
 make windows-prepare HOST=linds-dc2.linds.com.au ADDRESS=<its DHCP address>
 make windows-edition HOST=linds-dc2.linds.com.au ADDRESS=<its DHCP address>
 
-# The swap. About 50 minutes, with `repadmin /replsummary` clean beforehand.
+# The swap. About half an hour, with `repadmin /replsummary` clean beforehand.
 make windows-retire-dc HOST=linds-dc2.linds.com.au
 make windows-build     HOST=linds-dc2.linds.com.au ADDRESS=<its DHCP address>
 make windows-promote   HOST=linds-dc2.linds.com.au
@@ -239,8 +242,8 @@ domain controller:
 4. Removes the server's DNS records from every DNS server, and gives the
    choice of bridgehead back to the topology generator.
 
-About 20 minutes, a third of it waiting to see that the DNS records stay
-gone. `--tags cleanup` runs steps 3 and 4 alone, for a server that is already
+About a quarter of an hour, half of it waiting to see that the DNS records
+stay gone. `--tags cleanup` runs steps 3 and 4 alone, for a server that is already
 demoted and off; `--tags bridgehead` runs step 1 alone and touches nothing on
 the server to be retired; `--tags bridgehead-release` undoes it.
 
@@ -273,7 +276,9 @@ leftovers: `Get-DnsServerResourceRecord -ZoneName linds.com.au | Where-Object
 { $_.RecordData.DomainName -like '<name>.*' }`, on each DNS server.
 
 On the hypervisor, stop the old VM from coming back (`qm set <vmid> --onboot
-0`) and keep it until the new one has been in service for a while. It must
+0`) and keep it until the new one has been in service for a while. The old
+`linds-dc2` is VM 110 on `linds-proxmox-01`, renamed `LINDS-DC2-old`; delete
+it when nothing on its disk is wanted any more. It must
 not be started again on the network: it would come up as a member whose
 account no longer exists, at the address the new one now has.
 
@@ -570,9 +575,23 @@ lvs -o lv_name,lv_size,data_percent NAS/vm-102-disk-0   # LINDS
 zfs get used,logicalreferenced NAS-SSD/vm-1103-disk-0   # JD
 ```
 
-## Entra Connect on `linds-dc2`
+## Entra Connect (was on `linds-dc2`; not installed anywhere now)
 
-`linds-dc2` runs Entra Connect Sync 2.6.3.0 against the tenant
+**Since 11 October 2026 nothing syncs this domain to Entra.** Entra Connect
+lived on the old `linds-dc2`, which was retired that day, and the build does
+not put it on a domain controller again. Nothing that was working stopped: it
+had been in staging mode since November 2024, so it exported nothing, and its
+pass-through agent had been dead since May 2025. Its configuration export
+(52 files) and persisted state are in
+`\\linds-dc\NAS\server\backup\linds-dc2-before-rebuild-2026-10-11`. To bring
+it back, install it on a member server, import that configuration, and decide
+in the wizard between pass-through authentication (which needs a new agent)
+and password hash sync. The old server's disk (VM 110, `LINDS-DC2-old`) still
+holds the original installation.
+
+The rest of this section records the installation as it was.
+
+The old `linds-dc2` ran Entra Connect Sync 2.6.3.0 against the tenant
 `lindtestazuread.onmicrosoft.com`, with pass-through authentication as the
 sign-in method. As found, and partly fixed, on 10 October 2026:
 
@@ -629,6 +648,11 @@ domain.
 
 ## Runbook: a domain controller that boots with the wrong clock
 
+This was the old `linds-dc2`, VM 110, retired on 11 October 2026. The VMs
+Terraform creates set `ostype: win11`, so its replacement does not have the
+problem; the runbook stays because the symptoms mislead and any hand-made
+Windows VM can have it.
+
 `LINDS-DC2` (VM 110 on `linds-proxmox-01`) had no OS type set in Proxmox.
 Proxmox then gives the guest a hardware clock in UTC, and Windows reads the
 hardware clock as local time, so after every **cold start** the server came up
@@ -659,7 +683,10 @@ replication errors once the clock is right.
 
 ## Runbook: a cumulative update that will not install (`linds-dc2`)
 
-`linds-dc2` has been on build 26100.3476 (March 2025) while the other three
+Closed on 11 October 2026 by replacing the server; the new one installed the
+same update (KB5122871) in 55 minutes. Kept for the diagnosis.
+
+The old `linds-dc2` had been on build 26100.3476 (March 2025) while the other three
 moved on. On 10 October 2026 the reasons came out one behind the other.
 
 1. **No disk space.** 3 GB free of 70; the Windows Update cache alone held
@@ -759,16 +786,14 @@ As of 11 October 2026.
 
 - **Retrim fails on the guests**, so thin space is only handed back by the
   runbook above. Both sites were done on 10 October.
-- **Entra Connect is in staging mode and its pass-through agent looks dead**;
-  see the section above. Both need a tenant administrator in the wizard.
-- **`linds-dc2` cannot install cumulative updates** and is still on build
-  26100.3476; see the runbook above. Its replacement is built by
-  `playbooks/windows-build.yml` (template 160, VM 112 on `linds-proxmox-01`);
-  the swap itself is "replacing a domain controller" above. What the old one
-  held outside the directory was copied first to
-  `\\linds-dc\NAS\server\backup\linds-dc2-before-rebuild-2026-10-11`: the
-  Entra Connect configuration export, the Milestone licence and its old
-  scripts. Entra Connect is not reinstalled by the build.
+- **Nothing syncs to Entra.** Entra Connect went with the old `linds-dc2`;
+  see the section above for where its configuration is and how to bring it
+  back.
+- **The old `linds-dc2` is still on the hypervisor**: VM 110, `LINDS-DC2-old`,
+  switched off and set not to start. It was demoted first, so it holds no
+  copy of the directory. Delete it when nothing on it is wanted.
+- **The new `linds-dc2` reports itself as not activated** (volume-licence
+  channel, notification state). The other three were not checked for this.
 - **Time does not follow the domain hierarchy.** The Default Domain Policy
   sets every member, domain controllers included, to `Type=NTP` with
   `0.au.pool.ntp.org`, and policy wins over what `windows_dc_time` configures:
@@ -784,12 +809,7 @@ As of 11 October 2026.
   backed up in 90+ days.
 - **`E:\server\old_backup` on `linds-dc`** is 248 GB of Veeam backups from
   2019 to 2021, of hosts that no longer exist.
-- **`linds-dc2` holds ten expired Entra agent certificates** (pass-through and
-  Connect Health). They generate "about to expire" warnings (event 64) that are
-  noise, not enrolment failures.
 - **Dead scheduled tasks**: `jd-dc-01` and `linds-dc` each have two
   `ShadowCopyVolume{...}` tasks for volumes that no longer exist, failing twice
-  a day. The same one on `linds-dc2`, and its three vCenter tasks, were
-  disabled on 10 October.
-- **VMware Tools is still installed on `linds-dc` and `linds-dc2`.** On
-  `linds-dc2` it writes about 2,500 errors a week to the Application log.
+  a day.
+- **VMware Tools is still installed on `linds-dc`.**
