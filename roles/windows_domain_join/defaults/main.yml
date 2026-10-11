@@ -1,0 +1,14 @@
+---
+# Joins a workgroup machine to the domain without handing it a domain
+# credential: an existing domain controller creates the computer account and
+# hands back a one-time blob (an offline domain join), and the new machine
+# consumes it. The domain controller is reached with the operator's Kerberos
+# ticket, as everything else here is.
+
+windows_domain: linds.com.au
+windows_domain_netbios: LINDS
+
+# Where the computer account is created. Leave empty for the default
+# Computers container. A server that is about to be promoted is moved to
+# "Domain Controllers" by the promotion itself.
+windows_domain_join_ou: ""

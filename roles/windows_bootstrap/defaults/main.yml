@@ -1,0 +1,10 @@
+---
+# Identity a fresh clone of the Windows template is given. All of these are
+# host variables: see the host's entry in inventory/windows.yml.
+#
+#   windows_hostname       NetBIOS name, e.g. LINDS-DC2
+#   windows_ipv4_address   static address, e.g. 10.3.1.201
+#   windows_ipv4_prefix    prefix length, e.g. 24
+#   windows_ipv4_gateway   default gateway
+#   windows_dns_servers    list of resolvers; for a domain member these must be
+#                          domain controllers, or the join cannot find the domain

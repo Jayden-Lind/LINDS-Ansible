@@ -16,6 +16,16 @@ windows:
         linds-dc2.linds.com.au:
           ansible_host: 10.3.1.201
           ad_site: LINDS
+          # Built by playbooks/windows-build.yml from the Windows template.
+          windows_hostname: LINDS-DC2
+          windows_ipv4_address: 10.3.1.201
+          windows_ipv4_prefix: 24
+          windows_ipv4_gateway: 10.3.1.1
+          # The other two domain controllers; a member must resolve through
+          # the domain or it cannot find it to join.
+          windows_dns_servers:
+            - 10.3.1.200
+            - 10.0.50.200
 
     windows_fileserver:
       hosts:

@@ -1,7 +1,9 @@
 # Windows domain (linds.com.au)
 
 Four Server 2025 guests, managed over WinRM with Kerberos. Terraform owns the
-VMs (`LINDS-Terraform/proxmox/vms-jd.tf`); Ansible owns what runs inside them.
+VMs (`LINDS-Terraform/proxmox/vms-jd.tf`, `vms-linds.tf`); Ansible owns what
+runs inside them, and can build one from nothing: see "Building a server from
+the template" below.
 
 | Host | Address | Site | Role |
 | --- | --- | --- | --- |
@@ -46,6 +48,17 @@ server-side change.
 - **`windows_dc_time`** — domain time hierarchy. Reads the current PDC from AD
   rather than taking it as a variable, so moving the role moves the time
   authority with it.
+- **`windows_baseline`** — firewall on for all profiles, Defender real-time
+  protection on, SMB1 removed, Print Spooler off, event logs big enough to
+  hold more than a day, Remote Desktop with NLA, and (only when asked) Windows
+  updates. A server built from the template gets it as it is built. The
+  servers that were here before do not, until `make windows-baseline
+  HOST=<fqdn>` is run against them; `make windows` does not apply it.
+- **`windows_bootstrap`, `windows_domain_join`, `windows_edition`,
+  `windows_domain_controller`, `windows_dc_retire`, `windows_ad_converge`** —
+  the stages of building and replacing a server. They run from
+  `playbooks/windows-build.yml` and `playbooks/windows-retire-dc.yml`, not
+  from `make windows`.
 - **`windows_dfsr`** — the NAS replication group: group, replicated folders,
   members, content paths, staging and conflict quotas, and connections.
   `PrimaryMember` is deliberately not declared; it is a one-shot initial-sync
@@ -53,6 +66,225 @@ server-side change.
   every run. Staging quotas are per folder (`dfsr_staging_quota_overrides_mb`);
   the conflict quota is one value and is only ever raised, because lowering it
   purges the oldest conflict copies at once.
+
+## Building a server from the template
+
+Three tools, each doing the part it is good at:
+
+| Step | Tool | Where |
+| --- | --- | --- |
+| Install Windows unattended, add VirtIO drivers and the guest agent, sysprep, leave a template | Packer | `LINDS-Terraform/packer/windows/` |
+| Clone the template into a VM with the right CPU, memory, disk and VLAN | Terraform | `LINDS-Terraform/proxmox/vms-linds.tf` |
+| Name, address, baseline, updates, domain join, edition, promotion | Ansible | `playbooks/windows-build.yml` |
+
+The host has to be in `inventory/windows.yml` first, with its `windows_*`
+variables (`linds-dc2` is the example). Then:
+
+```shell
+# in LINDS-Terraform/proxmox
+terraform apply -target=proxmox_virtual_environment_vm.linds_dc2
+terraform output windows_bootstrap_addresses     # the clone's DHCP address
+
+# here
+make windows-prepare HOST=linds-dc2.linds.com.au ADDRESS=<that address>
+make windows-edition HOST=linds-dc2.linds.com.au ADDRESS=<that address>   # asks for the product key
+make kinit
+make windows-build   HOST=linds-dc2.linds.com.au ADDRESS=<that address>
+make windows-promote HOST=linds-dc2.linds.com.au
+```
+
+What each one does:
+
+- **`windows-prepare`** talks to the clone as its local Administrator over
+  NTLM (the password is `vault_windows_bootstrap_password`, the same one the
+  template was built with) at the address DHCP gave it, and applies
+  `windows_baseline` including Windows updates. About an hour on
+  `linds-proxmox-01`, nearly all of it the cumulative update. Nothing in the
+  domain, and no server that still has the name, can tell it is happening.
+- **`windows-edition`** converts an Evaluation install to the full edition
+  with `dism /online /set-edition`, using a product key typed at the prompt.
+  The key is passed in the environment for that one run; it is not stored,
+  logged or put on a command line. On a server that is already a full edition
+  it does nothing. With `ADDRESS` it works on the clone before it has joined;
+  without, on a domain member over Kerberos.
+- **`windows-build`** gives the machine its name and static address, runs the
+  baseline again (minutes, if `windows-prepare` has been run) and joins the
+  domain. The join is offline: an existing domain controller creates the
+  computer account and a one-time blob (`djoin /provision`), the new machine
+  consumes it (`djoin /requestodj`). No domain credential ever reaches the new
+  machine, and nothing has to delegate one to it.
+- **`windows-promote`** installs AD DS and DNS, promotes the member to an
+  additional domain controller and global catalog in its site, waits for
+  SYSVOL, sets the DNS forwarders and the server's own resolver order, tells
+  the other domain controllers about it, waits for its RID pool, runs
+  `dcdiag`, enrols its certificate from the domain's CA and checks that LDAPS
+  answers, puts it in the time hierarchy and closes the template's bootstrap
+  WinRM rule. The restore-mode password is `vault_windows_dsrm_password`
+  unless one is typed. About 25 minutes.
+
+From the promote stage on, the server is managed like the others: `make
+windows` covers it.
+
+Things that were learned the hard way and are now built in:
+
+- **An Evaluation install cannot be converted once it is a domain
+  controller.** The promote stage therefore refuses an Evaluation edition.
+  `-e windows_edition_allow_evaluation=true` overrides that for a throwaway;
+  an Evaluation server stops working 180 days after it was installed.
+- **The two sites replicate every 15 minutes, and nearly every step trips
+  over that.** A computer account created at LINDS is unknown at JD, where
+  the operator's Kerberos client asks first, and the answer is "Server not
+  found in Kerberos database". After a demotion at LINDS, JD still lists the
+  server as a domain controller and holds its account, and for a reused name
+  would issue tickets for the old machine. A new domain controller has no RID
+  pool until the RID master at JD knows it. `windows_ad_converge` deals with
+  all three: it has every domain controller recalculate its topology
+  (`repadmin /kcc`) and pull from its partners (`repadmin /syncall <dc>
+  /Aed`, twice), then waits until all of them hold, or no longer hold, the
+  computer in question. A push from the one that has the change (`/syncall
+  /AdeP`) reported success and moved nothing.
+- **The connection between the sites moves.** While a third domain
+  controller existed at LINDS, JD's inbound connection was re-pointed at it,
+  and JD was left without a partner when it went. The retirement moves it
+  onto the domain controller that stays before it demotes anything; see
+  "replacing a domain controller".
+- **A ticket can outlive the key it was issued under.** A machine changes
+  its password as it joins, at the nearest domain controller. A ticket for it
+  requested a minute later from the other site was issued under the previous
+  key. The member accepted it, because a member remembers its previous
+  password; once promoted it refused it, and the restart after promotion sat
+  on "the specified credentials were rejected by the server". The same
+  happens, sooner, when a name is reused. The join stage therefore replicates
+  the new key everywhere and then runs `kinit -R`, which keeps the
+  ticket-granting ticket and drops every service ticket.
+- **"Update for Windows Security platform" (KB5007651) installs, reports
+  success and is offered again.** `win_updates` calls that a loop and fails
+  after everything else has gone in. It is in
+  `windows_baseline_update_reject` and left to Windows' own updater.
+- **A domain controller certificate has an empty subject**; its names are in
+  the alternative-name extension. A check for LDAPS that looks at the subject
+  never passes.
+- **A demoted server refuses new logons until it has restarted** ("Access is
+  denied"): it is no longer a domain controller and not yet a member. The
+  demotion therefore queues its own restart from inside the session that
+  demotes.
+- **Server 2025 locks the local Administrator out** for ten minutes after ten
+  bad logons, and refuses all logons while setup is still running. A clone
+  therefore does not answer WinRM at all until setup has finished (that is in
+  the template), and the bootstrap stage simply waits for it.
+- **Renaming and re-addressing over the connection being used** cannot be done
+  as two ordinary tasks. The bootstrap stage hands the machine a script and 20
+  seconds' notice; it does both and restarts, and the next stage waits for it
+  on the new address.
+- **Group variables must sit beside the inventory** (`inventory/group_vars/`).
+  A `group_vars/` at the top of the repository is not read by
+  `ansible-playbook playbooks/x.yml`.
+- **The inventory connects by address, Kerberos needs the name.**
+  `ansible_winrm_kerberos_hostname_override` in the group variables supplies
+  it. Variables set on a play also apply to its `delegate_to: localhost`
+  tasks, which is why the bootstrap plays have none.
+- **Nothing before the promotion can be re-run against a finished domain
+  controller.** It has no local Administrator left to connect as. Each stage
+  can be repeated up to that point.
+
+A rehearsal identity is the safe way to try a change to any of this: a second
+inventory file with a different name and address for the same VM, passed with
+`-i inventory/ -i <file>`, and `make windows-retire-dc` to take it out again.
+
+## Runbook: replacing a domain controller
+
+Written for `linds-dc2` in October 2026, whose component store could no longer
+take a cumulative update (see that runbook further down). The replacement
+takes the old one's name and address, so nothing that refers to it changes:
+the DNS forwarders on the router, the Keycloak LDAP URLs, `krb5.conf` and this
+inventory.
+
+Before starting, check what the old server holds that the directory does not:
+
+- **FSMO roles**: `netdom query fsmo`. The retire role refuses a role holder;
+  move the roles first (`windows_ad_recovery`).
+- **DNS zones that are not AD-integrated**: `Get-DnsServerZone | Where-Object
+  { -not $_.IsDsIntegrated -and -not $_.IsAutoCreated }`. Anything listed
+  would be lost. Forwarders are per server and are set by the promote stage.
+- **Shares other than SYSVOL and NETLOGON**, scheduled tasks, installed
+  software, certificates with private keys.
+
+Then the order matters, because the site has one domain controller fewer
+from the retirement until the promotion has finished:
+
+```shell
+# While the old server is still in service. An hour or more, and the product
+# key; none of it touches the domain.
+terraform apply -target=proxmox_virtual_environment_vm.linds_dc2 \
+                -replace=proxmox_virtual_environment_vm.linds_dc2    # LINDS-Terraform/proxmox
+make windows-prepare HOST=linds-dc2.linds.com.au ADDRESS=<its DHCP address>
+make windows-edition HOST=linds-dc2.linds.com.au ADDRESS=<its DHCP address>
+
+# The swap. About 50 minutes, with `repadmin /replsummary` clean beforehand.
+make windows-retire-dc HOST=linds-dc2.linds.com.au
+make windows-build     HOST=linds-dc2.linds.com.au ADDRESS=<its DHCP address>
+make windows-promote   HOST=linds-dc2.linds.com.au
+```
+
+`windows-retire-dc` does four things, the first and last on the site's other
+domain controller:
+
+1. Moves replication between the sites onto the domain controller that is
+   staying, and proves it works in both directions (see below).
+2. Demotes the old server, restarts it as a member and shuts it down. It
+   refuses a FSMO role holder and the last domain controller.
+3. Deletes the computer account and the empty server object a demotion
+   leaves under the site, and waits until no domain controller at either
+   site knows the name any more.
+4. Removes the server's DNS records from every DNS server, and gives the
+   choice of bridgehead back to the topology generator.
+
+About 20 minutes, a third of it waiting to see that the DNS records stay
+gone. `--tags cleanup` runs steps 3 and 4 alone, for a server that is already
+demoted and off; `--tags bridgehead` runs step 1 alone and touches nothing on
+the server to be retired; `--tags bridgehead-release` undoes it.
+
+Step 1 exists because replication between two sites runs through one domain
+controller at each end, chosen by the topology generator, and the choice
+moves: on 11 October it sat on `linds-dc`, then on a rehearsal server while
+that existed, then on `linds-dc2`. If the server being retired holds it, the
+other site loses its only partner at the demotion, cannot hear that the
+partner was demoted, and by default waits two hours before trying another.
+Everything after the demotion needs the sites to agree within minutes. So
+the domain controller that stays is made the site's preferred bridgehead
+(`bridgeheadTransportList` on its server object), every topology generator
+is run, and the demotion does not start until a pull through that server has
+succeeded in each direction. A preferred bridgehead left in place would stop
+the generator choosing another one if that server went down, which is why it
+is removed again at the end.
+
+The DNS part is slower than it looks, on purpose. On a rehearsal the demotion
+and a clean-up on one DNS server left nothing behind, and a minute later all
+three DNS servers again held ten records for the retired machine: its
+entries under `_kerberos._tcp`, `_ldap._tcp.gc` and the rest, the global
+catalog's address record, and the domain's own (`linds.com.au` resolving, one
+time in four, to a server that was switched off). A DNS server reads changes
+from the directory only every three minutes and writes back all the records
+of a name when it touches one, so a server that has not yet read a removal
+can undo it. The playbook deletes on every DNS server and ends only when two
+scans of all of them, more than three minutes apart, find nothing. If a
+domain controller has been removed by other means, check for the same
+leftovers: `Get-DnsServerResourceRecord -ZoneName linds.com.au | Where-Object
+{ $_.RecordData.DomainName -like '<name>.*' }`, on each DNS server.
+
+On the hypervisor, stop the old VM from coming back (`qm set <vmid> --onboot
+0`) and keep it until the new one has been in service for a while. It must
+not be started again on the network: it would come up as a member whose
+account no longer exists, at the address the new one now has.
+
+The new server's `windows-build` renews the operator's Kerberos ticket once
+it has joined, so that no ticket issued for the old server of that name is
+offered to the new one.
+
+Any other machine with a ticket cache of its own (another administrator's
+session, a script host) still holds a service ticket for the old server, and
+its connections to the new one are rejected until that ticket expires or is
+renewed: `kinit -R`, or `klist purge` on Windows.
 
 ## Runbook: the DFS-R stale junction trap
 
@@ -523,14 +755,27 @@ Not automated: this is a repair to one host's DCOM descriptor, not fleet state.
 
 ## Known outstanding
 
-As of 10 October 2026.
+As of 11 October 2026.
 
 - **Retrim fails on the guests**, so thin space is only handed back by the
   runbook above. Both sites were done on 10 October.
 - **Entra Connect is in staging mode and its pass-through agent looks dead**;
   see the section above. Both need a tenant administrator in the wizard.
 - **`linds-dc2` cannot install cumulative updates** and is still on build
-  26100.3476; see the runbook above. It needs a repair install or replacing.
+  26100.3476; see the runbook above. Its replacement is built by
+  `playbooks/windows-build.yml` (template 160, VM 112 on `linds-proxmox-01`);
+  the swap itself is "replacing a domain controller" above. What the old one
+  held outside the directory was copied first to
+  `\\linds-dc\NAS\server\backup\linds-dc2-before-rebuild-2026-10-11`: the
+  Entra Connect configuration export, the Milestone licence and its old
+  scripts. Entra Connect is not reinstalled by the build.
+- **Time does not follow the domain hierarchy.** The Default Domain Policy
+  sets every member, domain controllers included, to `Type=NTP` with
+  `0.au.pool.ntp.org`, and policy wins over what `windows_dc_time` configures:
+  the role reports `ok` and `w32tm /query /source` on any server names the
+  pool. Everything agrees because everything asks the same pool, but a machine
+  that cannot reach the internet drifts. The setting belongs in a policy that
+  applies to the PDC emulator alone.
 - **`jd-dc-01` has 8.2 GB free on a 39.4 GB `C:`**.
 - **DNS**: `linds.com.au` accepts nonsecure dynamic updates and scavenging is
   disabled on the servers. The stale public IPv6 `AAAA` records for `jd-fs-01`

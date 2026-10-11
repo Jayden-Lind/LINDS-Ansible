@@ -1,0 +1,42 @@
+---
+# Baseline for every Windows server. Each item below answers a finding in the
+# October 2026 audit (see docs/windows-domain.md).
+
+# Windows Firewall on for every profile. Rules are left alone.
+windows_baseline_firewall_profiles:
+  - Domain
+  - Private
+  - Public
+
+# Microsoft Defender real-time protection on. Defender already excludes the
+# AD DS, DNS and DFS-R working files by itself when those roles are installed.
+windows_baseline_defender_realtime: true
+
+# The Print Spooler has no business on a server that shares no printers, and on
+# a domain controller it is a known way in.
+windows_baseline_disable_spooler: true
+
+# Event logs big enough to hold more than a day. The Security log on the
+# domain controllers was rolling over in about 24 hours.
+windows_baseline_event_logs:
+  Security: 1GB
+  System: 256MB
+  Application: 256MB
+
+# Remote Desktop on, with Network Level Authentication required.
+windows_baseline_rdp: true
+
+# Install Windows updates as part of the baseline. Off by default because it
+# can take an hour and restarts the server; the build playbook turns it on.
+windows_baseline_updates: false
+windows_baseline_update_categories:
+  - SecurityUpdates
+  - CriticalUpdates
+  - UpdateRollups
+  - DefinitionUpdates
+
+# Updates left to Windows' own updater. These report success, are offered
+# again at the next search, and so on; win_updates rightly calls that a loop
+# and fails the run after everything else has gone in.
+windows_baseline_update_reject:
+  - KB5007651 # Update for Windows Security platform

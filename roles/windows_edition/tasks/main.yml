@@ -1,0 +1,76 @@
+---
+- name: Read the installed edition
+  ansible.windows.win_powershell:
+    script: |
+      $Ansible.Changed = $false
+      $cv = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+      $role = (Get-CimInstance Win32_ComputerSystem).DomainRole
+      [pscustomobject]@{
+          edition              = $cv.EditionID
+          evaluation           = $cv.EditionID -like '*Eval'
+          is_domain_controller = $role -ge 4
+      }
+  register: windows_edition_state
+  changed_when: false
+
+- name: Report the edition
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} is {{ windows_edition_state.output[0].edition }}"
+
+- name: Stop at an Evaluation install unless a key was supplied
+  ansible.builtin.assert:
+    that: >-
+      not windows_edition_state.output[0].evaluation
+      or windows_product_key | length > 0
+      or windows_edition_allow_evaluation | bool
+    fail_msg: >-
+      {{ inventory_hostname }} is an Evaluation install
+      ({{ windows_edition_state.output[0].edition }}). It must be converted to
+      {{ windows_edition_target }} before it is promoted; a domain controller
+      cannot be converted afterwards. Run `make windows-edition HOST=...`,
+      which asks for the product key, then carry on with the build.
+
+- name: Refuse to convert a domain controller
+  ansible.builtin.assert:
+    that: not windows_edition_state.output[0].is_domain_controller
+    fail_msg: >-
+      {{ inventory_hostname }} is already a domain controller. Windows cannot
+      convert the edition of a domain controller; demote it first.
+  when:
+    - windows_edition_state.output[0].evaluation
+    - windows_product_key | length > 0
+
+- name: Convert the Evaluation install to {{ windows_edition_target }}
+  ansible.windows.win_powershell:
+    parameters:
+      Edition: "{{ windows_edition_target }}"
+    sensitive_parameters:
+      - name: ProductKey
+        value: "{{ windows_product_key }}"
+    script: |
+      param([string]$Edition, [securestring]$ProductKey)
+      $ErrorActionPreference = 'Stop'
+      $key = [Net.NetworkCredential]::new('', $ProductKey).Password
+      $out = & dism.exe /Online /Set-Edition:$Edition /ProductKey:$key /AcceptEula /NoRestart 2>&1
+      # 3010: done, restart required.
+      if ($LASTEXITCODE -notin 0, 3010) { throw "dism /Set-Edition failed ($LASTEXITCODE): $($out | Select-Object -Last 6 | Out-String)" }
+      $Ansible.Changed = $true
+  when:
+    - windows_edition_state.output[0].evaluation
+    - windows_product_key | length > 0
+  register: windows_edition_convert
+
+- name: Restart to finish the conversion
+  ansible.windows.win_reboot:
+    reboot_timeout: 1800
+  when: windows_edition_convert is changed
+
+- name: Confirm the edition after conversion
+  ansible.windows.win_powershell:
+    script: |
+      $Ansible.Changed = $false
+      (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').EditionID
+  register: windows_edition_after
+  failed_when: windows_edition_after.output[0] != windows_edition_target
+  changed_when: false
+  when: windows_edition_convert is changed
