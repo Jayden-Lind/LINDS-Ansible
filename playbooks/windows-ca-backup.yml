@@ -18,8 +18,7 @@
 # The .p12 is password-protected from the moment it is written on the CA and
 # never exists unprotected anywhere; the password travels separately and both
 # end up encrypted with the vault. After that, the CA's key is exactly as safe
-# as the vault password and as private as the repository the state directory
-# is committed to.
+# as the vault password: the state directory is in a public repository.
 #
 # To restore: decrypt the three files with `ansible-vault decrypt`, then on the
 # new server `Restore-CARoleService -Path <folder> -Password <password>`

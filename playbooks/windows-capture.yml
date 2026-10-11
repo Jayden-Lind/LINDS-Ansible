@@ -21,8 +21,10 @@
 # whatever changed it. Things that change by themselves (logon times, free
 # space, update revisions) are left out so that it shows nothing else.
 #
-# The files describe users, groups, permissions and weaknesses in plain text.
-# Think about who can read the repository they are committed to.
+# This repository is public. The files that name people, say who holds which
+# rights or show what is weak or switched off are encrypted with the vault as
+# they are written; the list is SENSITIVE in scripts/windows_state.py, and
+# windows-state/README.md says how to read them.
 
 - name: Prepare
   hosts: localhost
@@ -107,6 +109,7 @@
           - write
           - "{{ windows_capture_work }}"
           - "{{ windows_state_dir }}"
+          - "{{ playbook_dir }}/../vault_password"
       changed_when: true
 
     - name: Remove the work directory

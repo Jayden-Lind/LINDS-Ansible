@@ -68,6 +68,11 @@ windows-capture:
 windows-ca-backup:
 	$(WINDOWS_PLAY) playbooks/windows-ca-backup.yml -e windows_state_dir=$(WINDOWS_STATE)
 
+# A readable copy of the state directory, encrypted files decrypted. Put it
+# somewhere that is not a disk, and delete it afterwards.
+windows-state-plain:
+	./.venv/bin/python scripts/windows_state.py decrypt-tree $(DEST) $(WINDOWS_STATE) vault_password
+
 # One existing server at a time; see the header of the playbook.
 windows-baseline:
 	$(WINDOWS_PLAY) playbooks/windows-baseline.yml -e target=$(HOST) \

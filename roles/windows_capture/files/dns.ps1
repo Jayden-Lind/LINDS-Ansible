@@ -1,7 +1,7 @@
 # Read-only. Describes the DNS zones the directory holds: their settings, and
 # the records a person put there. Records that machines register for
-# themselves (they carry a timestamp) are counted, not listed: they come and
-# go by themselves.
+# themselves (they carry a timestamp) are left out: they come and go by
+# themselves.
 
 $ErrorActionPreference = 'Stop'
 
@@ -37,12 +37,11 @@ $zones = @(Get-DnsServerZone | Where-Object { -not $_.IsAutoCreated -and $_.Zone
         $records = @(Get-DnsServerResourceRecord -ZoneName $zone.ZoneName)
         $entry.dynamic_update     = "$($zone.DynamicUpdate)"
         $entry.zone_transfer      = "$($zone.SecureSecondaries)"
-        $entry.transfer_to        = @($zone.SecondaryServers | ForEach-Object { "$_" })
+        $entry.transfer_to        = @($zone.SecondaryServers | Where-Object { "$_" } | ForEach-Object { "$_" })
         $entry.notify             = "$($zone.Notify)"
         $entry.aging              = [bool]$aging.AgingEnabled
         $entry.no_refresh_hours   = [int]$aging.NoRefreshInterval.TotalHours
         $entry.refresh_hours      = [int]$aging.RefreshInterval.TotalHours
-        $entry.self_registered_records = @($records | Where-Object { $_.Timestamp }).Count
         # The SOA is left out: its serial number moves with every change.
         $entry.static_records = @($records | Where-Object { -not $_.Timestamp -and $_.RecordType -ne 'SOA' } | ForEach-Object {
             [ordered]@{ name = $_.HostName; type = "$($_.RecordType)"; data = DataOf $_; ttl = [int]$_.TimeToLive.TotalSeconds }

@@ -294,9 +294,8 @@ renewed: `kinit -R`, or `klist purge` on Windows.
 ## The state of the domain, captured
 
 ```shell
-make windows-capture                        # into ./windows-state
-make windows-capture WINDOWS_STATE=<dir>    # somewhere else
-git -C <state dir> diff                     # what changed since the last one
+make windows-capture             # into ./windows-state
+git diff -- windows-state        # what changed since the last one
 ```
 
 Reads the domain as it is and writes it out as a few dozen YAML files (and
@@ -311,7 +310,7 @@ console.
 | --- | --- |
 | `domain/` | The domain (levels, FSMO holders, password policy), sites and subnets, OUs with their GPO links in order, every group with its members, every user and computer with the flags that matter (delegation, pre-authentication, password never expires, SPNs), service accounts, who is in the powerful groups with nesting followed, and the explicit permissions on the domain root, AdminSDHolder and each OU |
 | `gpo/` | One folder per GPO: `report.xml` (the settings, readable), `gpo.yml` (versions, status, who may edit or apply it), `backup/` (what `Import-GPO` restores from). A backup is replaced only when the GPO's version has moved |
-| `dns/` | Zones and their settings (dynamic updates, transfers, aging), and the records somebody created. Records machines register for themselves are counted, not listed |
+| `dns/` | Zones and their settings (dynamic updates, transfers, aging), and the records somebody created. Records machines register for themselves are left out |
 | `ca/` | The CA's settings and who may manage it, every certificate template with who may enrol and the three settings that make a template dangerous, and the directory's trust stores |
 | `hosts/<server>/` | Features, shares with share and NTFS permissions one level down, NFS exports, services that are not Windows' own or log on as an account, scheduled tasks, installed software, and security settings as they are on the server (firewall, Defender, SMB, LSA, RDP, SSH, time) |
 
@@ -319,17 +318,34 @@ It runs from `jd-dc-01` for the directory, every server in the `windows` group
 for the per-server part, and the `windows_ca` group for the CA. About five
 minutes.
 
-**The files are plain text and say who the users are, who is privileged, what
-is shared with whom and what is switched off.** Decide who can read the
-repository they are committed to before committing them.
+The result is committed in [`windows-state/`](../windows-state/). **This
+repository is public**, so the files that name people, say who holds which
+rights or show what is weak or switched off are encrypted with the vault as
+they are written: users, groups, computers, privileged membership,
+delegation, the domain's password policy, every GPO's settings and backup,
+certificate template permissions, DNS zone settings, and each server's
+shares, services, software and security settings. What stays readable is the
+structure: sites, the OU tree with its GPO links, DNS records, each server's
+features and addresses, the CA's settings and public certificates. The list is
+`SENSITIVE` in `scripts/windows_state.py`.
+
+```shell
+ansible-vault view windows-state/domain/privileged.yml          # one file
+git config diff.ansible-vault.textconv "ansible-vault view"     # once per clone: readable git diff
+make windows-state-plain DEST=/dev/shm/windows-state            # a readable copy of everything
+```
+
+An encrypted file is rewritten only when its content has changed, so an
+unchanged domain still leaves `git status` clean. On GitHub the diff of an
+encrypted file is unreadable; read it locally.
 
 ### Backing up the CA
 
 ```shell
-make windows-ca-backup [WINDOWS_STATE=<dir>]
+make windows-ca-backup
 ```
 
-Writes into `<state dir>/ca/backup/`:
+Writes into `windows-state/ca/backup/`:
 
 | File | What | Stored |
 | --- | --- | --- |
@@ -358,10 +374,12 @@ beside the `.p12`, then `Restore-CARoleService -Path <folder> -Password
 <password> -Force` and `reg import` the settings. The CA keeps its name, so
 everything it has issued stays valid.
 
-**Once the key is in the vault it is exactly as safe as the vault password,
-and as private as the repository it is committed to.** Whoever has both can
-issue certificates the whole domain trusts, including logon certificates for
-any account.
+**The key is in a public repository, so it is exactly as safe as the vault
+password.** Whoever has that can issue certificates the whole domain trusts,
+including logon certificates for any account and client certificates for the
+mTLS ingress. So is everything else in the vault here. A longer vault password
+protects what is committed after it is changed; what is already in the
+history stays under the password it was encrypted with.
 
 ## Runbook: the DFS-R stale junction trap
 
