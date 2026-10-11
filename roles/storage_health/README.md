@@ -55,7 +55,7 @@ NFS, iSCSI targets), which linds-proxmox-01 must never get.
 | linds | Consistency check | VD 1 `OS` | weekly, Saturday 15:00 UTC | the controller |
 
 How long they take, for judging a change to the schedule: a scrub of `VM` is a
-quarter of an hour, `NAS-SSD` two hours, `HDD-20T` about fourteen. A long
+quarter of an hour, `NAS-SSD` two hours, `HDD-20T` nearly fifteen. A long
 self-test is 2 minutes on the HP SSDs, 1.5 to 5.5 hours on the Samsungs, 8 to
 10 hours on the 4 TB disks at linds and 31 hours on each 22 TB disk.
 
