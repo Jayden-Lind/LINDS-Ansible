@@ -14,3 +14,9 @@ windows_dc_retire_local_password: "{{ lookup('ansible.builtin.env', 'WINDOWS_LOC
 
 # Shut the server down once it is out of the domain.
 windows_dc_retire_shutdown: true
+
+# bridgehead.yml: the name of the server being retired (set by the playbook),
+# and how long to wait for replication between the sites to be seen working
+# through the domain controller that stays.
+windows_dc_retire_machine: ""
+windows_dc_retire_bridgehead_timeout: 900

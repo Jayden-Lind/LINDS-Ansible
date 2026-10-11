@@ -9,7 +9,10 @@
 # it when you are sure nothing on it is wanted.
 #
 # `--tags cleanup` runs only the last play, for a server that has already been
-# demoted and switched off.
+# demoted and switched off. `--tags bridgehead` runs only the first step
+# (moving replication between the sites onto the domain controller that
+# stays), which changes nothing about the server to be retired;
+# `--tags bridgehead-release` undoes it.
 
 - name: Check the request
   hosts: localhost
@@ -26,6 +29,18 @@
 
     - name: Pick the domain controller that will act for it
       ansible.builtin.import_tasks: tasks/windows-partner-dc.yml
+
+- name: Take replication between the sites off it first
+  hosts: windows_partner_dc
+  gather_facts: false
+  tags: bridgehead
+  tasks:
+    - name: Make the domain controller that stays the site's bridgehead
+      ansible.builtin.include_role:
+        name: windows_dc_retire
+        tasks_from: bridgehead
+      vars:
+        windows_dc_retire_machine: "{{ hostvars[target].windows_hostname | default(target.split('.')[0]) }}"
 
 - name: Demote and shut down
   hosts: "{{ target | default('unset') }}"
@@ -179,3 +194,9 @@
     - name: Report the DNS records removed
       ansible.builtin.debug:
         msg: "{{ windows_retire_dns.output | default([]) }}"
+
+    - name: Give the choice of bridgehead back to the topology generator
+      ansible.builtin.include_role:
+        name: windows_dc_retire
+        tasks_from: bridgehead-release
+      tags: [cleanup, bridgehead-release]
