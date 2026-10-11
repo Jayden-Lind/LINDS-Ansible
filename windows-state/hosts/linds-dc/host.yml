@@ -1,0 +1,119 @@
+# What this server is and what is installed on it.
+name: LINDS-DC
+domain: linds.com.au
+role: Domain controller
+os: Microsoft Windows Server 2025 Standard
+edition: ServerStandard
+build: '26100'
+memory_gb: 16
+processors: 8
+time_zone: AUS Eastern Standard Time
+features:
+  - AD-Certificate
+  - ADCS-Cert-Authority
+  - AD-Domain-Services
+  - DNS
+  - EnhancedStorage
+  - FileAndStorage-Services
+  - File-Services
+  - FS-Data-Deduplication
+  - FS-DFS-Namespace
+  - FS-DFS-Replication
+  - FS-FileServer
+  - FS-NFS-Service
+  - FS-Resource-Manager
+  - FS-SMB1
+  - FS-SMB1-CLIENT
+  - FS-SMB1-SERVER
+  - GPMC
+  - NET-Framework-45-ASPNET
+  - NET-Framework-45-Core
+  - NET-Framework-45-Features
+  - NET-Framework-Core
+  - NET-Framework-Features
+  - NET-WCF-HTTP-Activation45
+  - NET-WCF-Services45
+  - NET-WCF-TCP-Activation45
+  - NET-WCF-TCP-PortSharing45
+  - NFS-Client
+  - PowerShell
+  - PowerShellRoot
+  - RSAT
+  - RSAT-AD-AdminCenter
+  - RSAT-ADCS
+  - RSAT-ADCS-Mgmt
+  - RSAT-ADDS
+  - RSAT-ADDS-Tools
+  - RSAT-AD-PowerShell
+  - RSAT-AD-Tools
+  - RSAT-DFS-Mgmt-Con
+  - RSAT-DNS-Server
+  - RSAT-File-Services
+  - RSAT-FSRM-Mgmt
+  - RSAT-NFS-Admin
+  - RSAT-Role-Tools
+  - Search-Service
+  - Server-Media-Foundation
+  - Storage-Services
+  - System-DataArchiver
+  - WAS
+  - WAS-Config-APIs
+  - WAS-Process-Model
+  - Web-App-Dev
+  - Web-AppInit
+  - Web-ASP
+  - Web-Asp-Net45
+  - Web-Basic-Auth
+  - Web-Cert-Auth
+  - Web-Client-Auth
+  - Web-Common-Http
+  - Web-Default-Doc
+  - Web-Dir-Browsing
+  - Web-Filtering
+  - Web-Health
+  - Web-Http-Errors
+  - Web-Http-Logging
+  - Web-Http-Redirect
+  - Web-Http-Tracing
+  - Web-ISAPI-Ext
+  - Web-ISAPI-Filter
+  - Web-Lgcy-Scripting
+  - Web-Log-Libraries
+  - Web-Metabase
+  - Web-Mgmt-Compat
+  - Web-Mgmt-Console
+  - Web-Mgmt-Tools
+  - Web-Net-Ext45
+  - Web-Performance
+  - Web-Request-Monitor
+  - Web-Scripting-Tools
+  - Web-Security
+  - Web-Server
+  - Web-Stat-Compression
+  - Web-Static-Content
+  - Web-WebServer
+  - Web-WebSockets
+  - Web-Windows-Auth
+  - Web-WMI
+  - WindowsAdminCenterSetup
+  - Windows-Defender
+  - Windows-Internal-Database
+  - WoW64-Support
+volumes:
+  - letter: C
+    label: ''
+    file_system: NTFS
+    size_gb: 99
+  - letter: D
+    label: ''
+    file_system: ''
+    size_gb: 0
+  - letter: E
+    label: NAS
+    file_system: NTFS
+    size_gb: 11172
+addresses:
+  - 10.3.1.200/24 (Manual)
+dns_servers:
+  - 10.3.1.201
+  - 10.3.1.1

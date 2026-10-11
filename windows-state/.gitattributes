@@ -1,0 +1,21 @@
+# Written by scripts/windows_state.py from its SENSITIVE list.
+# Vault-encrypted files; see README.md for making their diffs readable.
+domain/domain.yml diff=ansible-vault
+domain/users.yml diff=ansible-vault
+domain/groups.yml diff=ansible-vault
+domain/computers.yml diff=ansible-vault
+domain/service-accounts.yml diff=ansible-vault
+domain/privileged.yml diff=ansible-vault
+domain/delegation.yml diff=ansible-vault
+gpo/*/gpo.yml diff=ansible-vault
+gpo/*/report.xml diff=ansible-vault
+gpo/*/backup/** diff=ansible-vault
+dns/zones.yml diff=ansible-vault
+ca/templates.yml diff=ansible-vault
+ca/backup/*.p12 diff=ansible-vault
+ca/backup/*.zip diff=ansible-vault
+ca/backup/password.yml diff=ansible-vault
+hosts/*/shares.yml diff=ansible-vault
+hosts/*/services.yml diff=ansible-vault
+hosts/*/software.yml diff=ansible-vault
+hosts/*/security.yml diff=ansible-vault

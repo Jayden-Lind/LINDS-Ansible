@@ -1,0 +1,64 @@
+# The certification authority: settings and who may manage it.
+name: linds-CA
+server: LINDS-DC.linds.com.au
+kind: Enterprise root
+key_provider: Microsoft Software Key Storage Provider
+key_algorithm: RSA
+key_size: 2048
+hash_algorithm: SHA256
+certificate:
+  subject: CN=linds-CA, DC=linds, DC=com, DC=au
+  thumbprint: EC2F3B48D3E0E3F48FF886E1B8699DCF7699BC3F
+  not_before: '2019-12-01'
+  not_after: '2029-12-01'
+  self_signed: true
+issued_validity: 2 Years
+crl_period: 1 Weeks
+crl_delta: 1 Days
+crl_locations:
+  - 65:C:\WINDOWS\system32\CertSrv\CertEnroll\%3%8%9.crl
+  - 79:ldap:///CN=%7%8,CN=%2,CN=CDP,CN=Public Key Services,CN=Services,%6%10
+  - 0:http://%1/CertEnroll/%3%8%9.crl
+  - 0:file://%1/CertEnroll/%3%8%9.crl
+aia_locations:
+  - 1:C:\WINDOWS\system32\CertSrv\CertEnroll\%1_%3%4.crt
+  - 3:ldap:///CN=%7,CN=AIA,CN=Public Key Services,CN=Services,%6%11
+  - 0:http://%1/CertEnroll/%1_%3%4.crt
+  - 0:file://%1/CertEnroll/%1_%3%4.crt
+audit_filter: null
+interface_flags: 1601
+policy_edit_flags: '0x0011014E'
+san_from_request_attribute: false
+database_directory: C:\WINDOWS\system32\CertLog
+security:
+  - who: BUILTIN\Administrators
+    access: Allowed
+    rights:
+      - ManageCA
+      - ManageCertificates
+  - who: LINDS\Domain Admins
+    access: Allowed
+    rights:
+      - ManageCA
+      - ManageCertificates
+  - who: LINDS\Enterprise Admins
+    access: Allowed
+    rights:
+      - ManageCA
+      - ManageCertificates
+  - who: NT AUTHORITY\Authenticated Users
+    access: Allowed
+    rights:
+      - Enroll
+templates_published:
+  - Administrator
+  - DirectoryEmailReplication
+  - DomainController
+  - DomainControllerAuthentication
+  - EFS
+  - EFSRecovery
+  - KerberosAuthentication
+  - Machine
+  - SubCA
+  - User
+  - WebServer

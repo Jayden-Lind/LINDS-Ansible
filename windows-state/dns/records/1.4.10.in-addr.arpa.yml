@@ -1,0 +1,14 @@
+# Records in 1.4.10.in-addr.arpa that somebody created. Records machines register for
+# themselves are not listed.
+- name: '@'
+  type: NS
+  data: jd-dc-01.linds.com.au.
+  ttl: 3600
+- name: '@'
+  type: NS
+  data: linds-dc.linds.com.au.
+  ttl: 3600
+- name: '@'
+  type: NS
+  data: linds-dc2.linds.com.au.
+  ttl: 3600

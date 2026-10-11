@@ -1,0 +1,76 @@
+# Every Group Policy object. Each has a folder with its settings report,
+# its permissions and a backup that Import-GPO can restore.
+gpos:
+  - name: Default Apps
+    folder: Default-Apps
+    id: aede7021-5e44-481e-a27f-6c7c73d4fe8b
+    status: AllSettingsEnabled
+    computer_version: 2
+    user_version: 0
+  - name: Default Domain Controllers Policy
+    folder: Default-Domain-Controllers-Policy
+    id: 6ac1786c-016f-11d2-945f-00c04fb984f9
+    status: AllSettingsEnabled
+    computer_version: 53
+    user_version: 0
+  - name: Default Domain Policy
+    folder: Default-Domain-Policy
+    id: 31b2f340-016d-11d2-945f-00c04fb984f9
+    status: AllSettingsEnabled
+    computer_version: 207
+    user_version: 44
+  - name: Drive Mapping - Everyone
+    folder: Drive-Mapping---Everyone
+    id: c3b5482a-f8f7-4d81-99e6-98f94aad2d54
+    status: AllSettingsEnabled
+    computer_version: 2
+    user_version: 61
+  - name: Drive Mapping - Jayden
+    folder: Drive-Mapping---Jayden
+    id: c968da72-7865-43c7-91d4-0aa10b3af085
+    status: AllSettingsEnabled
+    computer_version: 0
+    user_version: 13
+  - name: Drive Mapping - Server
+    folder: Drive-Mapping---Server
+    id: 19fd3113-8378-4242-bc0a-d610b518a940
+    status: AllSettingsEnabled
+    computer_version: 0
+    user_version: 65
+  - name: PC - Folder Redirection
+    folder: PC---Folder-Redirection
+    id: ce507326-f1d0-4847-8b69-09cad5b17696
+    status: AllSettingsEnabled
+    computer_version: 8
+    user_version: 0
+  - name: PC - GPO
+    folder: PC---GPO
+    id: e82cc0e8-83b5-4459-8feb-b23b49e18d63
+    status: AllSettingsEnabled
+    computer_version: 33
+    user_version: 6
+  - name: Server - GPO
+    folder: Server---GPO
+    id: 09c961b8-d419-4056-9d42-e5c404006938
+    status: AllSettingsEnabled
+    computer_version: 98
+    user_version: 0
+  - name: Updates
+    folder: Updates
+    id: 40f1fd63-6548-4567-807e-e4f8a49fbe46
+    status: AllSettingsEnabled
+    computer_version: 5
+    user_version: 0
+  - name: Users - Folder Redirection
+    folder: Users---Folder-Redirection
+    id: a119da76-8383-427b-9e97-5c280896cf70
+    status: AllSettingsEnabled
+    computer_version: 0
+    user_version: 9
+  - name: Users - GPO
+    folder: Users---GPO
+    id: 1b5cc2cf-2432-4c11-815d-810fb2085699
+    status: AllSettingsEnabled
+    computer_version: 0
+    user_version: 30
+wmi_filters: []
