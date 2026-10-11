@@ -15,9 +15,13 @@
       function Get-View([string]$Server) {
           # What one domain controller believes about the computer.
           try {
-              $account = Get-ADComputer -Filter "Name -eq '$Computer'" -Server $Server -ErrorAction Stop
+              $account = Get-ADComputer -Filter "Name -eq '$Computer'" -Properties pwdLastSet -Server $Server -ErrorAction Stop
               $isDc = [bool](Get-ADDomainController -Filter "Name -eq '$Computer'" -Server $Server -ErrorAction Stop)
-              [pscustomobject]@{ server = $Server; reachable = $true; guid = "$($account.ObjectGUID)"; dc = $isDc }
+              # The same object with the same password: a machine changes its
+              # password as it joins, and a domain controller still holding
+              # the previous one issues tickets the machine will later refuse.
+              $stamp = if ($account) { "$($account.ObjectGUID)/$($account.pwdLastSet)" } else { '' }
+              [pscustomobject]@{ server = $Server; reachable = $true; guid = $stamp; dc = $isDc }
           } catch {
               [pscustomobject]@{ server = $Server; reachable = $false; guid = ''; dc = $false }
           }

@@ -201,19 +201,27 @@
       $name = "$env:COMPUTERNAME.$env:USERDNSDOMAIN".ToLower()
       $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
       do {
-          $subject = $null; $tcp = $null
+          $presented = $null; $tcp = $null
           try {
               $tcp = New-Object Net.Sockets.TcpClient($name, 636)
               # The chain is not judged here; only that the directory
               # presents a certificate at all.
               $ssl = New-Object Net.Security.SslStream($tcp.GetStream(), $false, { $true })
               $ssl.AuthenticateAsClient($name)
-              $subject = $ssl.RemoteCertificate.Subject
+              # Not the subject: a domain controller certificate has an empty
+              # one and carries its names in the alternative-name extension.
+              if ($ssl.IsAuthenticated) {
+                  $presented = [System.Security.Cryptography.X509Certificates.X509Certificate2]$ssl.RemoteCertificate
+              }
           } catch { } finally { if ($tcp) { $tcp.Close() } }
-          if (-not $subject) { Start-Sleep -Seconds 15 }
-      } until ($subject -or (Get-Date) -gt $deadline)
-      if (-not $subject) { throw "LDAPS on ${name}:636 did not complete a TLS handshake." }
-      $subject
+          if (-not $presented) { Start-Sleep -Seconds 15 }
+      } until ($presented -or (Get-Date) -gt $deadline)
+      if (-not $presented) { throw "LDAPS on ${name}:636 did not complete a TLS handshake." }
+      [pscustomobject]@{
+          issuer     = $presented.Issuer
+          thumbprint = $presented.Thumbprint
+          expires    = $presented.NotAfter.ToString('yyyy-MM-dd')
+      }
   register: windows_dc_ldaps
   changed_when: false
   when: windows_dc_require_ldaps | bool
@@ -229,6 +237,6 @@
       {{ inventory_hostname }} is a domain controller in site
       {{ windows_dc_ready.output[0].site }}, global catalog
       {{ windows_dc_ready.output[0].global_catalog }}.
-      {% if windows_dc_require_ldaps | bool %}LDAPS certificate from
-      {{ windows_dc_certificate.output[0].issuer }}, expires
-      {{ windows_dc_certificate.output[0].expires }}.{% endif %}
+      {% if windows_dc_require_ldaps | bool %}LDAPS answers with a certificate
+      from {{ windows_dc_ldaps.output[0].issuer }} that expires
+      {{ windows_dc_ldaps.output[0].expires }}.{% endif %}

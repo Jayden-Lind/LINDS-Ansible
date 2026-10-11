@@ -132,6 +132,51 @@
         windows_domain_join_blob: "{{ hostvars[groups['windows_partner_dc'][0]].windows_domain_join_blob }}"
       when: windows_build_needs_join
 
+# A machine changes its password as it joins, on the domain controller nearest
+# to it. The operator's Kerberos client asks a different one, which for the
+# next quarter of an hour would issue tickets under the previous key. The new
+# member accepts those (it remembers its previous password); once promoted it
+# does not, and the restart after promotion then waits for half an hour on
+# "the specified credentials were rejected by the server". So: get the new key
+# everywhere, then throw away whatever tickets were issued for this name
+# before. Renewing the ticket-granting ticket empties the cache of them.
+- name: Get its new key onto every domain controller
+  hosts: windows_partner_dc
+  gather_facts: false
+  tags: join
+  tasks:
+    - name: Replicate until every domain controller holds it
+      ansible.builtin.include_role:
+        name: windows_ad_converge
+      vars:
+        windows_ad_converge_computer: "{{ hostvars[target].windows_hostname }}"
+        windows_ad_converge_state: present
+      when: hostvars[target].windows_build_needs_join
+
+- name: Forget tickets issued for this name before
+  hosts: localhost
+  gather_facts: false
+  tags: join
+  tasks:
+    - name: Renew the Kerberos ticket
+      ansible.builtin.command:
+        cmd: timeout 30 kinit -R
+        stdin: ""
+      register: windows_build_renew
+      changed_when: false
+      failed_when: false
+      when: hostvars[target].windows_build_needs_join | default(false)
+
+    - name: Say so if it could not be renewed
+      ansible.builtin.debug:
+        msg: >-
+          The Kerberos ticket could not be renewed
+          ({{ windows_build_renew.stderr | default('') | trim }}). If the next
+          stage is refused with "credentials were rejected", run `make kinit`.
+      when:
+        - windows_build_renew is not skipped
+        - windows_build_renew.rc != 0
+
 # From here on the server is a domain member and is reached like every other
 # Windows host: over Kerberos, as the operator.
 
