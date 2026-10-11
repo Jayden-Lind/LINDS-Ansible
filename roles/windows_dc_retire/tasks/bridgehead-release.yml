@@ -13,3 +13,5 @@
           Set-ADObject -Identity $me.ServerObjectDN -Remove @{ bridgeheadTransportList = $transport }
           $Ansible.Changed = $true
       }
+      # Tell the other site now rather than at its next scheduled pull.
+      foreach ($dc in Get-ADDomainController -Filter *) { & repadmin.exe /syncall $dc.HostName /Aed 2>&1 | Out-Null }

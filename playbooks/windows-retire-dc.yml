@@ -199,4 +199,7 @@
       ansible.builtin.include_role:
         name: windows_dc_retire
         tasks_from: bridgehead-release
+        # A tag on an include does not reach the tasks it includes.
+        apply:
+          tags: [cleanup, bridgehead-release]
       tags: [cleanup, bridgehead-release]
