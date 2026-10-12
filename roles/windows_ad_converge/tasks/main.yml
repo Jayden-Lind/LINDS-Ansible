@@ -35,10 +35,16 @@
       }
 
       function Get-ReplicationTrouble([string]$Server) {
-          # A domain controller with no inbound partner, or with one it cannot pull from.
+          # A domain controller with no inbound partner, or with one it cannot
+          # pull from. A link to a server that has just been demoted (shown as
+          # a deleted DSA until the topology generator clears it away) does
+          # not count: it fails by design.
           $lines = @(& repadmin.exe /showrepl $Server 2>&1 | ForEach-Object { "$_".Trim() })
-          $partners = @($lines | Where-Object { $_ -match '^\S+\\\S+ via RPC' })
-          $errors = @($lines | Where-Object { $_ -match 'CONSECUTIVE FAILURES|could not add this REPLICA LINK' })
+          $partners = 0; $source = ''; $errors = @()
+          foreach ($line in $lines) {
+              if ($line -match ' via RPC') { $source = $line; if ($line -notmatch 'deleted DSA|0ADEL') { $partners++ } }
+              elseif ($line -match 'CONSECUTIVE FAILURES|could not add this REPLICA LINK' -and $source -notmatch 'deleted DSA|0ADEL') { $errors += "$source $line" }
+          }
           if (-not $partners) { "$Server has no inbound replication partner" }
           elseif ($errors) { "${Server}: $($errors | Select-Object -First 1)" }
       }
@@ -76,6 +82,18 @@
           }
 
           # Pull mode, on every domain controller: each one fetches from all
+          # of its partners, across the site link too (/e). Twice, because a
+          # change can be two hops away. A push (/P) from the one that has
+          # the change reported success and moved nothing here.
+          foreach ($round in 1, 2) {
+              foreach ($dc in $dcs) {
+                  $out = & repadmin.exe /syncall $dc /Aed 2>&1
+                  if ($LASTEXITCODE -ne 0 -or ($out -match 'Error contacting server|SyncAll exited with fatal')) {
+                      $problems += "${dc}: " + (($out | Where-Object { $_ -match 'rror' } | Select-Object -First 1) -replace '\s+', ' ')
+                  }
+              }
+          }
+
           $agreed = $true
           $views = @()
           if ($Computer) {
