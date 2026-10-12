@@ -8,7 +8,8 @@
 # from starting again on the hypervisor (`qm set <vmid> --onboot 0`) and delete
 # it when you are sure nothing on it is wanted.
 #
-# `--tags cleanup` runs only the last play, for a server that has already been
+# `--tags unique-files` only looks for replicated files that the server alone
+# holds (worth running the day before). `--tags cleanup` runs only the last play, for a server that has already been
 # demoted and switched off. `--tags bridgehead` runs only the first step
 # (moving replication between the sites onto the domain controller that
 # stays), which changes nothing about the server to be retired;
@@ -60,6 +61,52 @@
     - name: Report
       ansible.builtin.debug:
         msg: "{{ windows_retire_fsmo.output }}"
+
+    # A member that rejoins a replicated folder with data already in it keeps
+    # only what its partner also has: anything found on it alone is set aside
+    # in a PreExisting folder and never replicated out. So a file that exists
+    # only on the server being retired has to be dealt with before it leaves.
+    - name: Look for files that only it holds in its replicated folders
+      ansible.windows.win_powershell:
+        parameters:
+          Leaving: "{{ hostvars[target].windows_hostname | default(target.split('.')[0]) }}"
+        script: |
+          param([string]$Leaving)
+          $ErrorActionPreference = 'Stop'
+          $Ansible.Changed = $false
+          if (-not (Get-Command Get-DfsReplicationGroup -ErrorAction SilentlyContinue)) { return }
+          $only = @()
+          foreach ($group in Get-DfsReplicationGroup -GroupName * -ErrorAction SilentlyContinue | Where-Object GroupName -ne 'Domain System Volume') {
+              $memberships = @(Get-DfsrMembership -GroupName $group.GroupName)
+              foreach ($mine in $memberships | Where-Object ComputerName -ieq $Leaving) {
+                  $other = $memberships | Where-Object { $_.FolderName -eq $mine.FolderName -and $_.ComputerName -ine $Leaving } | Select-Object -First 1
+                  if (-not $other) { continue }
+                  $from = "\\$($mine.ComputerName)\" + ($mine.ContentPath -replace '^(\w):', '$1$')
+                  $to   = "\\$($other.ComputerName)\" + ($other.ContentPath -replace '^(\w):', '$1$')
+                  $filters = @((Get-DfsReplicatedFolder -GroupName $group.GroupName -FolderName $mine.FolderName).FileNameToExclude)
+                  # Listing only (/L); changed, newer and older files are the
+                  # replication's business, what is wanted is files with no twin.
+                  $list = & robocopy.exe $from $to /L /E /XC /XN /XO /NJH /NJS /NDL /NC /NS /NP /FP /R:0 /W:0 /XD DfsrPrivate /XF $filters 2>&1
+                  $only += @($list | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+              }
+          }
+          [ordered]@{ count = $only.Count; first = @($only | Select-Object -First 20) } | ConvertTo-Json -Compress
+      register: windows_retire_unique
+      changed_when: false
+      tags: unique-files
+
+    - name: Stop if it holds files its partner does not
+      tags: unique-files
+      vars:
+        found: "{{ windows_retire_unique.output[0] | default('{}') | from_json }}"
+      ansible.builtin.assert:
+        that: (found.count | default(0) | int == 0) or (windows_retire_accept_unique_files | default(false) | bool)
+        fail_msg: >-
+          {{ found.count | default(0) }} files exist only on {{ target }} and would be set aside, not
+          replicated, when it rejoins. The first of them:
+          {{ found.first | default([]) | join('; ') }}.
+          Let replication finish, or copy them to the partner, or pass
+          -e windows_retire_accept_unique_files=true to go on regardless.
 
     - name: Take it out of its replication groups
       ansible.windows.win_powershell:
