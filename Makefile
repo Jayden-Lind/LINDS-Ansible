@@ -77,6 +77,11 @@ windows-capture:
 windows-ca-backup:
 	$(WINDOWS_PLAY) playbooks/windows-ca-backup.yml -e windows_state_dir=$(WINDOWS_STATE)
 
+# Attach HOST's data disks to its VM on the hypervisor (refuses while another
+# VM that has them is running).
+windows-data-disk:
+	./.venv/bin/ansible-playbook playbooks/windows-data-disk.yml -e target=$(HOST)
+
 # Install the CA on HOST: restored from windows-state/ca/backup if there is a
 # backup, new otherwise.
 windows-ca:
