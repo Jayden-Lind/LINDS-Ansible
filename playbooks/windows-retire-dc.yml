@@ -62,6 +62,14 @@
       ansible.builtin.debug:
         msg: "{{ windows_retire_fsmo.output }}"
 
+    # The two replication steps below are done from here with the DFS
+    # Replication cmdlets. Without them they could only pass by doing nothing.
+    - name: Install the replication management tools on this domain controller
+      ansible.windows.win_feature:
+        name: RSAT-DFS-Mgmt-Con
+        state: present
+      tags: unique-files
+
     # A member that rejoins a replicated folder with data already in it keeps
     # only what its partner also has: anything found on it alone is set aside
     # in a PreExisting folder and never replicated out. So a file that exists
@@ -74,7 +82,7 @@
           param([string]$Leaving)
           $ErrorActionPreference = 'Stop'
           $Ansible.Changed = $false
-          if (-not (Get-Command Get-DfsReplicationGroup -ErrorAction SilentlyContinue)) { return }
+          Import-Module DFSR
           $only = @()
           foreach ($group in Get-DfsReplicationGroup -GroupName * -ErrorAction SilentlyContinue | Where-Object GroupName -ne 'Domain System Volume') {
               $memberships = @(Get-DfsrMembership -GroupName $group.GroupName)
@@ -116,7 +124,7 @@
           param([string]$Leaving)
           $ErrorActionPreference = 'Stop'
           $Ansible.Changed = $false
-          if (-not (Get-Command Get-DfsReplicationGroup -ErrorAction SilentlyContinue)) { return 'no DFS Replication tools here' }
+          Import-Module DFSR
           # SYSVOL's own group is not one of these; demotion deals with that.
           $left = @()
           foreach ($group in Get-DfsReplicationGroup -GroupName * -ErrorAction SilentlyContinue | Where-Object GroupName -ne 'Domain System Volume') {
