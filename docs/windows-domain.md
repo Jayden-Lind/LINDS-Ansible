@@ -291,6 +291,55 @@ session, a script host) still holds a service ticket for the old server, and
 its connections to the new one are rejected until that ticket expires or is
 renewed: `kinit -R`, or `klist purge` on Windows.
 
+## The directory in code
+
+```shell
+make windows-directory-check     # what a run would change
+make windows-directory           # make it so (also part of `make windows`)
+```
+
+`windows_directory` makes the domain match two files in
+`inventory/group_vars/windows/`:
+
+| File | Holds | How to edit |
+| --- | --- | --- |
+| `directory.yml` | OUs; which GPOs are linked to each, in order; the groups this repository owns | Any editor |
+| `directory.vault.yml` | Users; who is in each owned group; the exact members of the privileged groups; the password policy and machine account quota | `ansible-vault edit` |
+
+To add someone to a group, add their name under the group in
+`windows_directory_members`. To add a user, add an entry to
+`windows_directory_users` (and, if the account should be usable at once, a
+first password under `windows_directory_initial_passwords`). To move a GPO
+link or change its order, edit the list under its OU. Then check, then run.
+
+What it will and will not do:
+
+- **It never deletes an OU, group or user for being absent from the files.**
+  The run ends with a list, "not in the code", of what exists and is not
+  described. Today that is the groups products left behind (`ADSync*`,
+  `docker-users`, `IPAMUG`, `WSUS *`, `DHCP *`) and `MSOL_abd8982191a0`, the
+  account of the Entra Connect that no longer exists.
+- **Membership is exact** for the groups in `windows_directory_members` and
+  `windows_directory_privileged`. Someone added to Domain Admins in a console
+  is taken out again by the next run. That is the point of listing the
+  privileged groups; do not list a group there unless every member should be
+  in the file.
+- **GPO links are exact** for every container listed, in the order written
+  (first wins). The GPOs themselves are not touched: they are edited in GPMC
+  and captured.
+- **It never sets the password of an existing account.**
+
+The files were generated once, from the capture of 11 October 2026, by
+`scripts/windows_directory_export.py`, so that the first run would change
+nothing; it did not. Do not run the export again: it would overwrite the
+files with whatever the domain looks like at that moment.
+
+`--check` cannot preview the membership of a group or user that the same run
+would create, because it does not exist yet; those show as ignored errors in
+a check run and work in a real one. And in a script that supports `--check`,
+`ForEach-Object <property>` returns nothing under `-WhatIf`; use a script
+block. That made the first check run propose unlinking every GPO.
+
 ## The state of the domain, captured
 
 ```shell
@@ -820,8 +869,9 @@ Authoring stays in GPMC. They are captured instead: `make windows-capture`
 backs up every one and its settings report into the state directory, and the
 diff is the drift report.
 
-**AD users, groups and OUs** are not managed yet. They are captured, which is
-the baseline that managing them will start from.
+**AD users, groups and OUs** are managed by `windows_directory`; see "The
+directory in code". Computer accounts are not: machines create their own when
+they join.
 
 **FSMO roles cannot be made highly available.** They are single-master by
 design; forcing a role onto a second DC while the original lives causes

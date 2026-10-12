@@ -57,6 +57,15 @@ windows-promote:
 	@bash -c 'read -r -s -p "Restore-mode password for $(HOST) (Enter for the one in the vault): " pw && echo && \
 	  WINDOWS_DSRM_PASSWORD="$$pw" $(WINDOWS_PLAY) playbooks/windows-build.yml --tags promote -e target=$(HOST)'
 
+# The directory (OUs, groups, users, GPO links, password policy) against
+# inventory/group_vars/windows/directory*.yml: what a run would change, and
+# the run itself.
+windows-directory-check:
+	$(WINDOWS_PLAY) playbooks/windows.yml --tags directory --check --diff
+
+windows-directory:
+	$(WINDOWS_PLAY) playbooks/windows.yml --tags directory
+
 # Where the captured state of the domain is written (see the playbook).
 WINDOWS_STATE ?= $(CURDIR)/windows-state
 
