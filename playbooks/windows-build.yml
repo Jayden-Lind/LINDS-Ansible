@@ -227,11 +227,43 @@
   roles:
     - windows_edition
 
-- name: Promote to a domain controller
+# What the server becomes is decided by the groups it is in: a domain
+# controller, the CA, a file server, or several of those at once.
+- name: Baseline as a domain member
   hosts: "{{ target | default('unset') }}"
   gather_facts: false
   tags: promote
   roles:
     - windows_baseline
-    - windows_domain_controller
-    - windows_dc_time
+
+- name: Promote to a domain controller
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tags: promote
+  tasks:
+    - name: Domain controller
+      ansible.builtin.include_role:
+        name: "{{ item }}"
+      loop: [windows_domain_controller, windows_dc_time]
+      when: inventory_hostname in groups['windows_dc'] | default([])
+
+- name: Certification authority
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tags: promote
+  tasks:
+    - name: Install or restore the CA
+      ansible.builtin.include_role:
+        name: windows_ca
+        tasks_from: install
+      when: inventory_hostname in groups['windows_ca'] | default([])
+
+- name: File server
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tags: promote
+  tasks:
+    - name: Data volumes, shares and exports
+      ansible.builtin.include_role:
+        name: windows_fileserver
+      when: inventory_hostname in groups['windows_fileserver'] | default([])

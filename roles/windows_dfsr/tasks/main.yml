@@ -37,7 +37,7 @@
       foreach ($f in $Folders) {
           if ($existing -notcontains $f) {
               New-DfsReplicatedFolder -GroupName $Group -FolderName $f | Out-Null
-              $Ansible.Result += "created folder $f"
+              "created folder $f"
               $Ansible.Changed = $true
           }
       }
@@ -58,7 +58,7 @@
       foreach ($m in $Members) {
           if ($existing -notcontains $m) {
               Add-DfsrMember -GroupName $Group -ComputerName $m | Out-Null
-              $Ansible.Result += "added member $m"
+              "added member $m"
               $Ansible.Changed = $true
           }
       }
@@ -100,7 +100,7 @@
               if ($set.Count) {
                   Set-DfsrMembership -GroupName $Group -FolderName $f -ComputerName $member `
                       @set -Force | Out-Null
-                  $Ansible.Result += "$member/$f -> $($set.Keys -join ',')"
+                  "$member/$f -> $($set.Keys -join ',')"
                   $Ansible.Changed = $true
               }
           }
@@ -126,7 +126,7 @@
           if (-not $existing) {
               Add-DfsrConnection -GroupName $Group `
                   -SourceComputerName $c.source -DestinationComputerName $c.destination | Out-Null
-              $Ansible.Result += "created $($c.source) -> $($c.destination)"
+              "created $($c.source) -> $($c.destination)"
               $Ansible.Changed = $true
               continue
           }
@@ -135,7 +135,7 @@
               Set-DfsrConnection -GroupName $Group `
                   -SourceComputerName $c.source -DestinationComputerName $c.destination `
                   -DisableConnection $false -DisableRDC (-not $Rdc) | Out-Null
-              $Ansible.Result += "updated $($c.source) -> $($c.destination)"
+              "updated $($c.source) -> $($c.destination)"
               $Ansible.Changed = $true
           }
       }

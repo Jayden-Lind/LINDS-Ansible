@@ -1,0 +1,109 @@
+---
+- name: A domain name must be given
+  ansible.builtin.assert:
+    that:
+      - windows_forest_domain | length > 0
+      - windows_dsrm_password | length >= 12
+    fail_msg: Set windows_forest_domain, and a restore-mode password (vault_windows_dsrm_password).
+
+- name: See what this server is, and whether that domain already exists
+  ansible.windows.win_powershell:
+    parameters:
+      Domain: "{{ windows_forest_domain }}"
+    script: |
+      param([string]$Domain)
+      $Ansible.Changed = $false
+      $cs = Get-CimInstance Win32_ComputerSystem
+      $answers = @(Resolve-DnsName -Name "_ldap._tcp.dc._msdcs.$Domain" -Type SRV -ErrorAction SilentlyContinue |
+                   Where-Object { $_.NameTarget } | ForEach-Object NameTarget | Sort-Object -Unique)
+      [pscustomobject]@{ role = [int]$cs.DomainRole; domain = $cs.Domain; existing = ($answers -join ', ') } | ConvertTo-Json -Compress
+  register: windows_forest_state
+  changed_when: false
+
+- name: Refuse to create a second forest of the same name
+  ansible.builtin.assert:
+    that: state.role >= 4 or state.existing | length == 0
+    fail_msg: >-
+      {{ windows_forest_domain }} already exists: {{ state.existing }} answers
+      for it. A new server joins that domain (playbooks/windows-build.yml); it
+      does not create it again.
+  vars:
+    state: "{{ windows_forest_state.output[0] | from_json }}"
+
+- name: Install the directory, DNS and management features
+  ansible.windows.win_feature:
+    name: [AD-Domain-Services, DNS, GPMC, RSAT-AD-Tools, RSAT-DNS-Server]
+    state: present
+    include_management_tools: true
+  register: windows_forest_features
+
+- name: Restart if the features asked for it
+  ansible.windows.win_reboot:
+    reboot_timeout: 900
+  when: windows_forest_features.reboot_required
+
+- name: Create the forest
+  ansible.windows.win_powershell:
+    parameters:
+      Domain: "{{ windows_forest_domain }}"
+      Netbios: "{{ windows_forest_netbios }}"
+    sensitive_parameters:
+      - name: SafeModePassword
+        value: "{{ windows_dsrm_password }}"
+    script: |
+      param([string]$Domain, [string]$Netbios, [securestring]$SafeModePassword)
+      $ErrorActionPreference = 'Stop'
+      Import-Module ADDSDeployment
+      Install-ADDSForest -DomainName $Domain -DomainNetbiosName $Netbios -InstallDns:$true `
+          -SafeModeAdministratorPassword $SafeModePassword -NoRebootOnCompletion:$true -Force:$true `
+          -WarningAction SilentlyContinue | Out-Null
+      # Between this and its restart the server refuses every new logon: its
+      # local accounts are gone and its domain is not up. So the restart is
+      # queued from inside this session, as with a demotion.
+      Start-Process -FilePath shutdown.exe -ArgumentList '/r', '/t', '10', '/c', '"Restarting as the first domain controller"'
+      $Ansible.Changed = $true
+  when: (windows_forest_state.output[0] | from_json).role < 4
+  register: windows_forest_created
+
+- name: Wait for it to come back as its first domain controller
+  ansible.builtin.wait_for_connection:
+    delay: 90
+    connect_timeout: 10
+    sleep: 15
+    timeout: 1800
+  when: windows_forest_created is changed
+
+- name: Wait for the directory to be served
+  ansible.windows.win_powershell:
+    script: |
+      $Ansible.Changed = $false
+      $deadline = (Get-Date).AddMinutes(20)
+      do {
+          $ready = $false
+          try { Import-Module ActiveDirectory -ErrorAction Stop; $d = Get-ADDomain -ErrorAction Stop
+                $ready = @(Get-SmbShare -Name SYSVOL, NETLOGON -ErrorAction Stop).Count -eq 2 } catch { }
+          if (-not $ready) { Start-Sleep -Seconds 20 }
+      } until ($ready -or (Get-Date) -gt $deadline)
+      if (-not $ready) { throw 'The new directory was not being served when the wait ran out.' }
+      "$($d.DNSRoot) ($($d.NetBIOSName)), forest mode $((Get-ADForest).ForestMode)"
+  register: windows_forest_ready
+  changed_when: false
+
+- name: Set the DNS server's forwarders
+  ansible.windows.win_powershell:
+    parameters:
+      Forwarders: "{{ windows_forest_dns_forwarders }}"
+    script: |
+      param([string[]]$Forwarders)
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      $have = @((Get-DnsServerForwarder).IPAddress | ForEach-Object { $_.IPAddressToString })
+      if ($Forwarders -and (Compare-Object $have $Forwarders -SyncWindow 0)) {
+          Set-DnsServerForwarder -IPAddress $Forwarders
+          $Ansible.Changed = $true
+      }
+  when: windows_forest_dns_forwarders | length > 0
+
+- name: Report
+  ansible.builtin.debug:
+    msg: "{{ windows_forest_ready.output[0] }}"
