@@ -10,11 +10,6 @@ ntauth:
     not_before: '2019-12-01'
     not_after: '2029-12-01'
     self_signed: true
-  - subject: CN=linds-LINDS-DC-CA-1, DC=linds, DC=com, DC=au
-    thumbprint: AB834018593148AC01F53FBE387102D9656442AE
-    not_before: '2019-11-29'
-    not_after: '2024-11-29'
-    self_signed: true
 root_authorities:
   - subject: CN=linds-CA, DC=linds, DC=com, DC=au
     thumbprint: 5CC82DD0C6B69C2B8C40A3EC6C7773BD5336A256

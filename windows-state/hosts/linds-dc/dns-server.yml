@@ -2,8 +2,8 @@
 forwarders:
   - 10.0.50.1
 recursion: true
-scavenging: true
-scavenging_interval_hours: 24
+scavenging: false
+scavenging_interval_hours: 0
 listens_on:
   - 10.3.1.200
-  - fe80::523e:a03f:4d60:d831
+  - fe80::3f84:ad2e:f35a:55c3

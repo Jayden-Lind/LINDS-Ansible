@@ -26,7 +26,15 @@
   ttl: 3600
 - name: _msdcs
   type: NS
-  data: linds-dc.linds.com.au.
+  data: JD-DC-01.linds.com.au.
+  ttl: 3600
+- name: _msdcs
+  type: NS
+  data: LINDS-DC.linds.com.au.
+  ttl: 3600
+- name: _msdcs
+  type: NS
+  data: LINDS-DC2.linds.com.au.
   ttl: 3600
 - name: jd-dc-01
   type: A
