@@ -77,6 +77,11 @@ windows-capture:
 windows-ca-backup:
 	$(WINDOWS_PLAY) playbooks/windows-ca-backup.yml -e windows_state_dir=$(WINDOWS_STATE)
 
+# Install the CA on HOST: restored from windows-state/ca/backup if there is a
+# backup, new otherwise.
+windows-ca:
+	$(WINDOWS_PLAY) playbooks/windows-ca.yml -e target=$(HOST) -e windows_state_dir=$(WINDOWS_STATE)
+
 # A readable copy of the state directory, encrypted files decrypted. Put it
 # somewhere that is not a disk, and delete it afterwards.
 windows-state-plain:

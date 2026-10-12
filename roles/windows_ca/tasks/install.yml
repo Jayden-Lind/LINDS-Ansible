@@ -1,0 +1,80 @@
+---
+- name: Install the certification authority role
+  ansible.windows.win_feature:
+    name: [ADCS-Cert-Authority, RSAT-ADCS]
+    state: present
+    include_management_tools: true
+
+- name: See whether a CA is already configured here
+  ansible.windows.win_powershell:
+    script: |
+      $Ansible.Changed = $false
+      [bool](Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\CertSvc\Configuration' -ErrorAction SilentlyContinue).Active
+  register: windows_ca_configured
+  changed_when: false
+
+- name: Look for a backup to restore from
+  ansible.builtin.find:
+    paths: "{{ windows_state_dir }}/ca/backup"
+    patterns: "*.p12"
+  delegate_to: localhost
+  connection: local
+  register: windows_ca_backups
+  become: false
+
+- name: Restore the CA from its backup
+  ansible.builtin.include_tasks: restore.yml
+  when:
+    - not windows_ca_configured.output[0]
+    - windows_ca_backups.files | length > 0
+
+- name: Create a new CA
+  ansible.windows.win_powershell:
+    parameters:
+      Name: "{{ windows_ca_name }}"
+      KeyLength: "{{ windows_ca_key_length | int }}"
+      Hash: "{{ windows_ca_hash }}"
+      Years: "{{ windows_ca_validity_years | int }}"
+    script: |
+      param([string]$Name, [int]$KeyLength, [string]$Hash, [int]$Years)
+      $ErrorActionPreference = 'Stop'
+      Import-Module ADCSDeployment
+      Install-AdcsCertificationAuthority -CAType EnterpriseRootCa -CACommonName $Name -KeyLength $KeyLength `
+          -HashAlgorithmName $Hash -ValidityPeriod Years -ValidityPeriodUnits $Years -Force | Out-Null
+      $Ansible.Changed = $true
+  when:
+    - not windows_ca_configured.output[0]
+    - windows_ca_backups.files | length == 0
+
+- name: Publish exactly the listed certificate templates
+  ansible.windows.win_powershell:
+    parameters:
+      Templates: "{{ windows_ca_templates }}"
+    script: |
+      param([string[]]$Templates)
+      $ErrorActionPreference = 'Stop'
+      Import-Module ADCSAdministration
+      $Ansible.Changed = $false
+      $have = @(Get-CATemplate | ForEach-Object Name)
+      foreach ($t in $Templates | Where-Object { $_ -notin $have }) { Add-CATemplate -Name $t -Force; $Ansible.Changed = $true }
+      foreach ($t in $have | Where-Object { $_ -notin $Templates }) { Remove-CATemplate -Name $t -Force; $Ansible.Changed = $true }
+  when: windows_ca_templates | length > 0
+
+- name: Check that the CA answers, and say what it is
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      $name = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\CertSvc\Configuration').Active
+      $ping = & certutil.exe -ping 2>&1
+      if ($LASTEXITCODE -ne 0) { throw "The CA does not answer: $($ping | Select-Object -Last 2)" }
+      $cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Subject -match "CN=$name" -and $_.HasPrivateKey } | Sort-Object NotAfter -Descending | Select-Object -First 1
+      $issued = @(& certutil.exe -view -restrict 'Disposition=20' -out RequestID csv 2>$null).Count - 1
+      "{0} on {1}: certificate {2}, valid to {3:yyyy-MM-dd}; {4} certificates issued on record; templates: {5}" -f $name, $env:COMPUTERNAME,
+          $cert.Thumbprint, $cert.NotAfter, [Math]::Max($issued, 0), ((Get-CATemplate | ForEach-Object Name | Sort-Object) -join ', ')
+  register: windows_ca_report
+  changed_when: false
+
+- name: Report
+  ansible.builtin.debug:
+    msg: "{{ windows_ca_report.output[0] }}"

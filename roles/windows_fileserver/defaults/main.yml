@@ -1,0 +1,43 @@
+---
+# What makes a server the file server for a data disk that outlives it.
+#
+# The disk is never created or formatted here. It arrives from the
+# hypervisor already holding the data and its permissions (which name domain
+# accounts, so they mean the same on any server of the domain). A disk moved
+# to a freshly built server arrives offline, read-only and under whatever
+# drive letter was free: this role brings it online and gives it its letter.
+# Then it recreates what lives on the server rather than on the disk: the
+# shares, the NFS exports and the shadow-copy schedule.
+#
+# Shares and exports are exact for the names listed; one that exists and is
+# not listed is left alone.
+
+# Data volumes, found by their label.
+#   - {label: NAS, letter: E}
+windows_fileserver_volumes: []
+
+# SMB shares.
+#   - name: NAS
+#     path: E:\
+#     description: ""
+#     access_based_enumeration: false
+#     permissions:
+#       - {who: Everyone, rights: Change}      # Full, Change or Read
+windows_fileserver_shares: []
+
+# NFS exports. Anything not listed under clients gets no access.
+#   - name: NAS
+#     path: E:\
+#     authentication: [sys]
+#     unmapped_user_access: true
+#     clients:
+#       - {client: 10.3.1.20, permission: readwrite, root: true}
+windows_fileserver_nfs_shares: []
+
+# Shadow copies ("Previous Versions"), as a scheduled task per volume.
+#   - {letter: E, days: [monday, tuesday, wednesday, thursday, friday], times: ["07:00", "12:00"]}
+windows_fileserver_shadow_copies: []
+
+# Whether this server is a DFS Replication member (the membership itself is
+# windows_dfsr's business; this only installs the service and its tools).
+windows_fileserver_replication: false

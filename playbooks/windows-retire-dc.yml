@@ -30,6 +30,78 @@
     - name: Pick the domain controller that will act for it
       ansible.builtin.import_tasks: tasks/windows-partner-dc.yml
 
+# A domain controller cannot be demoted while it holds a FSMO role or the CA,
+# and a replication member that simply vanishes leaves its partners waiting
+# for it. Each of these hands over what the server carries, and does nothing
+# if it carries none of it.
+- name: Hand its FSMO roles to the domain controller that stays
+  hosts: windows_partner_dc
+  gather_facts: false
+  tags: handover
+  tasks:
+    - name: Move whatever roles it holds
+      ansible.windows.win_powershell:
+        parameters:
+          Leaving: "{{ hostvars[target].windows_hostname | default(target.split('.')[0]) }}"
+        script: |
+          param([string]$Leaving)
+          $ErrorActionPreference = 'Stop'
+          Import-Module ActiveDirectory
+          $Ansible.Changed = $false
+          $dc = Get-ADDomainController -Filter "Name -eq '$Leaving'"
+          if (-not $dc) { return 'not a domain controller any more' }
+          $roles = @($dc.OperationMasterRoles | ForEach-Object { "$_" })
+          if (-not $roles) { return 'holds no FSMO roles' }
+          Move-ADDirectoryServerOperationMasterRole -Identity $env:COMPUTERNAME -OperationMasterRole $roles -Confirm:$false
+          $Ansible.Changed = $true
+          "moved to $($env:COMPUTERNAME): $($roles -join ', ')"
+      register: windows_retire_fsmo
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: "{{ windows_retire_fsmo.output }}"
+
+    - name: Take it out of its replication groups
+      ansible.windows.win_powershell:
+        parameters:
+          Leaving: "{{ hostvars[target].windows_hostname | default(target.split('.')[0]) }}"
+        script: |
+          param([string]$Leaving)
+          $ErrorActionPreference = 'Stop'
+          $Ansible.Changed = $false
+          if (-not (Get-Command Get-DfsReplicationGroup -ErrorAction SilentlyContinue)) { return 'no DFS Replication tools here' }
+          # SYSVOL's own group is not one of these; demotion deals with that.
+          $left = @()
+          foreach ($group in Get-DfsReplicationGroup -GroupName * -ErrorAction SilentlyContinue | Where-Object GroupName -ne 'Domain System Volume') {
+              if (Get-DfsrMember -GroupName $group.GroupName | Where-Object ComputerName -ieq $Leaving) {
+                  Remove-DfsrMember -GroupName $group.GroupName -ComputerName $Leaving -Force
+                  $left += $group.GroupName
+              }
+          }
+          $Ansible.Changed = $left.Count -gt 0
+          if ($left) { "removed from: $($left -join ', ')" } else { 'not a member of any replication group' }
+      register: windows_retire_dfsr
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: "{{ windows_retire_dfsr.output }}"
+
+- name: Back up the CA one last time
+  ansible.builtin.import_playbook: windows-ca-backup.yml
+  when: target in groups['windows_ca'] | default([])
+  tags: handover
+
+- name: Take the CA off it
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tags: handover
+  tasks:
+    - name: Remove the CA role
+      ansible.builtin.include_role:
+        name: windows_ca
+        tasks_from: remove
+      when: inventory_hostname in groups['windows_ca'] | default([])
+
 - name: Take replication between the sites off it first
   hosts: windows_partner_dc
   gather_facts: false
