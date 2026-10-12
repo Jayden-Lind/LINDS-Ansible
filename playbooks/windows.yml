@@ -14,6 +14,8 @@
     - windows_ad_topology
     - windows_ad_recovery
     - windows_dfsr
+    - role: windows_directory
+      tags: directory
 
 - name: Per-DC configuration
   hosts: windows_dc

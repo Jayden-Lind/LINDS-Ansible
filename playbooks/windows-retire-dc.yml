@@ -8,7 +8,8 @@
 # from starting again on the hypervisor (`qm set <vmid> --onboot 0`) and delete
 # it when you are sure nothing on it is wanted.
 #
-# `--tags cleanup` runs only the last play, for a server that has already been
+# `--tags unique-files` only looks for replicated files that the server alone
+# holds (worth running the day before). `--tags cleanup` runs only the last play, for a server that has already been
 # demoted and switched off. `--tags bridgehead` runs only the first step
 # (moving replication between the sites onto the domain controller that
 # stays), which changes nothing about the server to be retired;
@@ -29,6 +30,180 @@
 
     - name: Pick the domain controller that will act for it
       ansible.builtin.import_tasks: tasks/windows-partner-dc.yml
+
+# A member that rejoins a replicated folder with data already in it keeps only
+# what its partner also has: anything found on it alone is set aside in a
+# PreExisting folder and never replicated out. So a file that exists only on
+# the server being retired has to be dealt with before it leaves.
+#
+# Each side lists its own files locally (seconds for hundreds of thousands)
+# and the lists are compared here. Comparing the two trees file by file
+# across the tunnel took half an hour for one folder.
+- name: Make sure it holds no replicated file that its partner lacks
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tags: [handover, unique-files]
+  tasks:
+    - name: Replication management tools
+      ansible.windows.win_feature:
+        name: RSAT-DFS-Mgmt-Con
+        state: present
+
+    - name: Compare its replicated folders with its partner's
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $Ansible.Changed = $false
+          Import-Module DFSR
+          $me = $env:COMPUTERNAME
+
+          $lister = {
+              param([string[]]$Roots, [string[]]$Filters)
+              # robocopy in list mode against a folder that does not exist: every
+              # file is "new". Into a Unicode log, not through the pipeline: its
+              # console output mangles accented names, and differently on each
+              # side, which made 286 files with an accent in their name look lonely.
+              $out = Join-Path $env:SystemRoot ('Temp\replicated-files-' + [guid]::NewGuid().ToString('N') + '.txt')
+              $log = "$out.log"
+              $writer = New-Object IO.StreamWriter $out
+              foreach ($root in $Roots) {
+                  $prefix = $root.TrimEnd('\').Length + 1
+                  & robocopy.exe $root 'C:\does-not-exist-compare-only' /L /E /XJ /NJH /NJS /NDL /NC /NS /NP /FP /R:0 /W:0 /XD DfsrPrivate /XF $Filters "/UNILOG:$log" | Out-Null
+                  foreach ($raw in [IO.File]::ReadLines($log, [Text.Encoding]::Unicode)) {
+                      $line = $raw.Trim()
+                      if ($line.Length -gt $prefix) { $writer.WriteLine(((Split-Path $root -Leaf) + '|' + $line.Substring($prefix)).ToLowerInvariant()) }
+                  }
+              }
+              $writer.Close()
+              Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
+              $out
+          }
+
+          $lonely = New-Object Collections.Generic.List[string]
+          $compared = 0
+          foreach ($group in Get-DfsReplicationGroup -GroupName * -ErrorAction SilentlyContinue | Where-Object GroupName -ne 'Domain System Volume') {
+              $all = @(Get-DfsrMembership -GroupName $group.GroupName)
+              $mine = @($all | Where-Object ComputerName -ieq $me)
+              if (-not $mine) { continue }
+              $partner = ($all | Where-Object ComputerName -ine $me | Select-Object -First 1).ComputerName
+              if (-not $partner) { continue }
+              $pairs = @(foreach ($m in $mine) {
+                  $theirs = $all | Where-Object { $_.FolderName -eq $m.FolderName -and $_.ComputerName -ieq $partner }
+                  if ($theirs) { [pscustomobject]@{ here = $m.ContentPath; there = $theirs.ContentPath } }
+              })
+              $filters = @(Get-DfsReplicatedFolder -GroupName $group.GroupName | ForEach-Object { $_.FileNameToExclude } | Sort-Object -Unique)
+
+              # Two arguments, each an array. Wrapping each in another array joins it into one string on the far side.
+              $remoteList = Invoke-Command -ComputerName $partner -ScriptBlock $lister -ArgumentList @($pairs.there), $filters
+              if (-not (Invoke-Command -ComputerName $partner -ScriptBlock { param($f) (Get-Item -LiteralPath $f).Length } -ArgumentList $remoteList)) {
+                  throw "$partner listed no files at all in $($pairs.there -join ', '): not comparing against nothing."
+              }
+              $localList  = & $lister @($pairs.here) $filters
+              try {
+                  $theirs = New-Object Collections.Generic.HashSet[string]
+                  $remotePath = "\\$partner\" + ($remoteList -replace '^(\w):', '$1$$')
+                  foreach ($line in [IO.File]::ReadLines($remotePath)) { [void]$theirs.Add($line) }
+                  foreach ($line in [IO.File]::ReadLines($localList)) { $compared++; if (-not $theirs.Contains($line)) { $lonely.Add($line) } }
+              } finally {
+                  Remove-Item -LiteralPath $localList -Force -ErrorAction SilentlyContinue
+                  Invoke-Command -ComputerName $partner -ScriptBlock { param($f) Remove-Item -LiteralPath $f -Force } -ArgumentList $remoteList
+              }
+          }
+          [ordered]@{ compared = $compared; count = $lonely.Count; first = @($lonely | Select-Object -First 20) } | ConvertTo-Json -Compress
+      register: windows_retire_unique
+      changed_when: false
+
+    - name: Stop if it holds files its partner does not
+      vars:
+        found: "{{ windows_retire_unique.output[0] | default('{}') | from_json }}"
+      ansible.builtin.assert:
+        that: (found.count | default(0) | int == 0) or (windows_retire_accept_unique_files | default(false) | bool)
+        success_msg: "{{ found.compared | default(0) }} replicated files compared; none exists only here."
+        fail_msg: >-
+          {{ found.count | default(0) }} of {{ found.compared | default(0) }} replicated files exist only on
+          {{ target }} and would be set aside, not replicated, when it rejoins. The first of them:
+          {{ found.first | default([]) | join('; ') }}.
+          Let replication finish, or copy them to the partner, or pass
+          -e windows_retire_accept_unique_files=true to go on regardless.
+
+# A domain controller cannot be demoted while it holds a FSMO role or the CA,
+# and a replication member that simply vanishes leaves its partners waiting
+# for it. Each of these hands over what the server carries, and does nothing
+# if it carries none of it.
+- name: Hand its FSMO roles to the domain controller that stays
+  hosts: windows_partner_dc
+  gather_facts: false
+  tags: handover
+  tasks:
+    - name: Move whatever roles it holds
+      ansible.windows.win_powershell:
+        parameters:
+          Leaving: "{{ hostvars[target].windows_hostname | default(target.split('.')[0]) }}"
+        script: |
+          param([string]$Leaving)
+          $ErrorActionPreference = 'Stop'
+          Import-Module ActiveDirectory
+          $Ansible.Changed = $false
+          $dc = Get-ADDomainController -Filter "Name -eq '$Leaving'"
+          if (-not $dc) { return 'not a domain controller any more' }
+          $roles = @($dc.OperationMasterRoles | ForEach-Object { "$_" })
+          if (-not $roles) { return 'holds no FSMO roles' }
+          Move-ADDirectoryServerOperationMasterRole -Identity $env:COMPUTERNAME -OperationMasterRole $roles -Confirm:$false
+          $Ansible.Changed = $true
+          "moved to $($env:COMPUTERNAME): $($roles -join ', ')"
+      register: windows_retire_fsmo
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: "{{ windows_retire_fsmo.output }}"
+
+    # Done from here with the DFS Replication cmdlets. Without them the step
+    # could only pass by doing nothing.
+    - name: Install the replication management tools on this domain controller
+      ansible.windows.win_feature:
+        name: RSAT-DFS-Mgmt-Con
+        state: present
+
+    - name: Take it out of its replication groups
+      ansible.windows.win_powershell:
+        parameters:
+          Leaving: "{{ hostvars[target].windows_hostname | default(target.split('.')[0]) }}"
+        script: |
+          param([string]$Leaving)
+          $ErrorActionPreference = 'Stop'
+          $Ansible.Changed = $false
+          Import-Module DFSR
+          # SYSVOL's own group is not one of these; demotion deals with that.
+          $left = @()
+          foreach ($group in Get-DfsReplicationGroup -GroupName * -ErrorAction SilentlyContinue | Where-Object GroupName -ne 'Domain System Volume') {
+              if (Get-DfsrMember -GroupName $group.GroupName | Where-Object ComputerName -ieq $Leaving) {
+                  Remove-DfsrMember -GroupName $group.GroupName -ComputerName $Leaving -Force
+                  $left += $group.GroupName
+              }
+          }
+          $Ansible.Changed = $left.Count -gt 0
+          if ($left) { "removed from: $($left -join ', ')" } else { 'not a member of any replication group' }
+      register: windows_retire_dfsr
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: "{{ windows_retire_dfsr.output }}"
+
+- name: Back up the CA one last time
+  ansible.builtin.import_playbook: windows-ca-backup.yml
+  when: target in groups['windows_ca'] | default([])
+  tags: handover
+
+- name: Take the CA off it
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tags: handover
+  tasks:
+    - name: Remove the CA role
+      ansible.builtin.include_role:
+        name: windows_ca
+        tasks_from: remove
+      when: inventory_hostname in groups['windows_ca'] | default([])
 
 - name: Take replication between the sites off it first
   hosts: windows_partner_dc

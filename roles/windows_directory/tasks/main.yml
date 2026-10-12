@@ -1,0 +1,199 @@
+---
+# Depth by depth, so that a parent exists before its children.
+- name: Organizational units
+  microsoft.ad.ou:
+    name: "{{ item.1.ou.split(',')[0].split('=', 1)[1] }}"
+    path: "{{ (item.1.ou.split(',')[1:] + [windows_directory_base]) | join(',') }}"
+    description: "{{ item.1.description | default(omit, true) }}"
+    protect_from_deletion: "{{ item.1.protected | default(true) }}"
+    state: present
+  loop: "{{ range(1, 8) | product(windows_directory_ous) | list }}"
+  when: item.1.ou.split(',') | length == item.0
+  loop_control:
+    label: "{{ item.1.ou }}"
+
+- name: Groups
+  microsoft.ad.group:
+    name: "{{ item.name }}"
+    path: "{{ item.ou }},{{ windows_directory_base }}"
+    scope: "{{ item.scope }}"
+    category: "{{ item.category | default('security') }}"
+    description: "{{ item.description | default(omit, true) }}"
+    state: present
+  loop: "{{ windows_directory_groups }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Users
+  microsoft.ad.user:
+    identity: "{{ item.name }}"
+    name: "{{ item.display_name | default(item.name) }}"
+    sam_account_name: "{{ item.name }}"
+    path: "{{ item.ou }},{{ windows_directory_base }}"
+    upn: "{{ item.upn | default(omit, true) }}"
+    enabled: "{{ item.enabled | default(true) }}"
+    description: "{{ item.description | default(omit, true) }}"
+    password_never_expires: "{{ item.password_never_expires | default(omit) }}"
+    password: "{{ windows_directory_initial_passwords[item.name] | default(omit) }}"
+    update_password: on_create
+    state: present
+  loop: "{{ windows_directory_users }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: "{{ item.name in windows_directory_initial_passwords }}"
+
+# --check cannot preview the membership of a group, or of a user, that the
+# same run would create: it does not exist yet. Those show as errors in a
+# check run, are ignored there, and are not errors in a real one.
+- name: Members of the groups this repository owns, exactly
+  microsoft.ad.group:
+    identity: "{{ item.key }}"
+    members:
+      set: "{{ item.value }}"
+    state: present
+  loop: "{{ windows_directory_members | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Members of the privileged groups, exactly
+  microsoft.ad.group:
+    identity: "{{ item.key }}"
+    members:
+      set: "{{ item.value }}"
+    state: present
+  loop: "{{ windows_directory_privileged | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Group Policy links, in order
+  ansible.windows.win_powershell:
+    parameters:
+      Base: "{{ windows_directory_base }}"
+      Links: "{{ windows_directory_gpo_links | to_json }}"
+    script: |
+      [CmdletBinding(SupportsShouldProcess)]
+      param([string]$Base, [string]$Links)
+      $ErrorActionPreference = 'Stop'
+      Import-Module GroupPolicy
+      $Ansible.Changed = $false
+      $changes = @()
+      $wanted = $Links | ConvertFrom-Json
+      foreach ($container in $wanted.PSObject.Properties) {
+          $target = if ($container.Name -eq 'domain') { $Base } else { "$($container.Name),$Base" }
+          $have = @((Get-GPInheritance -Target $target).GpoLinks | Sort-Object Order)
+          $want = @($container.Value)
+          for ($i = 0; $i -lt $want.Count; $i++) {
+              $name = $want[$i].gpo
+              $enabled  = if ($null -eq $want[$i].enabled)  { 'Yes' } elseif ($want[$i].enabled)  { 'Yes' } else { 'No' }
+              $enforced = if ($want[$i].enforced) { 'Yes' } else { 'No' }
+              $order = $i + 1
+              $link = $have | Where-Object DisplayName -eq $name
+              if (-not $link) {
+                  $changes += "link '$name' to $target at $order"
+                  if ($PSCmdlet.ShouldProcess($target, "link $name")) {
+                      New-GPLink -Name $name -Target $target -LinkEnabled $enabled -Enforced $enforced -Order $order | Out-Null
+                  }
+              } elseif ($link.Order -ne $order -or $link.Enabled -ne ($enabled -eq 'Yes') -or $link.Enforced -ne ($enforced -eq 'Yes')) {
+                  $changes += "'$name' on ${target}: order $($link.Order)->$order, enabled $($link.Enabled)->$enabled, enforced $($link.Enforced)->$enforced"
+                  if ($PSCmdlet.ShouldProcess($target, "correct link $name")) {
+                      Set-GPLink -Name $name -Target $target -LinkEnabled $enabled -Enforced $enforced -Order $order | Out-Null
+                  }
+              }
+          }
+          # A script block, not `ForEach-Object gpo`: that form honours -WhatIf and
+          # returns nothing in check mode, which made every link look unwanted.
+          $names = @($want | ForEach-Object { $_.gpo })
+          foreach ($extra in $have | Where-Object { $_.DisplayName -notin $names }) {
+              $changes += "unlink '$($extra.DisplayName)' from $target (not in the code)"
+              if ($PSCmdlet.ShouldProcess($target, "unlink $($extra.DisplayName)")) {
+                  Remove-GPLink -Guid $extra.GpoId -Target $target | Out-Null
+              }
+          }
+      }
+      $Ansible.Changed = $changes.Count -gt 0
+      $changes
+  register: windows_directory_links
+
+- name: Password policy and machine account quota
+  ansible.windows.win_powershell:
+    parameters:
+      Policy: "{{ windows_directory_password_policy | default({}) | to_json }}"
+      Quota: "{{ windows_directory_machine_account_quota | default(-1) | int }}"
+    script: |
+      [CmdletBinding(SupportsShouldProcess)]
+      param([string]$Policy, [int]$Quota)
+      $ErrorActionPreference = 'Stop'
+      Import-Module ActiveDirectory
+      $Ansible.Changed = $false
+      $changes = @()
+      $domain = Get-ADDomain
+      $want = $Policy | ConvertFrom-Json
+      if ($want.PSObject.Properties.Count) {
+          $have = Get-ADDefaultDomainPasswordPolicy
+          $now = [ordered]@{
+              min_length = $have.MinPasswordLength; complexity = $have.ComplexityEnabled; history = $have.PasswordHistoryCount
+              max_age_days = $have.MaxPasswordAge.Days; min_age_days = $have.MinPasswordAge.Days
+              lockout_threshold = $have.LockoutThreshold; lockout_minutes = [int]$have.LockoutDuration.TotalMinutes
+              lockout_window_minutes = [int]$have.LockoutObservationWindow.TotalMinutes; reversible_encryption = $have.ReversibleEncryptionEnabled
+          }
+          $different = @($now.Keys | Where-Object { $null -ne $want.$_ -and "$($want.$_)" -ne "$($now[$_])" })
+          if ($different) {
+              $changes += $different | ForEach-Object { "password policy ${_}: $($now[$_]) -> $($want.$_)" }
+              if ($PSCmdlet.ShouldProcess($domain.DNSRoot, 'set the password policy')) {
+                  $merged = @{}; $now.Keys | ForEach-Object { $merged[$_] = if ($null -ne $want.$_) { $want.$_ } else { $now[$_] } }
+                  Set-ADDefaultDomainPasswordPolicy -Identity $domain.DistinguishedName `
+                      -MinPasswordLength $merged.min_length -ComplexityEnabled ([bool]$merged.complexity) -PasswordHistoryCount $merged.history `
+                      -MaxPasswordAge (New-TimeSpan -Days $merged.max_age_days) -MinPasswordAge (New-TimeSpan -Days $merged.min_age_days) `
+                      -LockoutThreshold $merged.lockout_threshold -LockoutDuration (New-TimeSpan -Minutes $merged.lockout_minutes) `
+                      -LockoutObservationWindow (New-TimeSpan -Minutes $merged.lockout_window_minutes) `
+                      -ReversibleEncryptionEnabled ([bool]$merged.reversible_encryption)
+              }
+          }
+      }
+      if ($Quota -ge 0) {
+          $current = (Get-ADObject $domain.DistinguishedName -Properties 'ms-DS-MachineAccountQuota').'ms-DS-MachineAccountQuota'
+          if ($current -ne $Quota) {
+              $changes += "machine account quota: $current -> $Quota"
+              if ($PSCmdlet.ShouldProcess($domain.DNSRoot, 'set the machine account quota')) {
+                  Set-ADDomain -Identity $domain.DistinguishedName -Replace @{ 'ms-DS-MachineAccountQuota' = $Quota }
+              }
+          }
+      }
+      $Ansible.Changed = $changes.Count -gt 0
+      $changes
+  register: windows_directory_policy
+
+- name: Find what exists in the domain and is not in the code
+  ansible.windows.win_powershell:
+    parameters:
+      Users: "{{ windows_directory_users | map(attribute='name') | list }}"
+      Groups: "{{ windows_directory_groups | map(attribute='name') | list }}"
+      Ous: "{{ windows_directory_ous | map(attribute='ou') | list }}"
+      Base: "{{ windows_directory_base }}"
+    script: |
+      param([string[]]$Users, [string[]]$Groups, [string[]]$Ous, [string]$Base)
+      $Ansible.Changed = $false
+      Import-Module ActiveDirectory
+      # Whatever Windows itself created is marked critical, and is not ours.
+      $found = @()
+      $found += Get-ADUser -Filter * -Properties isCriticalSystemObject | Where-Object { -not $_.isCriticalSystemObject -and $_.SamAccountName -notin $Users } |
+                ForEach-Object { "user $($_.SamAccountName)" }
+      $found += Get-ADGroup -Filter * -Properties isCriticalSystemObject | Where-Object {
+                    -not $_.isCriticalSystemObject -and $_.SamAccountName -notin $Groups -and $_.DistinguishedName -notlike '*,CN=Builtin,*' } |
+                ForEach-Object { "group $($_.SamAccountName)" }
+      $found += Get-ADOrganizationalUnit -Filter * | Where-Object {
+                    $_.DistinguishedName -ne "OU=Domain Controllers,$Base" -and ($_.DistinguishedName -replace [regex]::Escape(",$Base") + '$') -notin $Ous } |
+                ForEach-Object { "OU $($_.DistinguishedName)" }
+      $found | Sort-Object
+  register: windows_directory_unmanaged
+  changed_when: false
+  check_mode: false
+
+- name: Report
+  ansible.builtin.debug:
+    msg:
+      gpo_links: "{{ windows_directory_links.output | default([]) }}"
+      policy: "{{ windows_directory_policy.output | default([]) }}"
+      not_in_the_code: "{{ windows_directory_unmanaged.output | default([]) }}"

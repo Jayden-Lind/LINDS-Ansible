@@ -1,0 +1,15 @@
+---
+# The certificate templates linds-CA issues, as captured on 11 October 2026.
+# After a restore the CA publishes the default set; this puts the list back.
+windows_ca_templates:
+  - Administrator
+  - DirectoryEmailReplication
+  - DomainController
+  - DomainControllerAuthentication
+  - EFS
+  - EFSRecovery
+  - KerberosAuthentication
+  - Machine
+  - SubCA
+  - User
+  - WebServer

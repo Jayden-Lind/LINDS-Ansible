@@ -1,0 +1,176 @@
+---
+- name: Bring the data volumes online under their letters
+  ansible.windows.win_powershell:
+    parameters:
+      Volumes: "{{ windows_fileserver_volumes | to_json }}"
+    script: |
+      param([string]$Volumes)
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      $done = @()
+      foreach ($want in ($Volumes | ConvertFrom-Json)) {
+          # A moved disk is offline, so its volume cannot be seen yet.
+          foreach ($disk in Get-Disk | Where-Object { $_.IsOffline -or $_.IsReadOnly }) {
+              if ($disk.IsOffline)  { Set-Disk -Number $disk.Number -IsOffline $false;  $Ansible.Changed = $true }
+              if ((Get-Disk -Number $disk.Number).IsReadOnly) { Set-Disk -Number $disk.Number -IsReadOnly $false; $Ansible.Changed = $true }
+          }
+          $volume = $null
+          foreach ($try in 1..10) {
+              $volume = Get-Volume | Where-Object { $_.FileSystemLabel -eq $want.label -and $_.DriveType -eq 'Fixed' }
+              if ($volume) { break }; Start-Sleep -Seconds 2
+          }
+          if (-not $volume) { throw "No volume labelled '$($want.label)' on this server. Is the data disk attached to the VM?" }
+          if (@($volume).Count -gt 1) { throw "More than one volume is labelled '$($want.label)'." }
+          if ("$($volume.DriveLetter)" -ne $want.letter) {
+              # Whatever holds the letter now (usually the CD drive) moves aside.
+              $holder = Get-CimInstance Win32_Volume -Filter "DriveLetter='$($want.letter):'"
+              if ($holder) {
+                  $free = [char[]](70..90) | Where-Object { -not (Get-CimInstance Win32_Volume -Filter "DriveLetter='${_}:'") -and "$_" -ne $want.letter } | Select-Object -Last 1
+                  Set-CimInstance -InputObject $holder -Property @{ DriveLetter = "${free}:" }
+              }
+              Get-Partition | Where-Object { $_.AccessPaths -contains $volume.Path } | Set-Partition -NewDriveLetter $want.letter
+              $Ansible.Changed = $true
+          }
+          $done += "$($want.label) is $($want.letter):"
+      }
+      $done
+  when: windows_fileserver_volumes | length > 0
+
+- name: Install the file server roles
+  ansible.windows.win_feature:
+    name: >-
+      {{ ['FS-FileServer']
+         + (['FS-NFS-Service'] if windows_fileserver_nfs_shares | length > 0 else [])
+         + (['FS-DFS-Replication', 'RSAT-DFS-Mgmt-Con'] if windows_fileserver_replication | bool else []) }}
+    state: present
+    include_management_tools: true
+  register: windows_fileserver_features
+
+- name: Restart if the roles asked for it
+  ansible.windows.win_reboot:
+    reboot_timeout: 1200
+  when: windows_fileserver_features.reboot_required
+
+- name: Clear what a previous server's replication left on the data volumes
+  ansible.builtin.import_tasks: replication-reset.yml
+  when: windows_fileserver_replication | bool
+
+- name: SMB shares and who may use them
+  ansible.windows.win_powershell:
+    parameters:
+      Shares: "{{ windows_fileserver_shares | to_json }}"
+    script: |
+      [CmdletBinding(SupportsShouldProcess)]
+      param([string]$Shares)
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      $changes = @()
+      foreach ($want in ($Shares | ConvertFrom-Json)) {
+          if (-not (Test-Path -LiteralPath $want.path)) { throw "$($want.path), the path of share $($want.name), does not exist." }
+          $share = Get-SmbShare -Name $want.name -ErrorAction SilentlyContinue
+          $abe = if ($want.access_based_enumeration) { 'AccessBased' } else { 'Unrestricted' }
+          if (-not $share) {
+              $changes += "create share $($want.name) at $($want.path)"
+              if ($PSCmdlet.ShouldProcess($want.name, 'create share')) {
+                  # Created with nobody on it; the permissions follow.
+                  New-SmbShare -Name $want.name -Path $want.path -Description "$($want.description)" -FolderEnumerationMode $abe | Out-Null
+                  Get-SmbShareAccess -Name $want.name | ForEach-Object { Revoke-SmbShareAccess -Name $want.name -AccountName $_.AccountName -Force | Out-Null }
+              } else { continue }
+          } elseif ($share.Path -ne $want.path) {
+              throw "Share $($want.name) exists at $($share.Path), not $($want.path). Remove it by hand if that is meant."
+          } elseif ("$($share.Description)" -ne "$($want.description)" -or "$($share.FolderEnumerationMode)" -ne $abe) {
+              $changes += "share $($want.name): description or enumeration mode"
+              if ($PSCmdlet.ShouldProcess($want.name, 'update share')) {
+                  Set-SmbShare -Name $want.name -Description "$($want.description)" -FolderEnumerationMode $abe -Force | Out-Null
+              }
+          }
+          $have = @(Get-SmbShareAccess -Name $want.name -ErrorAction SilentlyContinue | Where-Object AccessControlType -eq 'Allow')
+          foreach ($p in $want.permissions) {
+              $current = $have | Where-Object AccountName -eq $p.who
+              if (-not $current -or "$($current.AccessRight)" -ne $p.rights) {
+                  $changes += "share $($want.name): $($p.who) = $($p.rights)"
+                  if ($PSCmdlet.ShouldProcess($want.name, "grant $($p.who)")) {
+                      if ($current) { Revoke-SmbShareAccess -Name $want.name -AccountName $p.who -Force | Out-Null }
+                      Grant-SmbShareAccess -Name $want.name -AccountName $p.who -AccessRight $p.rights -Force | Out-Null
+                  }
+              }
+          }
+          $names = @($want.permissions | ForEach-Object { $_.who })
+          foreach ($extra in $have | Where-Object { $_.AccountName -notin $names }) {
+              $changes += "share $($want.name): remove $($extra.AccountName)"
+              if ($PSCmdlet.ShouldProcess($want.name, "revoke $($extra.AccountName)")) {
+                  Revoke-SmbShareAccess -Name $want.name -AccountName $extra.AccountName -Force | Out-Null
+              }
+          }
+      }
+      $Ansible.Changed = $changes.Count -gt 0
+      $changes
+  register: windows_fileserver_smb
+  when: windows_fileserver_shares | length > 0
+
+- name: NFS exports and which machines may mount them
+  ansible.windows.win_powershell:
+    parameters:
+      Exports: "{{ windows_fileserver_nfs_shares | to_json }}"
+    script: |
+      [CmdletBinding(SupportsShouldProcess)]
+      param([string]$Exports)
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      $changes = @()
+      foreach ($want in ($Exports | ConvertFrom-Json)) {
+          $export = Get-NfsShare -Name $want.name -ErrorAction SilentlyContinue
+          if (-not $export) {
+              $changes += "create export $($want.name) at $($want.path)"
+              if ($PSCmdlet.ShouldProcess($want.name, 'create export')) {
+                  New-NfsShare -Name $want.name -Path $want.path -Authentication @($want.authentication) `
+                      -EnableUnmappedAccess ([bool]$want.unmapped_user_access) -EnableAnonymousAccess ([bool]$want.anonymous_access) `
+                      -Permission no-access | Out-Null
+              } else { continue }
+          }
+          $have = @(Get-NfsSharePermission -Name $want.name | Where-Object { $_.ClientType -ne 'builtin' })
+          foreach ($c in $want.clients) {
+              $current = $have | Where-Object ClientName -eq $c.client
+              if (-not $current -or "$($current.Permission)" -ne $c.permission -or [bool]$current.AllowRootAccess -ne [bool]$c.root) {
+                  $changes += "export $($want.name): $($c.client) = $($c.permission), root $([bool]$c.root)"
+                  if ($PSCmdlet.ShouldProcess($want.name, "grant $($c.client)")) {
+                      Grant-NfsSharePermission -Name $want.name -ClientName $c.client -ClientType host -Permission $c.permission -AllowRootAccess ([bool]$c.root)
+                  }
+              }
+          }
+          $names = @($want.clients | ForEach-Object { $_.client })
+          foreach ($extra in $have | Where-Object { $_.ClientName -notin $names }) {
+              $changes += "export $($want.name): remove $($extra.ClientName)"
+              if ($PSCmdlet.ShouldProcess($want.name, "revoke $($extra.ClientName)")) {
+                  Revoke-NfsSharePermission -Name $want.name -ClientName $extra.ClientName -ClientType host
+              }
+          }
+      }
+      $Ansible.Changed = $changes.Count -gt 0
+      $changes
+  register: windows_fileserver_nfs
+  when: windows_fileserver_nfs_shares | length > 0
+
+- name: Shadow copy schedule
+  community.windows.win_scheduled_task:
+    name: "shadow-copy-{{ item.letter }}"
+    description: "Shadow copy of {{ item.letter }}: for Previous Versions (LINDS-Ansible, role windows_fileserver)."
+    actions:
+      - path: C:\Windows\System32\vssadmin.exe
+        arguments: "create shadow /for={{ item.letter }}:"
+    triggers: >-
+      {{ item.times | map('regex_replace', '^(.*)$', '{"type": "weekly", "days_of_week": "' ~ (item.days | join(',')) ~ '", "start_boundary": "2026-01-05T\1:00"}')
+         | map('from_json') | list }}
+    username: SYSTEM
+    run_level: highest
+    enabled: true
+    state: present
+  loop: "{{ windows_fileserver_shadow_copies }}"
+  loop_control:
+    label: "{{ item.letter }}:"
+
+- name: Report
+  ansible.builtin.debug:
+    msg:
+      smb: "{{ windows_fileserver_smb.output | default([]) }}"
+      nfs: "{{ windows_fileserver_nfs.output | default([]) }}"

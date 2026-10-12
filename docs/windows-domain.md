@@ -122,6 +122,12 @@ What each one does:
   WinRM rule. The restore-mode password is `vault_windows_dsrm_password`
   unless one is typed. Eleven to seventeen minutes.
 
+**What the server becomes follows the groups it is in** in
+`inventory/windows.yml`, and a server can be in several: `windows_dc` (promoted
+as above), `windows_ca` (the CA is installed, restored from the vaulted backup
+if there is one) and `windows_fileserver` (its data disk is brought online and
+its shares and exports recreated). `make windows-promote` does all that apply.
+
 From the promote stage on, the server is managed like the others: `make
 windows` covers it.
 
@@ -191,6 +197,85 @@ A rehearsal identity is the safe way to try a change to any of this: a second
 inventory file with a different name and address for the same VM, passed with
 `-i inventory/ -i <file>`, and `make windows-retire-dc` to take it out again.
 
+## A server with a data disk
+
+The NAS volumes outlive the servers that serve them. A data disk is never
+created, formatted or resized by any of this. It belongs to another VM on the
+hypervisor and is attached to the server's VM by reference:
+
+```shell
+make windows-data-disk HOST=linds-dc.linds.com.au
+```
+
+reads `windows_vm` from the inventory and, on the hypervisor, attaches each
+disk listed there to the server's VM. **It refuses while any other VM that
+has the disk is running**: two machines writing one NTFS volume destroy it.
+It also sets those other VMs not to start with the host, and protects the VM
+that owns the volume from deletion.
+
+Why this is safe: Proxmox deletes only the volumes that carry the ID of the
+VM being destroyed. Tried with a 4 GB dummy disk on 12 October 2026: a VM
+with the dummy attached by reference was replaced through Terraform, and
+later destroyed outright; the disk and the file on it were there each time.
+The LINDS-Backup VM has attached the NAS disk this way for years.
+
+On a freshly built server the disk arrives **offline, read-only and under
+whatever drive letter was free**. `windows_fileserver` finds the volume by
+its label, brings it online and gives it its letter; then, if the server is
+to be a replication member, clears the previous member's replication state
+from it (the database under `System Volume Information\DFSR` and the
+`DfsrPrivate` link in each folder, as the two DFS-R runbooks below require);
+then recreates what lives on the server rather than on the disk: SMB shares
+and their permissions, NFS exports and their clients, and the shadow-copy
+schedule. File permissions need nothing: they are on the disk and name domain
+accounts.
+
+A server's shares are in `inventory/host_vars/<fqdn>/fileserver.vault.yml`
+(`ansible-vault edit`).
+
+## The CA in code
+
+```shell
+make windows-ca-backup               # key, database, settings into windows-state/ca/backup
+make windows-ca HOST=<fqdn>          # install on HOST: restored if there is a backup, new if not
+```
+
+`windows_ca` installs the role and then either restores the CA from the
+vaulted backup (same name, same key, same database: everything it issued
+stays valid and stays revocable) or creates a new one. The certificate
+templates it issues are `windows_ca_templates` (for `linds-dc`, in its
+`host_vars`): after a restore the CA publishes the default set, because the
+list lives in the directory and goes when the role is removed.
+
+Installing a CA writes to the forest's configuration, so that part runs as
+the operator; the database is only handed over to, and taken back from, the
+server's own SYSTEM account, which is why those two steps use `become`.
+
+**A domain controller cannot be demoted while it has the CA role.** The
+retirement backs the CA up one last time and removes the role first. From
+that point the old server cannot simply be switched back on as the CA: the
+way back is the restore.
+
+## A new forest
+
+```shell
+ansible-playbook -i <inventory> playbooks/windows-forest.yml \
+    -e target=<fqdn> -e windows_forest_domain=<domain>
+```
+
+Makes a freshly built server the first domain controller of a domain that
+does not exist yet; every other server then joins with
+`playbooks/windows-build.yml`. It exists for two things: a lab to rehearse in,
+and the day `linds.com.au` has to be rebuilt from nothing (there are no
+system-state backups, by decision; see "Known outstanding"). In that case
+the order is: this, then `make windows-directory` to recreate the OUs, groups,
+users and GPO links from `directory*.yml`, `Import-GPO` from
+`windows-state/gpo/*/backup`, the CA from its backup, and the file servers.
+Every account gets a new identity, so NAS permissions and every joined
+machine have to be redone.
+
+It refuses to run if a domain of that name already answers.
+
 ## Runbook: replacing a domain controller
 
 Done for `linds-dc2` on 11 October 2026, whose component store could no
@@ -229,8 +314,18 @@ make windows-build     HOST=linds-dc2.linds.com.au ADDRESS=<its DHCP address>
 make windows-promote   HOST=linds-dc2.linds.com.au
 ```
 
-`windows-retire-dc` does four things, the first and last on the site's other
-domain controller:
+`windows-retire-dc` first hands over whatever the server carries, and skips
+each step that does not apply:
+
+- its FSMO roles move to the site's other domain controller;
+- it is checked for replicated files that only it holds (a member that
+  rejoins with data already on its disk keeps only what its partner also
+  has; `--tags unique-files` runs this check alone, worth doing the day
+  before), and is taken out of its replication groups;
+- the CA is backed up into `windows-state/ca/backup` and the role removed.
+
+Then it does four things, the first and last on the site's other domain
+controller:
 
 1. Moves replication between the sites onto the domain controller that is
    staying, and proves it works in both directions (see below).
@@ -290,6 +385,55 @@ Any other machine with a ticket cache of its own (another administrator's
 session, a script host) still holds a service ticket for the old server, and
 its connections to the new one are rejected until that ticket expires or is
 renewed: `kinit -R`, or `klist purge` on Windows.
+
+## The directory in code
+
+```shell
+make windows-directory-check     # what a run would change
+make windows-directory           # make it so (also part of `make windows`)
+```
+
+`windows_directory` makes the domain match two files in
+`inventory/group_vars/windows/`:
+
+| File | Holds | How to edit |
+| --- | --- | --- |
+| `directory.yml` | OUs; which GPOs are linked to each, in order; the groups this repository owns | Any editor |
+| `directory.vault.yml` | Users; who is in each owned group; the exact members of the privileged groups; the password policy and machine account quota | `ansible-vault edit` |
+
+To add someone to a group, add their name under the group in
+`windows_directory_members`. To add a user, add an entry to
+`windows_directory_users` (and, if the account should be usable at once, a
+first password under `windows_directory_initial_passwords`). To move a GPO
+link or change its order, edit the list under its OU. Then check, then run.
+
+What it will and will not do:
+
+- **It never deletes an OU, group or user for being absent from the files.**
+  The run ends with a list, "not in the code", of what exists and is not
+  described. Today that is the groups products left behind (`ADSync*`,
+  `docker-users`, `IPAMUG`, `WSUS *`, `DHCP *`) and `MSOL_abd8982191a0`, the
+  account of the Entra Connect that no longer exists.
+- **Membership is exact** for the groups in `windows_directory_members` and
+  `windows_directory_privileged`. Someone added to Domain Admins in a console
+  is taken out again by the next run. That is the point of listing the
+  privileged groups; do not list a group there unless every member should be
+  in the file.
+- **GPO links are exact** for every container listed, in the order written
+  (first wins). The GPOs themselves are not touched: they are edited in GPMC
+  and captured.
+- **It never sets the password of an existing account.**
+
+The files were generated once, from the capture of 11 October 2026, by
+`scripts/windows_directory_export.py`, so that the first run would change
+nothing; it did not. Do not run the export again: it would overwrite the
+files with whatever the domain looks like at that moment.
+
+`--check` cannot preview the membership of a group or user that the same run
+would create, because it does not exist yet; those show as ignored errors in
+a check run and work in a real one. And in a script that supports `--check`,
+`ForEach-Object <property>` returns nothing under `-WhatIf`; use a script
+block. That made the first check run propose unlinking every GPO.
 
 ## The state of the domain, captured
 
@@ -380,6 +524,54 @@ including logon certificates for any account and client certificates for the
 mTLS ingress. So is everything else in the vault here. A longer vault password
 protects what is committed after it is changed; what is already in the
 history stays under the password it was encrypted with.
+
+## Runbook: replacing `linds-dc`
+
+`linds-dc` is a domain controller, the CA and the LINDS file server, and held
+three FSMO roles. Its replacement is VM 113 (`LINDS-Terraform`,
+`proxmox_virtual_environment_vm.linds_dc`); the old one is VM 102, which
+stays, switched off, as the owner of the NAS disk.
+
+```shell
+# Before, while the old server is in service. Nothing here touches the domain.
+make windows-prepare HOST=linds-dc.linds.com.au ADDRESS=<clone's DHCP address>
+make windows-edition HOST=linds-dc.linds.com.au ADDRESS=<clone's DHCP address>
+make windows-capture && git commit                  # the state as it is, for comparing afterwards
+ansible-playbook playbooks/windows-retire-dc.yml --tags unique-files -e target=linds-dc.linds.com.au
+
+# The swap. The LINDS NAS, its NFS exports and the CA are off from the first
+# command until the last has finished.
+make windows-retire-dc HOST=linds-dc.linds.com.au   # hand over, demote, shut down, clean up
+make windows-data-disk HOST=linds-dc.linds.com.au   # the NAS disk onto VM 113
+make windows-build     HOST=linds-dc.linds.com.au ADDRESS=<clone's DHCP address>
+make windows-promote   HOST=linds-dc.linds.com.au   # DC, CA restored, disk online, shares, exports
+make windows                                        # replication member re-added (never as primary), FSMO roles placed
+```
+
+Afterwards: replication hashes every file on the LINDS disk against JD before
+it calls the folders normal again, which for 5 TiB is hours; nothing is
+copied if the two match. `Get-DfsrState` and events 4102/4104 in the DFS
+Replication log show it. There must be no 4412 (conflict) events.
+
+The LINDS-Backup VM (104) still mounts the same disk for its Backblaze runs.
+Its routine becomes: shut VM 113 down, start 104, and the reverse; never the
+two at once, and never VM 102 again.
+
+What does not come across, because it was never in code: AnyDesk, TeamViewer,
+Chrome, the Milestone and IPAM leftovers, the share `D` (it pointed at a
+drive that did not exist), and the printer-driver share.
+
+**Rehearsed on 12 October 2026** in a separate two-server lab forest
+(`iaclab.test`), built with these same playbooks: one server carrying the CA,
+a data disk with a share and an NFS export, a replicated folder and all five
+FSMO roles was retired and rebuilt from a fresh clone with the same disk. The
+roles moved; the CA came back with the same certificate and its issued
+certificates on record, a certificate issued before the rebuild still
+validated and a new one was issued; the data was untouched; files written on
+either side afterwards replicated to the other with no conflict events and
+nothing set aside. **Not rehearsed, because only the real thing has them:**
+the 11 TB disk itself, the hours-long rehash of 5 TiB, the NFS clients (Plex,
+TrueNAS, the torrent host) reconnecting, and the two sites.
 
 ## Runbook: the DFS-R stale junction trap
 
@@ -820,8 +1012,9 @@ Authoring stays in GPMC. They are captured instead: `make windows-capture`
 backs up every one and its settings report into the state directory, and the
 diff is the drift report.
 
-**AD users, groups and OUs** are not managed yet. They are captured, which is
-the baseline that managing them will start from.
+**AD users, groups and OUs** are managed by `windows_directory`; see "The
+directory in code". Computer accounts are not: machines create their own when
+they join.
 
 **FSMO roles cannot be made highly available.** They are single-master by
 design; forcing a role onto a second DC while the original lives causes

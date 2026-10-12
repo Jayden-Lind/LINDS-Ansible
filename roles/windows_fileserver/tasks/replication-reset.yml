@@ -1,0 +1,60 @@
+---
+# For a data disk that was a DFS Replication member on another server and
+# has just arrived on this one. The disk still carries the old member's
+# replication database and, in every replicated folder, a DfsrPrivate link
+# into it. A member that joins with either in place is refused by the service
+# or, worse, collides with its partner instead of matching it: see "the DFS-R
+# stale junction trap" and "never make a newly-added member the primary" in
+# docs/windows-domain.md.
+#
+# Only ever done while this server is not a replication member (a fresh
+# rebuild); the first task makes sure of that.
+- name: Make sure this server is not a replication member yet
+  ansible.windows.win_powershell:
+    script: |
+      $Ansible.Changed = $false
+      Import-Module DFSR -ErrorAction SilentlyContinue
+      $mine = @(Get-DfsReplicationGroup -GroupName * -ErrorAction SilentlyContinue | Where-Object GroupName -ne 'Domain System Volume' |
+                ForEach-Object { Get-DfsrMember -GroupName $_.GroupName -ErrorAction SilentlyContinue } | Where-Object ComputerName -ieq $env:COMPUTERNAME)
+      $mine.Count
+  register: windows_fileserver_memberships
+  changed_when: false
+
+- name: Clear the old member's replication state from the data volumes
+  ansible.windows.win_powershell:
+    parameters:
+      Letters: "{{ windows_fileserver_volumes | map(attribute='letter') | list }}"
+    script: |
+      param([string[]]$Letters)
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      $cleared = @()
+      foreach ($letter in $Letters) {
+          # Links, removed as links: never followed into what they point at.
+          foreach ($root in Get-ChildItem -LiteralPath "${letter}:\" -Directory -Force -ErrorAction SilentlyContinue) {
+              $link = Join-Path $root.FullName 'DfsrPrivate'
+              $item = Get-Item -LiteralPath $link -Force -ErrorAction SilentlyContinue
+              if ($item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                  [IO.Directory]::Delete($link, $false)
+                  $cleared += "$link (link)"
+              }
+          }
+          # The database. \\?\ because it holds names the ordinary parser cannot delete.
+          $database = "${letter}:\System Volume Information\DFSR"
+          if (Test-Path -LiteralPath $database) {
+              & cmd.exe /c "rd /s /q `"\\?\$database`"" 2>&1 | Out-Null
+              if (Test-Path -LiteralPath $database) { throw "Could not remove $database" }
+              $cleared += $database
+          }
+      }
+      $Ansible.Changed = $cleared.Count -gt 0
+      $cleared
+  register: windows_fileserver_reset
+  when: windows_fileserver_memberships.output[0] | int == 0
+  become: true
+  become_method: ansible.builtin.runas
+  become_user: SYSTEM
+
+- name: Report
+  ansible.builtin.debug:
+    msg: "{{ windows_fileserver_reset.output | default(['already a replication member: nothing cleared']) }}"
