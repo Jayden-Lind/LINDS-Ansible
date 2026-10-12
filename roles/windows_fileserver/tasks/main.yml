@@ -108,6 +108,28 @@
   register: windows_fileserver_smb
   when: windows_fileserver_shares | length > 0
 
+- name: NFS server settings
+  ansible.windows.win_powershell:
+    parameters:
+      Settings: "{{ windows_fileserver_nfs_server | to_json }}"
+    script: |
+      param([string]$Settings)
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      $want = $Settings | ConvertFrom-Json
+      $have = Get-NfsServerConfiguration
+      $set = @{}
+      foreach ($p in $want.PSObject.Properties) { if ("$($have.$($p.Name))" -ne "$($p.Value)") { $set[$p.Name] = $p.Value } }
+      if ($set.Count) {
+          Set-NfsServerConfiguration @set
+          Restart-Service NfsService -Force
+          $Ansible.Changed = $true
+      }
+      $set.Keys | ForEach-Object { "$_ = $($set[$_])" }
+  when:
+    - windows_fileserver_nfs_shares | length > 0
+    - windows_fileserver_nfs_server | length > 0
+
 - name: NFS exports and which machines may mount them
   ansible.windows.win_powershell:
     parameters:

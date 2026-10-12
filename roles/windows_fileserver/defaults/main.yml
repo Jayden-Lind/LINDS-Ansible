@@ -34,6 +34,11 @@ windows_fileserver_shares: []
 #       - {client: 10.3.1.20, permission: readwrite, root: true}
 windows_fileserver_nfs_shares: []
 
+# Settings of the NFS server itself, passed to Set-NfsServerConfiguration as
+# they are. Empty: Windows' defaults. linds-dc serves NFS 4.1 only.
+#   {EnableNFSV2: false, EnableNFSV3: false, EnableNFSV4: true}
+windows_fileserver_nfs_server: {}
+
 # Shadow copies ("Previous Versions"), as a scheduled task per volume.
 #   - {letter: E, days: [monday, tuesday, wednesday, thursday, friday], times: ["07:00", "12:00"]}
 windows_fileserver_shadow_copies: []
