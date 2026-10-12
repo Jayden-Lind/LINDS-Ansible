@@ -97,6 +97,9 @@ windows-baseline:
 	$(WINDOWS_PLAY) playbooks/windows-baseline.yml -e target=$(HOST) \
 	  -e windows_baseline_updates=$(or $(UPDATES),false)
 
+# REPLACING=true when a server of the same name is about to be built: the
+# choice of bridgehead then stays pinned until the build playbook releases it.
 windows-retire-dc:
-	$(WINDOWS_PLAY) playbooks/windows-retire-dc.yml -e target=$(HOST)
+	$(WINDOWS_PLAY) playbooks/windows-retire-dc.yml -e target=$(HOST) \
+	  -e windows_retire_keep_bridgehead=$(or $(REPLACING),false)
 

@@ -84,3 +84,29 @@
           -Cost $Cost -ReplicationFrequencyInMinutes $Freq
         $Ansible.Changed = $true
       }
+
+# Promoting the forest's first domain controller creates this delegation and
+# names only that server in it. Retiring a domain controller removes every NS
+# record that points at it, this one included, and nothing puts it back: a
+# DNS server re-registers itself at the top of each zone it holds, not in a
+# delegation. Every DNS server here holds both zones, so no lookup goes
+# through the delegation today; it is what a server holding the parent zone
+# alone would follow.
+- name: Delegate _msdcs to every domain controller
+  ansible.windows.win_powershell:
+    script: |
+      Import-Module ActiveDirectory, DnsServer
+      $Ansible.Changed = $false
+      $forest = (Get-ADForest).RootDomain
+      # Where _msdcs is a plain subdomain of the forest zone there is nothing
+      # to delegate.
+      if (-not (Get-DnsServerZone -Name "_msdcs.$forest" -ErrorAction SilentlyContinue)) { return }
+      $have = @(Get-DnsServerZoneDelegation -Name $forest -ChildZoneName '_msdcs' -ErrorAction SilentlyContinue |
+                ForEach-Object { $_.NameServer.RecordData.NameServer.TrimEnd('.') })
+      foreach ($dc in Get-ADDomainController -Filter *) {
+        if ($have -notcontains $dc.HostName) {
+          Add-DnsServerZoneDelegation -Name $forest -ChildZoneName '_msdcs' `
+            -NameServer $dc.HostName -IPAddress $dc.IPv4Address
+          $Ansible.Changed = $true
+        }
+      }

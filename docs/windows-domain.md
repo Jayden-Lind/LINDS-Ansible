@@ -8,7 +8,7 @@ the template" below.
 | Host | Address | Site | Role |
 | --- | --- | --- | --- |
 | `jd-dc-01` | 10.0.50.200 | JD | DC, GC, DNS, **PDC emulator + RID master** |
-| `linds-dc` | 10.3.1.200 | LINDS | DC, GC, DNS, schema + naming master, `linds-CA` |
+| `linds-dc` | 10.3.1.200 | LINDS | DC, GC, DNS, schema + naming + infrastructure master, `linds-CA`, file server, 11 TB `E:`. Rebuilt from the template on 12 October 2026 |
 | `linds-dc2` | 10.3.1.201 | LINDS | DC, GC, DNS. Rebuilt from the template on 11 October 2026 |
 | `jd-fs-01` | 10.0.50.201 | JD | file server, 12 TB `D:` |
 
@@ -43,7 +43,9 @@ server-side change.
   a single site holding all three DCs, with `10.3.1.0/24` undefined despite two
   DCs living on it. DC locator treated every DC as equally close, so clients
   authenticated across the IPsec tunnel most of the time. That was the cause of
-  the intermittent slow logons.
+  the intermittent slow logons. It also keeps the `_msdcs` delegation in the
+  forest's DNS zone naming every domain controller: retiring the server it
+  named removes it, and nothing else puts it back.
 - **`windows_ad_recovery`** — AD Recycle Bin and FSMO placement.
 - **`windows_dc_time`** — domain time hierarchy. Reads the current PDC from AD
   rather than taking it as a variable, so moving the role moves the time
@@ -309,10 +311,15 @@ make windows-prepare HOST=linds-dc2.linds.com.au ADDRESS=<its DHCP address>
 make windows-edition HOST=linds-dc2.linds.com.au ADDRESS=<its DHCP address>
 
 # The swap. About half an hour, with `repadmin /replsummary` clean beforehand.
-make windows-retire-dc HOST=linds-dc2.linds.com.au
+make windows-retire-dc HOST=linds-dc2.linds.com.au REPLACING=true
 make windows-build     HOST=linds-dc2.linds.com.au ADDRESS=<its DHCP address>
 make windows-promote   HOST=linds-dc2.linds.com.au
 ```
+
+`REPLACING=true` is for exactly this case, a server of the same name about to
+be built; leave it off when a domain controller is going for good. Every one
+of these can be run again after a failure and carries on from where it
+stopped.
 
 `windows-retire-dc` first hands over whatever the server carries, and skips
 each step that does not apply:
@@ -335,7 +342,9 @@ controller:
    leaves under the site, and waits until no domain controller at either
    site knows the name any more.
 4. Removes the server's DNS records from every DNS server, and gives the
-   choice of bridgehead back to the topology generator.
+   choice of bridgehead back to the topology generator. With
+   `REPLACING=true` it does not give it back: `windows-promote` does, once
+   the replacement is known at both sites.
 
 About a quarter of an hour, half of it waiting to see that the DNS records
 stay gone. `--tags cleanup` runs steps 3 and 4 alone, for a server that is already
@@ -355,6 +364,38 @@ is run, and the demotion does not start until a pull through that server has
 succeeded in each direction. A preferred bridgehead left in place would stop
 the generator choosing another one if that server went down, which is why it
 is removed again at the end.
+
+**Why the preference outlives the retirement when a replacement follows.**
+After the `linds-dc2` swap the preference was released at once, and minutes
+after the new `linds-dc2` was promoted the topology generator made it
+`jd-dc-01`'s one partner at LINDS. To pull from a domain controller a server
+needs a Kerberos ticket for that partner's replication service name
+(`E3514235-4B06-11D1-AB04-00C04FC2DCD2/<NTDS GUID>/<domain>`), which sits on
+the partner's computer account; `jd-dc-01`'s copy of that account was still
+the one from before the promotion, without the name. The pull failed with
+error 1396, "the target account name is incorrect", and because that pull
+was the only way the corrected account could arrive, it went on failing.
+**JD received nothing from LINDS from 17:59 on 11 October until 17:54 the
+next day**, when step 1 of the `linds-dc` retirement refused to go on.
+Changes made at JD still reached LINDS, and everything held up arrived once
+the link worked, so nothing was lost; an account or group changed at LINDS
+would not have been seen at JD in between. Two things now stop it happening:
+
+- the preference stays on the old, known domain controller until the
+  replacement's promotion has finished;
+- after a promotion, `windows_ad_converge` runs on the site's other domain
+  controller and pushes the new server's computer account, server object and
+  NTDS settings straight to every domain controller that does not yet hold
+  its replication name (`Sync-ADObject`, sent from a server the receiver can
+  already authenticate), then fails unless every domain controller has an
+  inbound partner and no failing link.
+
+By hand, the sign is a link in `repadmin /showrepl <dc>` that fails with 1396
+every time while the same partner's other links are fine, and the cure is
+the push: `Get-ADComputer <new dc> | Sync-ADObject -Source <a DC that has it>
+-Destination <the DC that lacks it>`, the same for its server object and the
+`NTDS Settings` under it, then `klist -li 0x3e7 purge` and `repadmin /kcc`
+on the receiver.
 
 The DNS part is slower than it looks, on purpose. On a rehearsal the demotion
 and a clean-up on one DNS server left nothing behind, and a minute later all
@@ -527,10 +568,13 @@ history stays under the password it was encrypted with.
 
 ## Runbook: replacing `linds-dc`
 
-`linds-dc` is a domain controller, the CA and the LINDS file server, and held
-three FSMO roles. Its replacement is VM 113 (`LINDS-Terraform`,
-`proxmox_virtual_environment_vm.linds_dc`); the old one is VM 102, which
-stays, switched off, as the owner of the NAS disk.
+Done on 12 October 2026. `linds-dc` is a domain controller, the CA and the
+LINDS file server, and holds three FSMO roles. It is now VM 113
+(`LINDS-Terraform`, `proxmox_virtual_environment_vm.linds_dc`), built from the
+template. The old one is VM 102, `LINDS-DC-old`: switched off, set not to
+start, protected from deletion, and **kept, because the NAS disk
+(`NAS:vm-102-disk-0`) carries its ID** and Proxmox deletes a VM's own volumes
+with it. Never start it: it would mount the disk the new server is writing.
 
 ```shell
 # Before, while the old server is in service. Nothing here touches the domain.
@@ -539,39 +583,77 @@ make windows-edition HOST=linds-dc.linds.com.au ADDRESS=<clone's DHCP address>
 make windows-capture && git commit                  # the state as it is, for comparing afterwards
 ansible-playbook playbooks/windows-retire-dc.yml --tags unique-files -e target=linds-dc.linds.com.au
 
-# The swap. The LINDS NAS, its NFS exports and the CA are off from the first
-# command until the last has finished.
-make windows-retire-dc HOST=linds-dc.linds.com.au   # hand over, demote, shut down, clean up
+# The swap. The CA is off from the first command and the LINDS NAS and its NFS
+# exports from the demotion inside it, until the last command has finished.
+make windows-retire-dc HOST=linds-dc.linds.com.au REPLACING=true   # hand over, demote, shut down, clean up
+qm stop 102; qm set 102 --onboot 0 --name LINDS-DC-old             # on linds-proxmox-01, if it is not already off
 make windows-data-disk HOST=linds-dc.linds.com.au   # the NAS disk onto VM 113
 make windows-build     HOST=linds-dc.linds.com.au ADDRESS=<clone's DHCP address>
 make windows-promote   HOST=linds-dc.linds.com.au   # DC, CA restored, disk online, shares, exports
 make windows                                        # replication member re-added (never as primary), FSMO roles placed
+make windows-ca-backup && make windows-capture && git commit       # the CA as restored, and what changed
 ```
 
-Afterwards: replication hashes every file on the LINDS disk against JD before
-it calls the folders normal again, which for 5 TiB is hours; nothing is
-copied if the two match. `Get-DfsrState` and events 4102/4104 in the DFS
-Replication log show it. There must be no 4412 (conflict) events.
+**How it went.** 2 h 17 min from the first command (17:25) to the last
+(19:42): retirement 53 min, disk under a minute, name, address and join 22,
+promotion 59. The NAS was unreachable for about 1 h 40 min and the CA for a
+little longer. Three stops are in those figures, each for something the
+playbooks now handle: the bridgehead check refusing because JD could not pull
+from `linds-dc2` (the account above), the new domain controller not being
+announced to the other site before the steps that needed it, and the restored
+CA being asked for a CRL in the second it started. Each time the same command
+was run again and went on.
 
-The LINDS-Backup VM (104) still mounts the same disk for its Backblaze runs.
-Its routine becomes: shut VM 113 down, start 104, and the reverse; never the
-two at once, and never VM 102 again.
+What the new server was checked for afterwards, and had:
 
-What does not come across, because it was never in code: AnyDesk, TeamViewer,
-Chrome, the Milestone and IPAM leftovers, the share `D` (it pointed at a
-drive that did not exist), and the printer-driver share.
+- domain controller and global catalog at the old name and address, health
+  checks clean, replication with both other domain controllers in both
+  directions, its replication name known at JD;
+- schema, naming and infrastructure master back on it, PDC emulator and RID
+  master still on `jd-dc-01`;
+- `linds-CA` running with the certificate it had (thumbprint ending
+  `7699BC3F`), its issued certificates on record and its templates published,
+  and its own LDAPS certificate issued by it;
+- `E:` online with every folder and the 64 shadow copies that were on it;
+  shares `NAS` and `RedirectedFolders$`; the NFS export, 4.1 only, for the
+  same three clients;
+- Keycloak with no LDAP errors throughout (it lists all three domain
+  controllers).
 
-**Rehearsed on 12 October 2026** in a separate two-server lab forest
-(`iaclab.test`), built with these same playbooks: one server carrying the CA,
-a data disk with a share and an NFS export, a replicated folder and all five
-FSMO roles was retired and rebuilt from a fresh clone with the same disk. The
-roles moved; the CA came back with the same certificate and its issued
-certificates on record, a certificate issued before the rebuild still
-validated and a new one was issued; the data was untouched; files written on
-either side afterwards replicated to the other with no conflict events and
-nothing set aside. **Not rehearsed, because only the real thing has them:**
-the 11 TB disk itself, the hours-long rehash of 5 TiB, the NFS clients (Plex,
-TrueNAS, the torrent host) reconnecting, and the two sites.
+**Replication afterwards.** The member is re-added with the data already on
+its disk. The service first walks the whole disk to build a new database, one
+folder at a time, and until a folder's turn comes it shows as
+`uninitialised` with no event at all, which looks like nothing happening: the
+debug log (`C:\Windows\debug\Dfsr*.log`, `DirWalkerTask` lines) shows the
+walk. Then each folder logs 4102, hashes its files against JD, copies nothing
+that matches, and logs 4104. `Music` took two minutes; the rest take hours.
+There must be no 4412 (conflict) events and nothing in a folder's
+`DfsrPrivate\PreExisting`.
+
+**The LINDS-Backup VM (104)** still mounts the same disk for its Backblaze
+runs. Its routine is now: shut VM 113 down, start 104, and the reverse; never
+the two at once, and never VM 102. `make windows-data-disk` refuses to attach
+the disk while either of the others runs, but nothing stops a VM being
+started by hand.
+
+**What did not come across**, because it was never in code: AnyDesk,
+TeamViewer, Chrome, VMware Tools, the Milestone and IPAM leftovers, the dead
+shadow-copy tasks, the share `D` (it pointed at a drive that did not exist),
+the printer-driver share, and the computer account's membership of the three
+`RDS ...` groups left from a Remote Desktop deployment that no longer exists.
+An expired certificate of an earlier CA (`linds-LINDS-DC-CA-1`, ended 2024)
+was in the old server's own trust store and is not in the new one's.
+
+NFS clients hold a mount of a server that went away; one that does not
+recover by itself needs remounting. No client had reconnected twenty minutes
+after the swap.
+
+**Rehearsed first** in a separate two-server lab forest (`iaclab.test`), built
+with these same playbooks: one server carrying the CA, a data disk with a
+share and an NFS export, a replicated folder and all five FSMO roles was
+retired and rebuilt from a fresh clone with the same disk. What a lab of one
+site could not show is what stopped the real run: two sites that hear of
+changes a quarter of an hour apart.
 
 ## Runbook: the DFS-R stale junction trap
 
@@ -1067,7 +1149,7 @@ Not automated: this is a repair to one host's DCOM descriptor, not fleet state.
 
 ## Known outstanding
 
-As of 11 October 2026.
+As of 12 October 2026.
 
 - **Retrim fails on the guests**, so thin space is only handed back by the
   runbook above. Both sites were done on 10 October.
@@ -1077,6 +1159,11 @@ As of 11 October 2026.
 - **The old `linds-dc2` is still on the hypervisor**: VM 110, `LINDS-DC2-old`,
   switched off and set not to start. It was demoted first, so it holds no
   copy of the directory. Delete it when nothing on it is wanted.
+- **The old `linds-dc` is still on the hypervisor and has to stay**: VM 102,
+  `LINDS-DC-old`, switched off, set not to start and protected. It owns the
+  NAS disk that VM 113 uses. Its own system disk (`local-lvm:vm-102-disk-0`,
+  74 GB in use) can be detached and deleted to give the space back; the VM
+  cannot go, because the NAS volume would go with it.
 - **The new `linds-dc2` reports itself as not activated** (volume-licence
   channel, notification state). The other three were not checked for this.
 - **Time does not follow the domain hierarchy.** The Default Domain Policy
@@ -1100,7 +1187,9 @@ As of 11 October 2026.
   controllers ("not backed up") is therefore expected.
 - **`E:\server\old_backup` on `linds-dc`** is 248 GB of Veeam backups from
   2019 to 2021, of hosts that no longer exist.
-- **Dead scheduled tasks**: `jd-dc-01` and `linds-dc` each have two
-  `ShadowCopyVolume{...}` tasks for volumes that no longer exist, failing twice
-  a day.
-- **VMware Tools is still installed on `linds-dc`.**
+- **Dead scheduled tasks**: `jd-dc-01` has two `ShadowCopyVolume{...}` tasks
+  for volumes that no longer exist, failing twice a day.
+- **`jd-dc-01` and `jd-fs-01` are the two servers not yet built from the
+  template.** `jd-dc-01` is the only domain controller at JD and holds the PDC
+  emulator and RID master; `jd-fs-01`'s 12 TB disk is a zvol that would move
+  to its replacement the way the LINDS disk did.
