@@ -69,8 +69,18 @@
           $ErrorActionPreference = 'Stop'
           if ($code -ne 0) { throw "reg import failed ($code)" }
           Start-Service certsvc
-          & certutil.exe -crl | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw "The restored CA could not publish a CRL ($LASTEXITCODE)" }
+          # The service reports "running" some seconds before it answers;
+          # publishing at once failed with "RPC server unavailable".
+          $ErrorActionPreference = 'Continue'
+          foreach ($try in 1..24) {
+              & certutil.exe -ping 2>&1 | Out-Null
+              if ($LASTEXITCODE -eq 0) { break }
+              Start-Sleep -Seconds 5
+          }
+          & certutil.exe -crl 2>&1 | Out-Null
+          $code = $LASTEXITCODE
+          $ErrorActionPreference = 'Stop'
+          if ($code -ne 0) { throw "The restored CA could not publish a CRL ($code)" }
           $Ansible.Changed = $true
       become: true
       become_method: ansible.builtin.runas
