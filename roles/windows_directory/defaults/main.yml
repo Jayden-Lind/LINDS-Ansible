@@ -1,0 +1,35 @@
+---
+# Makes the directory match what is written in
+# inventory/group_vars/windows/directory.yml and directory.vault.yml: OUs,
+# groups and who is in them, users, which GPOs are linked where, the password
+# policy. Runs on one domain controller; replication does the rest.
+#
+# What it will and will not do:
+#   * It creates and corrects what the files describe.
+#   * It never deletes an OU, group or user for being absent from the files.
+#     Those are listed at the end of the run as "not in the code".
+#   * Membership is exact for the groups listed in windows_directory_members
+#     and windows_directory_privileged: a member the files do not name is
+#     removed. For the privileged groups that is the point.
+#   * GPO links are exact for every container listed in
+#     windows_directory_gpo_links, in the order written. The GPOs themselves
+#     are not touched: they are edited in GPMC and captured.
+#   * It never sets the password of an account that already exists. A new
+#     account gets the one in windows_directory_initial_passwords, if any.
+
+windows_domain: linds.com.au
+windows_directory_base: "DC={{ windows_domain.split('.') | join(',DC=') }}"
+
+windows_directory_ous: []
+windows_directory_groups: []
+windows_directory_gpo_links: {}
+windows_directory_users: []
+windows_directory_members: {}
+windows_directory_privileged: {}
+
+# sAMAccountName: first password. Vault it. Only used when the account is created.
+windows_directory_initial_passwords: {}
+
+# Leave these unset to leave the domain's own settings alone.
+# windows_directory_password_policy:
+# windows_directory_machine_account_quota:

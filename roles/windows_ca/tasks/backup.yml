@@ -1,0 +1,60 @@
+---
+- name: Back up the CA into a temporary folder on its server
+  ansible.windows.win_powershell:
+    sensitive_parameters:
+      - name: Password
+        value: "{{ windows_ca_backup_password }}"
+    script: |
+      param([securestring]$Password)
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      $caName = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\CertSvc\Configuration').Active
+      $work = Join-Path $env:SystemRoot ('Temp\ca-backup-' + [guid]::NewGuid().ToString('N'))
+      New-Item -ItemType Directory -Path $work | Out-Null
+      # Administrators and SYSTEM only, whatever the parent folder allows.
+      & icacls.exe $work /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' | Out-Null
+
+      # Key and certificate (<name>.p12) and the database (DataBase\).
+      Backup-CARoleService -Path $work -Password $Password -Force
+      if (-not (Test-Path "$work\$caName.p12")) { throw "No $caName.p12 was written: the key was not backed up." }
+
+      & reg.exe export 'HKLM\SYSTEM\CurrentControlSet\Services\CertSvc\Configuration' "$work\$caName-configuration.reg" /y | Out-Null
+      if ($LASTEXITCODE -ne 0) { throw "reg export failed ($LASTEXITCODE)" }
+
+      Compress-Archive -Path "$work\DataBase\*" -DestinationPath "$work\$caName-database.zip"
+      Remove-Item -LiteralPath "$work\DataBase" -Recurse -Force
+
+      # As JSON text: the module flattens nested objects otherwise.
+      [ordered]@{
+          folder = $work
+          files  = @(Get-ChildItem -LiteralPath $work -File | Sort-Object Name | ForEach-Object { [ordered]@{ name = $_.Name; bytes = $_.Length } })
+      } | ConvertTo-Json -Depth 4 -Compress
+  register: windows_ca_backup_taken
+  check_mode: false
+  # The CA refuses to hand its database to a network logon, which is what a
+  # WinRM session is ("Access is denied" in BackupDatabase), whoever it
+  # belongs to. Running as the server's own SYSTEM account needs no password.
+  become: true
+  become_method: ansible.builtin.runas
+  become_user: SYSTEM
+
+- name: Collect it, and remove it from the server whatever happens
+  vars:
+    taken: "{{ windows_ca_backup_taken.output[0] | from_json }}"
+  block:
+    - name: Fetch the backup files
+      ansible.builtin.fetch:
+        src: "{{ taken.folder }}\\{{ item.name }}"
+        dest: "{{ windows_ca_backup_work }}/ca-backup/{{ item.name }}"
+        flat: true
+      loop: "{{ taken.files }}"
+      loop_control:
+        label: "{{ item.name }} ({{ item.bytes }} bytes)"
+      check_mode: false
+  always:
+    - name: Remove the temporary folder from the server
+      ansible.windows.win_file:
+        path: "{{ taken.folder }}"
+        state: absent
+      changed_when: false
+      check_mode: false

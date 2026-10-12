@@ -1,0 +1,114 @@
+---
+# Back up the certification authority into the state directory, encrypted
+# with the Ansible vault.
+#
+#   make windows-ca-backup [WINDOWS_STATE=<dir>]
+#
+# Needs a Kerberos ticket (`make kinit`). Writes, under <state>/ca/backup/:
+#
+#   <CA>.p12                 certificate and private key        (vault)
+#   <CA>-database.zip        what the CA has issued and revoked (vault)
+#   <CA>-configuration.reg   its registry settings              (plain text)
+#   password.yml             the password of the .p12           (vault)
+#
+# The key does not change, so the .p12 only needs taking again after the CA
+# certificate is renewed. The database does: run this after issuing or
+# revoking anything that matters, and always just before moving the CA.
+#
+# The .p12 is password-protected from the moment it is written on the CA and
+# never exists unprotected anywhere; the password travels separately and both
+# end up encrypted with the vault. After that, the CA's key is exactly as safe
+# as the vault password: the state directory is in a public repository.
+#
+# To restore: decrypt the three files with `ansible-vault decrypt`, then on the
+# new server `Restore-CARoleService -Path <folder> -Password <password>`
+# (the database unzipped into <folder>\DataBase) and `reg import` the settings.
+
+- name: Prepare
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    # In memory, not on disk: the password is here in the clear for a moment.
+    # If the backup itself fails the run stops before the last play, and an
+    # empty windows-ca-backup-* folder is left in /dev/shm.
+    - name: Make a work directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: windows-ca-backup-
+        path: /dev/shm
+      register: windows_ca_backup_tmp
+
+    - name: Work out where the state goes
+      ansible.builtin.set_fact:
+        windows_ca_backup_work: "{{ windows_ca_backup_tmp.path }}"
+        windows_state_dir: "{{ windows_state_dir | default(playbook_dir ~ '/../windows-state') | realpath }}"
+
+    # Reuse the password of an earlier backup, so that it stays the one
+    # password for this CA's key.
+    - name: Look for the password of an earlier backup
+      ansible.builtin.stat:
+        path: "{{ windows_state_dir }}/ca/backup/password.yml"
+      register: windows_ca_backup_earlier
+
+    - name: Read it
+      ansible.builtin.include_vars:
+        file: "{{ windows_state_dir }}/ca/backup/password.yml"
+      when: windows_ca_backup_earlier.stat.exists
+      no_log: true
+
+    - name: Or make one
+      ansible.builtin.set_fact:
+        windows_ca_backup_password: "{{ lookup('ansible.builtin.password', '/dev/null', length=40, chars=['ascii_letters', 'digits']) }}"
+      when: windows_ca_backup_password is not defined
+      no_log: true
+
+- name: Take the backup
+  hosts: windows_ca
+  gather_facts: false
+  tasks:
+    - name: Back up the CA
+      ansible.builtin.include_role:
+        name: windows_ca
+        tasks_from: backup
+      vars:
+        windows_ca_backup_password: "{{ hostvars['localhost'].windows_ca_backup_password }}"
+        windows_ca_backup_work: "{{ hostvars['localhost'].windows_ca_backup_work }}"
+
+- name: Store it
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    state_tool: "{{ playbook_dir }}/../scripts/windows_state.py"
+    vault_file: "{{ playbook_dir }}/../vault_password"
+  tasks:
+    - name: Encrypt and store, then prove it opens
+      block:
+        - name: Put the password where the storing step will find it
+          ansible.builtin.copy:
+            content: "{{ windows_ca_backup_password }}"
+            dest: "{{ windows_ca_backup_work }}/ca-backup-password"
+            mode: "0600"
+          no_log: true
+
+        - name: Encrypt the backup with the vault into the state directory
+          ansible.builtin.command:
+            argv: ["{{ ansible_playbook_python }}", "{{ state_tool }}", ca-backup, "{{ windows_ca_backup_work }}", "{{ windows_state_dir }}", "{{ vault_file }}"]
+          register: windows_ca_backup_stored
+          changed_when: true
+
+        - name: Open what was stored and check the key belongs to the certificate
+          ansible.builtin.command:
+            argv: ["{{ ansible_playbook_python }}", "{{ state_tool }}", verify-ca-backup, "-", "{{ windows_state_dir }}", "{{ vault_file }}"]
+          register: windows_ca_backup_verified
+          changed_when: false
+      always:
+        - name: Remove the work directory
+          ansible.builtin.file:
+            path: "{{ windows_ca_backup_work }}"
+            state: absent
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: "{{ [windows_ca_backup_stored.stdout] + windows_ca_backup_verified.stdout_lines }}"

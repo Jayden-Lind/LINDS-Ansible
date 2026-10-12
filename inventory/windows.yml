@@ -13,6 +13,28 @@ windows:
         linds-dc.linds.com.au:
           ansible_host: 10.3.1.200
           ad_site: LINDS
+          # Rebuilt by playbooks/windows-build.yml from the Windows template.
+          # Also the CA and the LINDS file server: see the groups below, and
+          # inventory/host_vars/linds-dc.linds.com.au/ for its shares.
+          windows_hostname: LINDS-DC
+          windows_ipv4_address: 10.3.1.200
+          windows_ipv4_prefix: 24
+          windows_ipv4_gateway: 10.3.1.1
+          windows_dns_servers:
+            - 10.3.1.201
+            - 10.0.50.200
+          # The VM, and the data disk that outlives it. The disk belongs to
+          # VM 102, the server this one replaces, which is kept switched off;
+          # 104 is the LINDS-Backup VM, which mounts the same disk for its
+          # Backblaze runs. Only one of the three may ever be running.
+          windows_vm:
+            hypervisor: linds-proxmox-01
+            id: 113
+            data_disks:
+              - slot: scsi1
+                volume: NAS:vm-102-disk-0
+                options: backup=0,cache=none,discard=on,iothread=1
+                never_running_with: [102, 104]
         linds-dc2.linds.com.au:
           ansible_host: 10.3.1.201
           ad_site: LINDS
@@ -33,3 +55,10 @@ windows:
         jd-fs-01.linds.com.au:
           ansible_host: 10.0.50.201
           ad_site: JD
+        linds-dc.linds.com.au:
+
+    # The enterprise root CA, linds-CA. A server is in every group whose role
+    # it carries: this one is also a domain controller above.
+    windows_ca:
+      hosts:
+        linds-dc.linds.com.au:

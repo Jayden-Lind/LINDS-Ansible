@@ -1,0 +1,9 @@
+# DNS server settings that are per server, not per zone.
+forwarders:
+  - 10.0.50.1
+recursion: true
+scavenging: false
+scavenging_interval_hours: 0
+listens_on:
+  - 10.3.1.201
+  - fe80::7f96:c3b8:bf29:ff4e

@@ -1,0 +1,124 @@
+---
+# The directory as it should be. Generated once from the capture of 11 October
+# 2026 by scripts/windows_directory_export.py; edited by hand since.
+# The other half (people, memberships, password policy) is in
+# directory.vault.yml: `ansible-vault edit` it.
+#
+# Paths are relative to the domain: "OU=Kubernetes", not "OU=Kubernetes,DC=...".
+# In windows_directory_gpo_links the key "domain" is the domain root, and the
+# list is in order of precedence, first wins.
+windows_directory_ous:
+  - ou: OU=Groups,OU=Linds - Users
+    description: null
+    protected: true
+  - ou: OU=Kubernetes
+    description: Kubernetes homelab entitlement groups
+    protected: false
+  - ou: OU=Linds - Users
+    description: null
+    protected: true
+  - ou: OU=PC's
+    description: null
+    protected: true
+  - ou: OU=Server-Accounts
+    description: null
+    protected: true
+  - ou: OU=Servers
+    description: null
+    protected: true
+windows_directory_gpo_links:
+  domain:
+    - gpo: Default Domain Policy
+      enforced: true
+  OU=Domain Controllers:
+    - gpo: Server - GPO
+    - gpo: Default Domain Controllers Policy
+    - gpo: Updates
+  OU=Linds - Users:
+    - gpo: Drive Mapping - Everyone
+    - gpo: Users - GPO
+    - gpo: Users - Folder Redirection
+      enabled: false
+  OU=PC's:
+    - gpo: Default Apps
+      enabled: false
+    - gpo: Updates
+    - gpo: PC - GPO
+    - gpo: PC - Folder Redirection
+  OU=Server-Accounts:
+    - gpo: Drive Mapping - Server
+      enforced: true
+  OU=Servers:
+    - gpo: Updates
+    - gpo: Server - GPO
+windows_directory_groups:
+  - name: FreeNAS Read & Write
+    ou: OU=Groups,OU=Linds - Users
+    scope: global
+    category: security
+    description: null
+  - name: k8s-admins
+    ou: OU=Kubernetes
+    scope: global
+    category: security
+    description: Admin in every Keycloak-integrated service
+  - name: k8s-argocd-admins
+    ou: OU=Kubernetes
+    scope: global
+    category: security
+    description: Argo CD role:admin
+  - name: k8s-grafana-admins
+    ou: OU=Kubernetes
+    scope: global
+    category: security
+    description: Grafana Admin
+  - name: k8s-grafana-editors
+    ou: OU=Kubernetes
+    scope: global
+    category: security
+    description: Grafana Editor
+  - name: k8s-immich-admins
+    ou: OU=Kubernetes
+    scope: global
+    category: security
+    description: Immich admin
+  - name: k8s-immich-users
+    ou: OU=Kubernetes
+    scope: global
+    category: security
+    description: Immich user
+  - name: k8s-users
+    ou: OU=Kubernetes
+    scope: global
+    category: security
+    description: 'Gate group: required for any Keycloak/homelab access'
+  - name: k8s-vault-admins
+    ou: OU=Kubernetes
+    scope: global
+    category: security
+    description: Vault admin policy
+  - name: k8s-zabbix-admins
+    ou: OU=Kubernetes
+    scope: global
+    category: security
+    description: Zabbix Super admin
+  - name: k8s-zabbix-users
+    ou: OU=Kubernetes
+    scope: global
+    category: security
+    description: Zabbix User
+  - name: Redirected Folders
+    ou: OU=Groups,OU=Linds - Users
+    scope: global
+    category: security
+    description: null
+  - name: Time-Machine
+    ou: OU=Server-Accounts
+    scope: global
+    category: security
+    description: null
+  - name: Windows-Servers
+    ou: OU=Server-Accounts
+    scope: global
+    category: security
+    description: null

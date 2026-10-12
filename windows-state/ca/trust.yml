@@ -1,0 +1,67 @@
+# What the directory trusts: the stores every domain member downloads.
+ntauth:
+  - subject: CN=linds-CA, DC=linds, DC=com, DC=au
+    thumbprint: 5CC82DD0C6B69C2B8C40A3EC6C7773BD5336A256
+    not_before: '2023-07-31'
+    not_after: '2028-07-31'
+    self_signed: true
+  - subject: CN=linds-CA, DC=linds, DC=com, DC=au
+    thumbprint: EC2F3B48D3E0E3F48FF886E1B8699DCF7699BC3F
+    not_before: '2019-12-01'
+    not_after: '2029-12-01'
+    self_signed: true
+root_authorities:
+  - subject: CN=linds-CA, DC=linds, DC=com, DC=au
+    thumbprint: 5CC82DD0C6B69C2B8C40A3EC6C7773BD5336A256
+    not_before: '2023-07-31'
+    not_after: '2028-07-31'
+    self_signed: true
+  - subject: CN=LINDS-CA, DC=linds, DC=com, DC=au
+    thumbprint: ACC8E53C48F806E528A833080B52B120F15BDBF2
+    not_before: '2019-11-29'
+    not_after: '2029-11-29'
+    self_signed: true
+  - subject: CN=linds-CA, DC=linds, DC=com, DC=au
+    thumbprint: EC2F3B48D3E0E3F48FF886E1B8699DCF7699BC3F
+    not_before: '2019-12-01'
+    not_after: '2029-12-01'
+    self_signed: true
+  - subject: CN=linds-LINDS-DC-CA, DC=linds, DC=com, DC=au
+    thumbprint: 6C1DEBC9D0CDF2935B045B59B1F71C015D84CAE9
+    not_before: '2019-11-29'
+    not_after: '2024-11-29'
+    self_signed: true
+  - subject: CN=linds-LINDS-DC-CA-1, DC=linds, DC=com, DC=au
+    thumbprint: AB834018593148AC01F53FBE387102D9656442AE
+    not_before: '2019-11-29'
+    not_after: '2024-11-29'
+    self_signed: true
+intermediate:
+  - subject: CN=linds-CA, DC=linds, DC=com, DC=au
+    thumbprint: 5CC82DD0C6B69C2B8C40A3EC6C7773BD5336A256
+    not_before: '2023-07-31'
+    not_after: '2028-07-31'
+    self_signed: true
+  - subject: CN=LINDS-CA, DC=linds, DC=com, DC=au
+    thumbprint: ACC8E53C48F806E528A833080B52B120F15BDBF2
+    not_before: '2019-11-29'
+    not_after: '2029-11-29'
+    self_signed: true
+  - subject: CN=linds-CA, DC=linds, DC=com, DC=au
+    thumbprint: EC2F3B48D3E0E3F48FF886E1B8699DCF7699BC3F
+    not_before: '2019-12-01'
+    not_after: '2029-12-01'
+    self_signed: true
+  - subject: CN=linds-LINDS-DC-CA, DC=linds, DC=com, DC=au
+    thumbprint: 6C1DEBC9D0CDF2935B045B59B1F71C015D84CAE9
+    not_before: '2019-11-29'
+    not_after: '2024-11-29'
+    self_signed: true
+  - subject: CN=linds-LINDS-DC-CA-1, DC=linds, DC=com, DC=au
+    thumbprint: AB834018593148AC01F53FBE387102D9656442AE
+    not_before: '2019-11-29'
+    not_after: '2024-11-29'
+    self_signed: true
+enrollment_services:
+  - name: linds-CA
+    server: LINDS-DC.linds.com.au

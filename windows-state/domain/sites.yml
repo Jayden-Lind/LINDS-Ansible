@@ -1,0 +1,21 @@
+# AD sites, their subnets and the links between them.
+sites:
+  - name: JD
+    subnets:
+      - 10.0.50.0/24
+      - 10.0.53.0/24
+    gp_link: null
+  - name: LINDS
+    subnets:
+      - 10.0.51.0/24
+      - 10.0.80.0/24
+      - 10.3.1.0/24
+      - 192.168.6.0/24
+    gp_link: null
+site_links:
+  - name: LINDS-SITELINK
+    cost: 100
+    interval_minutes: 15
+    sites:
+      - JD
+      - LINDS

@@ -1,0 +1,64 @@
+# What this server is and what is installed on it.
+name: LINDS-DC
+domain: linds.com.au
+role: Domain controller
+os: Microsoft Windows Server 2025 Standard
+edition: ServerStandard
+build: '26100'
+memory_gb: 16
+processors: 8
+time_zone: AUS Eastern Standard Time
+features:
+  - AD-Certificate
+  - ADCS-Cert-Authority
+  - AD-Domain-Services
+  - DNS
+  - FileAndStorage-Services
+  - File-Services
+  - FS-DFS-Replication
+  - FS-FileServer
+  - FS-NFS-Service
+  - GPMC
+  - NET-Framework-45-Core
+  - NET-Framework-45-Features
+  - NET-WCF-Services45
+  - NET-WCF-TCP-PortSharing45
+  - PowerShell
+  - PowerShellRoot
+  - RSAT
+  - RSAT-AD-AdminCenter
+  - RSAT-ADCS
+  - RSAT-ADCS-Mgmt
+  - RSAT-ADDS
+  - RSAT-ADDS-Tools
+  - RSAT-ADLDS
+  - RSAT-AD-PowerShell
+  - RSAT-AD-Tools
+  - RSAT-DFS-Mgmt-Con
+  - RSAT-DNS-Server
+  - RSAT-File-Services
+  - RSAT-NFS-Admin
+  - RSAT-Online-Responder
+  - RSAT-Role-Tools
+  - Storage-Services
+  - System-DataArchiver
+  - WindowsAdminCenterSetup
+  - Windows-Defender
+  - Wireless-Networking
+  - WoW64-Support
+  - XPS-Viewer
+volumes:
+  - letter: C
+    label: Windows
+    file_system: NTFS
+    size_gb: 100
+  - letter: E
+    label: NAS
+    file_system: NTFS
+    size_gb: 11172
+addresses:
+  - 10.3.1.200/24 (Manual)
+dns_servers:
+  - 10.3.1.201
+  - 10.0.50.200
+  - 127.0.0.1

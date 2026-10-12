@@ -1,0 +1,122 @@
+---
+# Capture the Windows domain as it is, into files worth diffing.
+#
+#   make windows-capture                      # into ./windows-state
+#   make windows-capture WINDOWS_STATE=<dir>  # somewhere else
+#
+# Needs a Kerberos ticket (`make kinit`). Changes nothing on the servers: it
+# reads the directory, DNS, Group Policy, the CA and each server, and writes
+#
+#   domain/   the domain, sites, OUs with their GPO links, groups, users,
+#             computers, service accounts, who is privileged, delegation
+#   gpo/      every Group Policy object: settings report, permissions, and a
+#             backup that Import-GPO can restore
+#   dns/      zones and the records somebody created
+#   ca/       the CA's settings, every certificate template, the trust stores
+#   hosts/    per server: features, shares and their permissions, services,
+#             scheduled tasks, software, security settings
+#
+# Run it, look at `git diff` in the state directory, commit. What the diff
+# shows is what changed in the domain since the last capture, whoever or
+# whatever changed it. Things that change by themselves (logon times, free
+# space, update revisions) are left out so that it shows nothing else.
+#
+# This repository is public. The files that name people, say who holds which
+# rights or show what is weak or switched off are encrypted with the vault as
+# they are written; the list is SENSITIVE in scripts/windows_state.py, and
+# windows-state/README.md says how to read them.
+
+- name: Prepare
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Make a work directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: windows-capture-
+      register: windows_capture_tmp
+
+    - name: Remember where it is, and where the state goes
+      ansible.builtin.set_fact:
+        windows_capture_work: "{{ windows_capture_tmp.path }}"
+        windows_state_dir: "{{ windows_state_dir | default(playbook_dir ~ '/../windows-state') | realpath }}"
+
+- name: The directory, DNS and Group Policy
+  hosts: "{{ groups['windows_dc'] | first }}"
+  gather_facts: false
+  tasks:
+    - name: Capture from one domain controller
+      ansible.builtin.include_role:
+        name: windows_capture
+        tasks_from: domain
+      vars:
+        windows_capture_work: "{{ hostvars['localhost'].windows_capture_work }}"
+
+- name: Each server
+  hosts: windows
+  gather_facts: false
+  tasks:
+    - name: Capture the server
+      ansible.builtin.include_role:
+        name: windows_capture
+        tasks_from: host
+
+- name: The certification authority
+  hosts: windows_ca
+  gather_facts: false
+  tasks:
+    - name: Capture the CA
+      ansible.builtin.include_role:
+        name: windows_capture
+        tasks_from: ca
+
+- name: Write the files
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    domain_dc: "{{ groups['windows_dc'] | first }}"
+  tasks:
+    - name: Hand over what was read from the directory
+      ansible.builtin.copy:
+        content: "{{ hostvars[domain_dc]['windows_capture_' ~ item].output[0] }}"
+        dest: "{{ windows_capture_work }}/{{ item }}.json"
+        mode: "0600"
+      loop: [domain, dns, gpo]
+
+    - name: Hand over what was read from the CA
+      ansible.builtin.copy:
+        content: "{{ hostvars[item].windows_capture_ca.output[0] }}"
+        dest: "{{ windows_capture_work }}/ca.json"
+        mode: "0600"
+      loop: "{{ groups['windows_ca'] | default([]) }}"
+      when: hostvars[item].windows_capture_ca is defined
+
+    - name: Hand over what was read from each server
+      ansible.builtin.copy:
+        content: "{{ hostvars[item].windows_capture_host.output[0] }}"
+        dest: "{{ windows_capture_work }}/host-{{ item.split('.')[0] }}.json"
+        mode: "0600"
+      loop: "{{ groups['windows'] }}"
+      when: hostvars[item].windows_capture_host is defined
+
+    - name: Write the state directory
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "{{ playbook_dir }}/../scripts/windows_state.py"
+          - write
+          - "{{ windows_capture_work }}"
+          - "{{ windows_state_dir }}"
+          - "{{ playbook_dir }}/../vault_password"
+      changed_when: true
+
+    - name: Remove the work directory
+      ansible.builtin.file:
+        path: "{{ windows_capture_work }}"
+        state: absent
+
+    - name: Say where to look
+      ansible.builtin.debug:
+        msg: "Written to {{ windows_state_dir }}. `git -C {{ windows_state_dir }} status` shows what changed."

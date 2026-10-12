@@ -1,0 +1,97 @@
+# The domain root and every OU, with the GPOs linked to each, in order.
+- dn: DC=linds,DC=com,DC=au
+  description: null
+  protected_from_deletion: null
+  gp_inheritance_blocked: false
+  gpo_links:
+    - order: 1
+      gpo: Default Domain Policy
+      enabled: true
+      enforced: true
+- dn: OU=Domain Controllers,DC=linds,DC=com,DC=au
+  description: Default container for domain controllers
+  protected_from_deletion: false
+  gp_inheritance_blocked: false
+  gpo_links:
+    - order: 1
+      gpo: Server - GPO
+      enabled: true
+      enforced: false
+    - order: 2
+      gpo: Default Domain Controllers Policy
+      enabled: true
+      enforced: false
+    - order: 3
+      gpo: Updates
+      enabled: true
+      enforced: false
+- dn: OU=Groups,OU=Linds - Users,DC=linds,DC=com,DC=au
+  description: null
+  protected_from_deletion: true
+  gp_inheritance_blocked: false
+  gpo_links: []
+- dn: OU=Kubernetes,DC=linds,DC=com,DC=au
+  description: Kubernetes homelab entitlement groups
+  protected_from_deletion: false
+  gp_inheritance_blocked: false
+  gpo_links: []
+- dn: OU=Linds - Users,DC=linds,DC=com,DC=au
+  description: null
+  protected_from_deletion: true
+  gp_inheritance_blocked: false
+  gpo_links:
+    - order: 1
+      gpo: Drive Mapping - Everyone
+      enabled: true
+      enforced: false
+    - order: 2
+      gpo: Users - GPO
+      enabled: true
+      enforced: false
+    - order: 3
+      gpo: Users - Folder Redirection
+      enabled: false
+      enforced: false
+- dn: OU=PC's,DC=linds,DC=com,DC=au
+  description: null
+  protected_from_deletion: true
+  gp_inheritance_blocked: false
+  gpo_links:
+    - order: 1
+      gpo: Default Apps
+      enabled: false
+      enforced: false
+    - order: 2
+      gpo: Updates
+      enabled: true
+      enforced: false
+    - order: 3
+      gpo: PC - GPO
+      enabled: true
+      enforced: false
+    - order: 4
+      gpo: PC - Folder Redirection
+      enabled: true
+      enforced: false
+- dn: OU=Server-Accounts,DC=linds,DC=com,DC=au
+  description: null
+  protected_from_deletion: true
+  gp_inheritance_blocked: false
+  gpo_links:
+    - order: 1
+      gpo: Drive Mapping - Server
+      enabled: true
+      enforced: true
+- dn: OU=Servers,DC=linds,DC=com,DC=au
+  description: null
+  protected_from_deletion: true
+  gp_inheritance_blocked: false
+  gpo_links:
+    - order: 1
+      gpo: Updates
+      enabled: true
+      enforced: false
+    - order: 2
+      gpo: Server - GPO
+      enabled: true
+      enforced: false

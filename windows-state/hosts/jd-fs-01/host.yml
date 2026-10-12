@@ -1,0 +1,47 @@
+# What this server is and what is installed on it.
+name: JD-FS-01
+domain: linds.com.au
+role: Member server
+os: Microsoft Windows Server 2025 Standard
+edition: ServerStandard
+build: '26100'
+memory_gb: 16
+processors: 8
+time_zone: AUS Eastern Standard Time
+features:
+  - FileAndStorage-Services
+  - File-Services
+  - FS-DFS-Namespace
+  - FS-DFS-Replication
+  - FS-FileServer
+  - NET-Framework-45-Core
+  - NET-Framework-45-Features
+  - NET-WCF-Services45
+  - NET-WCF-TCP-PortSharing45
+  - PowerShell
+  - PowerShellRoot
+  - RSAT
+  - RSAT-DFS-Mgmt-Con
+  - RSAT-File-Services
+  - RSAT-Role-Tools
+  - Storage-Services
+  - System-DataArchiver
+  - WindowsAdminCenterSetup
+  - Windows-Defender
+  - Wireless-Networking
+  - WoW64-Support
+  - XPS-Viewer
+volumes:
+  - letter: C
+    label: ''
+    file_system: NTFS
+    size_gb: 79
+  - letter: D
+    label: NAS
+    file_system: NTFS
+    size_gb: 12249
+addresses:
+  - 10.0.50.201/24 (Manual)
+dns_servers:
+  - 10.0.50.200
+  - 10.3.1.200

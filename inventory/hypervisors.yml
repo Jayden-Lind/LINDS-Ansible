@@ -1,0 +1,9 @@
+---
+# The hypervisors, for the few things the Windows playbooks do to a VM from
+# outside (attaching a data disk). A group of its own: the `proxmox` group
+# belongs to the playbook that configures jd-proxmox-01 itself.
+windows_hypervisors:
+  hosts:
+    linds-proxmox-01:
+      ansible_host: 192.168.6.205
+      ansible_user: root

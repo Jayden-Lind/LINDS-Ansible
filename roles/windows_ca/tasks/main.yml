@@ -1,0 +1,4 @@
+---
+- name: This role is used through its task files
+  ansible.builtin.fail:
+    msg: Use playbooks/windows-ca-backup.yml (make windows-ca-backup), which includes backup.yml.

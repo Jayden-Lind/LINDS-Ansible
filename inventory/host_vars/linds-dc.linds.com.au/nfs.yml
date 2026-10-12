@@ -1,0 +1,8 @@
+---
+# The NFS server on linds-dc serves NFS 4.1 only and hides dot-files, as found
+# on 12 October 2026. Not Windows' defaults, so they are set again on a rebuild.
+windows_fileserver_nfs_server:
+  EnableNFSV2: false
+  EnableNFSV3: false
+  EnableNFSV4: true
+  HideFilesBeginningInDot: true

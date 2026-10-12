@@ -227,11 +227,101 @@
   roles:
     - windows_edition
 
-- name: Promote to a domain controller
+# What the server becomes is decided by the groups it is in: a domain
+# controller, the CA, a file server, or several of those at once.
+- name: Baseline as a domain member
   hosts: "{{ target | default('unset') }}"
   gather_facts: false
   tags: promote
   roles:
     - windows_baseline
-    - windows_domain_controller
-    - windows_dc_time
+
+- name: Promote to a domain controller
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tags: promote
+  tasks:
+    - name: Domain controller
+      ansible.builtin.include_role:
+        name: windows_domain_controller
+      when: inventory_hostname in groups['windows_dc'] | default([])
+
+# From a domain controller the others already know. The newcomer's account
+# gains the name it is replicated under at promotion, and a domain controller
+# that does not hold that name cannot pull anything from the newcomer,
+# including the name.
+- name: Make the new domain controller known to every other one
+  hosts: windows_partner_dc
+  gather_facts: false
+  tags: promote
+  tasks:
+    - name: Hand its finished account to the others and wait until they agree
+      ansible.builtin.include_role:
+        name: windows_ad_converge
+      vars:
+        windows_ad_converge_computer: "{{ hostvars[target].windows_hostname | default(target.split('.')[0]) }}"
+        windows_ad_converge_state: present
+      when: target in groups['windows_dc'] | default([])
+
+- name: Finish the domain controller
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tags: promote
+  tasks:
+    - name: RID pool, health checks, time
+      ansible.builtin.include_role:
+        name: "{{ item.role }}"
+        tasks_from: "{{ item.tasks }}"
+      loop:
+        - {role: windows_domain_controller, tasks: finish}
+        - {role: windows_dc_time, tasks: main}
+      loop_control:
+        label: "{{ item.role }}"
+      when: inventory_hostname in groups['windows_dc'] | default([])
+
+- name: Certification authority
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tags: promote
+  tasks:
+    - name: Install or restore the CA
+      ansible.builtin.include_role:
+        name: windows_ca
+        tasks_from: install
+      when: inventory_hostname in groups['windows_ca'] | default([])
+
+    # A domain controller that is also the CA could not get its own LDAPS
+    # certificate until now.
+    - name: LDAPS certificate, now that the CA is there
+      ansible.builtin.include_role:
+        name: windows_domain_controller
+        tasks_from: ldaps
+      when:
+        - inventory_hostname in groups['windows_ca'] | default([])
+        - inventory_hostname in groups['windows_dc'] | default([])
+        - windows_dc_require_ldaps | default(true) | bool
+
+- name: File server
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tags: promote
+  tasks:
+    - name: Data volumes, shares and exports
+      ansible.builtin.include_role:
+        name: windows_fileserver
+      when: inventory_hostname in groups['windows_fileserver'] | default([])
+
+
+# A retirement that made way for this server may have left the site's other
+# domain controller as the preferred bridgehead. Now that this one is known
+# everywhere, the choice goes back to the topology generator.
+- name: Give the choice of bridgehead back
+  hosts: windows_partner_dc
+  gather_facts: false
+  tags: promote
+  tasks:
+    - name: Release the preferred bridgehead, if one was set
+      ansible.builtin.include_role:
+        name: windows_dc_retire
+        tasks_from: bridgehead-release
+      when: target in groups['windows_dc'] | default([])

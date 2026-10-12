@@ -1,0 +1,7 @@
+---
+- name: Read the certification authority, its templates and the trust stores
+  ansible.windows.win_powershell:
+    script: "{{ lookup('ansible.builtin.file', role_path ~ '/files/ca.ps1') }}"
+  register: windows_capture_ca
+  changed_when: false
+  check_mode: false

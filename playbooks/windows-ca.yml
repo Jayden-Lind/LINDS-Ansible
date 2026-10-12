@@ -1,0 +1,30 @@
+---
+# Put the certification authority on a server: restored from the backup in
+# the state directory if there is one, created new if not.
+#
+#   make windows-ca HOST=<fqdn>
+#
+# Needs a Kerberos ticket (`make kinit`). HOST must be in the windows_ca group.
+# playbooks/windows-build.yml does this by itself for such a host; this is for
+# running it alone.
+
+- name: Check the request
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: The host must be named and be the CA in the inventory
+      ansible.builtin.assert:
+        that:
+          - target is defined
+          - target in groups['windows_ca'] | default([])
+        fail_msg: Pass -e target=<fqdn>, a host in the windows_ca group of the inventory.
+
+- name: Certification authority
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tasks:
+    - name: Install or restore the CA
+      ansible.builtin.include_role:
+        name: windows_ca
+        tasks_from: install
