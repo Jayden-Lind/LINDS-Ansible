@@ -28,7 +28,9 @@ features:
   - RSAT-ADLDS
   - RSAT-AD-PowerShell
   - RSAT-AD-Tools
+  - RSAT-DFS-Mgmt-Con
   - RSAT-DNS-Server
+  - RSAT-File-Services
   - RSAT-Role-Tools
   - Storage-Services
   - System-DataArchiver
