@@ -115,9 +115,14 @@
 # The other site's domain controller, which holds the RID master role, does
 # not know this one exists until the next scheduled replication. Until it
 # does, this one has no RID pool and cannot create users, groups or computers.
+# Done from a domain controller the others already know, where there is one
+# (the build playbook names it): the others cannot yet authenticate to this
+# one, so nothing it offers them reaches them.
 - name: Tell every other domain controller about this one
   ansible.builtin.include_role:
     name: windows_ad_converge
+    apply:
+      delegate_to: "{{ (groups['windows_partner_dc'] | default([inventory_hostname]))[0] }}"
   vars:
     windows_ad_converge_computer: "{{ windows_hostname | default(inventory_hostname_short) }}"
     windows_ad_converge_state: present

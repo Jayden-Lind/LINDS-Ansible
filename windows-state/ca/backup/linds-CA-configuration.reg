@@ -11,7 +11,7 @@ Windows Registry Editor Version 5.00
 "DBFlags"=dword:000000b0
 "Version"=dword:00070001
 "SetupStatus"=dword:00006001
-"DBLastFullBackup"=hex:fa,29,de,d7,75,59,dd,01
+"DBLastFullBackup"=hex:ed,37,d7,24,13,5a,dd,01
 
 [HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\CertSvc\Configuration\linds-CA]
 "DSConfigDN"="CN=Configuration,DC=linds,DC=com,DC=au"
@@ -120,7 +120,7 @@ Windows Registry Editor Version 5.00
   20,00,00,00,20,02,00,00,01,02,00,00,00,00,00,05,20,00,00,00,20,02,00,00
 "SetupStatus"=dword:00000001
 "CRLNextPublish"=hex:5c,e6,0c,a2,90,5e,dd,01
-"CRLDeltaNextPublish"=hex:5c,66,92,a3,d9,59,dd,01
+"CRLDeltaNextPublish"=hex:f3,64,fc,cd,a2,5a,dd,01
 "CRLAttemptRepublish"=dword:00000000
 
 [HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\CertSvc\Configuration\linds-CA\CSP]

@@ -278,3 +278,18 @@
       ansible.builtin.include_role:
         name: windows_fileserver
       when: inventory_hostname in groups['windows_fileserver'] | default([])
+
+
+# A retirement that made way for this server may have left the site's other
+# domain controller as the preferred bridgehead. Now that this one is known
+# everywhere, the choice goes back to the topology generator.
+- name: Give the choice of bridgehead back
+  hosts: windows_partner_dc
+  gather_facts: false
+  tags: promote
+  tasks:
+    - name: Release the preferred bridgehead, if one was set
+      ansible.builtin.include_role:
+        name: windows_dc_retire
+        tasks_from: bridgehead-release
+      when: target in groups['windows_dc'] | default([])

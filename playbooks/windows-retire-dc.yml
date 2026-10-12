@@ -378,3 +378,8 @@
         apply:
           tags: [cleanup, bridgehead-release]
       tags: [cleanup, bridgehead-release]
+      # When a replacement is about to be built, the preference stays until
+      # that server is promoted and known everywhere (the build playbook
+      # releases it): otherwise the other site can be pointed at the newcomer
+      # before it is able to talk to it.
+      when: not (windows_retire_keep_bridgehead | default(false) | bool)
