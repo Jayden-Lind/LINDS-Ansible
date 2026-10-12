@@ -243,8 +243,40 @@
   tasks:
     - name: Domain controller
       ansible.builtin.include_role:
-        name: "{{ item }}"
-      loop: [windows_domain_controller, windows_dc_time]
+        name: windows_domain_controller
+      when: inventory_hostname in groups['windows_dc'] | default([])
+
+# From a domain controller the others already know. The newcomer's account
+# gains the name it is replicated under at promotion, and a domain controller
+# that does not hold that name cannot pull anything from the newcomer,
+# including the name.
+- name: Make the new domain controller known to every other one
+  hosts: windows_partner_dc
+  gather_facts: false
+  tags: promote
+  tasks:
+    - name: Hand its finished account to the others and wait until they agree
+      ansible.builtin.include_role:
+        name: windows_ad_converge
+      vars:
+        windows_ad_converge_computer: "{{ hostvars[target].windows_hostname | default(target.split('.')[0]) }}"
+        windows_ad_converge_state: present
+      when: target in groups['windows_dc'] | default([])
+
+- name: Finish the domain controller
+  hosts: "{{ target | default('unset') }}"
+  gather_facts: false
+  tags: promote
+  tasks:
+    - name: RID pool, health checks, time
+      ansible.builtin.include_role:
+        name: "{{ item.role }}"
+        tasks_from: "{{ item.tasks }}"
+      loop:
+        - {role: windows_domain_controller, tasks: finish}
+        - {role: windows_dc_time, tasks: main}
+      loop_control:
+        label: "{{ item.role }}"
       when: inventory_hostname in groups['windows_dc'] | default([])
 
 - name: Certification authority
