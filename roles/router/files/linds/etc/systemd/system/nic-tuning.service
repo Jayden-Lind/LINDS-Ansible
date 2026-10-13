@@ -1,0 +1,22 @@
+# Managed by LINDS-Ansible: roles/router/files/linds/etc/systemd/system/nic-tuning.service.
+# ethtool knobs systemd .link files cannot express, applied once the renamed
+# devices exist. Both NICs are virtio here, so there is no ring to enlarge
+# (jd-router-01's WAN is a ConnectX VF and its unit raises that one's).
+#   rx-udp-gro-forwarding: batch forwarded UDP (WireGuard, QUIC) through GRO,
+#   the UDP counterpart of the TCP GRO the .link files already enable.
+[Unit]
+Description=NIC tuning (offloads, UDP GRO forwarding) for wan0 and lan0
+After=systemd-networkd.service sys-subsystem-net-devices-wan0.device sys-subsystem-net-devices-lan0.device
+Wants=sys-subsystem-net-devices-wan0.device sys-subsystem-net-devices-lan0.device
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/ethtool -K wan0 rx-udp-gro-forwarding on
+# Re-asserted in case anything on the tap (Suricata) switched them off;
+# sg first: TSO needs scatter-gather.
+ExecStart=/usr/sbin/ethtool -K lan0 sg on gro on gso on tso on
+ExecStart=/usr/sbin/ethtool -K lan0 rx-udp-gro-forwarding on
+
+[Install]
+WantedBy=multi-user.target

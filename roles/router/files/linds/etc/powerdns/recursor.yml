@@ -1,0 +1,90 @@
+# Managed by LINDS-Ansible: roles/router/files/linds/etc/powerdns/recursor.yml
+# pdns-recursor 5.x YAML settings. Same daemon as VyOS `service dns
+# forwarding`, and the same settings as jd-router-01
+# (files/jd/etc/powerdns/recursor.yml, which has the reasoning and the
+# measurements behind the cache tuning): answers kept at least 15 minutes
+# and refreshed at half life, negative answers for 5 minutes, stale answers
+# served for up to 12 h when upstream is unreachable. linds-vyos-01 had none
+# of that, only a 60 s negative TTL.
+#
+# The floor is global: linds.com.au and k8s.linds.com.au answers are held for
+# 15 minutes too. After changing an internal record:
+#   rec_control wipe-cache NAME   (or 'linds.com.au$' for the subtree)
+
+incoming:
+  # The addresses VyOS listened on: the main LAN and every VLAN. No IPv6
+  # listener: the RA here carries no DNS server, clients use the one DHCPv4
+  # gives them.
+  listen:
+    - 192.168.6.1
+    - 10.3.1.1
+    - 10.0.80.1
+    - 10.0.36.1
+    - 10.0.110.1
+  port: 53
+  allow_from:
+    - 192.168.0.0/16
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - '::1/128'
+
+recursor:
+  # Catch-all upstream plus the internal stubs, all with recursion desired
+  # (suits an AD zone and kube-dns alike).
+  #
+  # The catch-all is Quad9, not Cloudflare, which is what linds-vyos-01
+  # forwarded to. Which resolver is asked decides where browsers are then
+  # sent: Cloudflare does not pass the client subnet on, and Google's and
+  # Microsoft's name servers place its resolvers far away much of the time.
+  # jd's file has the full comparison from that site. Checked from this one
+  # on 2026-10-13 (50 common names, four lookups each through both, then a
+  # TCP handshake to every answer, from linds-proxmox-01):
+  #   * Cloudflare gave an answer over 50 ms away where Quad9's was under
+  #     25 ms every time for 10 of the 50: i.ytimg.com, fonts.gstatic.com,
+  #     docs.google.com, drive.google.com and five more of Google's at about
+  #     120 ms where Quad9's were 4 to 5 ms, and outlook.office365.com at
+  #     154 ms. The reverse: none.
+  #   * Mean handshake to the answers: Cloudflare 33 ms, Quad9 25 ms.
+  #   * Time to answer, median / 95th percentile: Cloudflare 5.3 / 6.4 ms,
+  #     Quad9 4.4 / 5.0 ms.
+  # If Quad9 refuses a name that is wanted (NXDOMAIN from 9.9.9.9, an
+  # address from 9.9.9.10): 9.9.9.10 / 149.112.112.10 is the same service
+  # without the block list and without DNSSEC validation.
+  forward_zones_recurse:
+    - zone: '.'
+      forwarders: ['9.9.9.9', '149.112.112.112', '2620:fe::fe', '2620:fe::9']
+    # The two DCs at this site plus JD's over the IPsec tunnel as backup;
+    # pdns orders forwarders by measured speed. VyOS also listed 10.0.50.1,
+    # which is jd-router-01's own forwarder and asks these same servers.
+    - zone: linds.com.au
+      forwarders: ['10.3.1.200', '10.3.1.201', '10.0.50.200']
+    # kube-dns, reachable because Cilium advertises ClusterIPs over BGP.
+    # Drop this stub in the same change if that advertisement ever goes.
+    - zone: k8s.linds.com.au
+      forwarders: ['10.96.0.10']
+  minimum_ttl_override: 900
+  threads: 2
+  hint_file: /usr/share/dns/root.hints
+  include_dir: /etc/powerdns/recursor.d
+  socket_dir: /var/run/pdns-recursor
+  setuid: pdns
+  setgid: pdns
+
+outgoing:
+  # Forward to RFC1918 targets (the default refuses them).
+  dont_query: []
+
+recordcache:
+  max_entries: 1000000
+  max_negative_ttl: 300
+  refresh_on_ttl_perc: 50
+  serve_stale_extensions: 1440
+
+dnssec:
+  validation: 'off'
+
+logging:
+  quiet: true
+  # No "Periodic statistics report" (ten journal lines every 30 minutes by
+  # default). The same numbers are one `rec_control get-all` away.
+  statistics_interval: 0

@@ -1,0 +1,52 @@
+# Managed by LINDS-Ansible: roles/router/files/linds/etc/systemd/network/30-mgmt0.network. Build-time management
+# leg: an address on the server VLAN (the hypervisor tags the NIC with VLAN
+# 300, so it is untagged in here), with linds-vyos-01 as the gateway. It is
+# how Ansible reaches this box, and how the box reaches apt, while lan0 and
+# wan0 are held link-down at the hypervisor.
+#
+# The default route has a worse metric than the one the WAN's DHCP lease
+# installs (1024), so it only carries traffic while there is no WAN. The
+# tunnels' own packets may not use it at all: the output chain in
+# nftables.conf keeps WireGuard and IKE to wan0.
+#
+# Table 250 and its rule make one more promise: whatever the main table says,
+# an answer from the management address leaves by the management NIC. The
+# main table has a static route for JD's LAN into the tunnel (frr.conf), the
+# tunnel is down during a build, and JD's LAN is where Ansible runs. Without
+# the rule the build cuts off its own SSH session the moment FRR starts
+# (it did, on the test build of 2026-10-13).
+#
+# At cutover this NIC is set link-down in the same step that brings lan0 and
+# wan0 up: 10.3.1.250 and lan0.300's 10.3.1.1 are the same network on the
+# same wire. Afterwards delete this file and 10-mgmt0.link, and take the NIC
+# out of LINDS-Terraform.
+[Match]
+Name=mgmt0
+
+[Link]
+RequiredForOnline=no
+
+[Network]
+Address=10.3.1.250/24
+IPv6AcceptRA=no
+LinkLocalAddressing=no
+LLDP=no
+EmitLLDP=no
+
+[Route]
+Gateway=10.3.1.1
+Metric=4096
+
+[RoutingPolicyRule]
+From=10.3.1.250
+Table=250
+Priority=900
+
+[Route]
+Destination=10.3.1.0/24
+Scope=link
+Table=250
+
+[Route]
+Gateway=10.3.1.1
+Table=250
