@@ -509,7 +509,13 @@ The router of the LINDS site: VM 114 on linds-proxmox-01
 | `wan0` | WAN (VyOS `eth1`) | DHCP, DHCPv6 + prefix delegation |
 | `ipsec0` | site-to-site to JD (VyOS `vti0`), BGP to 10.255.0.1 | 10.255.0.2/30 |
 | `wg101` | NordVPN, table 100 | 10.5.0.2/32 |
-| `mgmt0` | build-time management NIC on VLAN 300 | 10.3.1.250/24 |
+
+It was built through a fourth NIC, `mgmt0` on VLAN 300 (10.3.1.250), which
+has been link-down at the hypervisor since the cutover. Its two networkd
+files, its sshd listen address and its entry in `router_expected_interfaces`
+were removed afterwards; "Building it" below describes the build as it was
+done, and a rebuild beside a live router needs them back (the commit that
+removed them shows what they were).
 
 ### What it has that linds-vyos-01 did not
 
@@ -790,10 +796,10 @@ is that list as checks.
 
 Once it has run for as long as it takes to trust it:
 
-1. **LINDS-Ansible**, branch `router/linds-after-cutover`: `ansible_host`
-   becomes 192.168.6.1, and the management NIC's files, its sshd listen
-   address and its entry in `router_expected_interfaces` go. Merge it and
-   run the playbook.
+1. **LINDS-Ansible**: `ansible_host` set to 192.168.6.1, and the management
+   NIC's files, its sshd listen address and its entry in
+   `router_expected_interfaces` removed. Done by the commit that wrote this
+   sentence; run the playbook once after merging it.
 2. **LINDS-Terraform**, branch `proxmox/linds-router-after-cutover`: the three
    `disconnected` flags written as the cutover left them, and
    `prevent_destroy`. Terraform ignores the link states of this VM once it
