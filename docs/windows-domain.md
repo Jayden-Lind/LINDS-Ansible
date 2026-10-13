@@ -626,9 +626,45 @@ folder at a time, and until a folder's turn comes it shows as
 `uninitialised` with no event at all, which looks like nothing happening: the
 debug log (`C:\Windows\debug\Dfsr*.log`, `DirWalkerTask` lines) shows the
 walk. Then each folder logs 4102, hashes its files against JD, copies nothing
-that matches, and logs 4104. `Music` took two minutes; the rest take hours.
-There must be no 4412 (conflict) events and nothing in a folder's
-`DfsrPrivate\PreExisting`.
+that matches, and logs 4104.
+
+**It took 33 hours** for the nine folders and their 635,000 files: re-added at
+19:48 on 12 October, the walk done at 20:18, the last folder normal at 04:52
+on 14 October. Folders finish one after another, small ones first: `Music`
+in two minutes, the three largest more than a day in. Almost nothing crosses
+the tunnel meanwhile (under 1 GiB in the first 29 hours). Three things to
+know before doing it again:
+
+- **It writes to the data disk.** To hash a file the service first stages a
+  copy of it under `DfsrPrivate\Staging` on the same volume, so it reads and
+  writes about as much as there is data, at 40 MB/s here. Staging is kept up
+  to each folder's quota, and on thin storage that is real growth: the LINDS
+  thin pool went from 52.6% to 60.9%, about 920 GiB. Some 550 GiB of that is
+  staging, which stays; about 260 GiB is space the guest has freed and the
+  pool did not get back (the reclaim runbook below returns it). Check the
+  headroom first: this pool has been full once.
+- **Estimate the end from the backlog, not from bytes read.** `dfsrdiag
+  backlog /rgname:NAS /rfname:<folder> /smem:<partner> /rmem:<this server>`
+  twice, some minutes apart, gives files per minute for the folder being
+  worked on; the folders behind it do not move until it is done. One very
+  large file holds its folder for hours and needs staging room for about
+  three copies of itself: a 39 GiB file here had 107 GiB of staging against a
+  100 GiB quota, with a 4206 warning ("failed to clean up old staging files")
+  every half hour until it was through.
+- **A 4412 during the first sync is a file that did not match, and is worth
+  reading.** The rejoin is the one time every file at a site is compared with
+  the other site by content. Here it found one: a 39 GiB file whose LINDS
+  copy held 3.4 GiB of zeros, in runs of 192 KiB every 256 KiB across a
+  4.5 GiB stretch, under the same size and dates as the good copy at JD.
+  That is the mark of a thin pool with 64 KiB chunks filling while a file is
+  written, and this pool filled on 15 August 2026, days after replication
+  had rewritten these folders. Replication never noticed, because afterwards
+  it only looks at files that change. This time the service fetched the
+  differing parts from JD (3.4 GiB over the tunnel), installed the good file
+  and moved the damaged one to `DfsrPrivate\ConflictAndDeleted`, where the
+  two can be compared block by block. Every other file matched.
+
+There must be nothing in a folder's `DfsrPrivate\PreExisting`.
 
 **The LINDS-Backup VM (104)** still mounts the same disk for its Backblaze
 runs. Its routine is now: shut VM 113 down, start 104, and the reverse; never
@@ -1149,7 +1185,7 @@ Not automated: this is a repair to one host's DCOM descriptor, not fleet state.
 
 ## Known outstanding
 
-As of 12 October 2026.
+As of 14 October 2026.
 
 - **Retrim fails on the guests**, so thin space is only handed back by the
   runbook above. Both sites were done on 10 October.
@@ -1185,6 +1221,11 @@ As of 12 October 2026.
   the Recycle Bin, the domain would be rebuilt from this repository, and the
   NAS permissions and every joined machine redone. Event 2089 on the domain
   controllers ("not backed up") is therefore expected.
+- **Data on the LINDS NAS disk outside the replicated folders has been
+  checked against nothing** since its thin pool filled on 15 August 2026. The
+  rejoin of 12 October compared every replicated file with JD and found one
+  damaged by that event (see "replacing `linds-dc`"); files that are not
+  replicated, such as `E:\server`, had no such comparison.
 - **`E:\server\old_backup` on `linds-dc`** is 248 GB of Veeam backups from
   2019 to 2021, of hosts that no longer exist.
 - **Dead scheduled tasks**: `jd-dc-01` has two `ShadowCopyVolume{...}` tasks
