@@ -132,8 +132,6 @@
       - snmpd
       - lldpd
       - ddclient
-      - suricata
-      - suricata-update
       - rsyslog
       - conntrack                 # failover flushes SNAT entries on switchover
       - wireguard-tools           # wg(8) for the endpoint re-resolver + debugging

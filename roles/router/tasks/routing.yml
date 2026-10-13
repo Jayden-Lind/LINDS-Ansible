@@ -1,20 +1,20 @@
 ---
-# FRR: static routes + BGP (files/etc/frr/frr.conf). VyOS `protocols` is
-# FRR underneath, so the config is the same dialect. Changes go through
-# frr-reload.py (systemctl reload), which diffs and leaves untouched
-# sessions alone.
+# FRR: static routes + BGP (files/<router_site>/etc/frr/frr.conf). VyOS
+# `protocols` is FRR underneath, so the config is the same dialect. Changes
+# go through frr-reload.py (systemctl reload), which diffs and leaves
+# untouched sessions alone.
 
 - name: FRR files
   ansible.builtin.copy:
-    src: "etc/frr/{{ item.name }}"
+    src: "{{ item.src }}"
     dest: "/etc/frr/{{ item.name }}"
     owner: frr
     group: frr
     mode: '0640'
   loop:
-    - {name: daemons, notify: restart frr}
-    - {name: vtysh.conf, notify: restart frr}
-    - {name: frr.conf, notify: reload frr}
+    - {name: daemons, src: etc/frr/daemons, notify: restart frr}
+    - {name: vtysh.conf, src: etc/frr/vtysh.conf, notify: restart frr}
+    - {name: frr.conf, src: "{{ router_site }}/etc/frr/frr.conf", notify: reload frr}
   loop_control:
     label: "{{ item.name }}"
   register: router_frr_files

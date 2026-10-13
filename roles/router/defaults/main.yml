@@ -1,11 +1,32 @@
 ---
 # roles/router — a Debian 13 router built from plain config files.
 #
-# The daemon configs are real files under files/etc/, mirroring where they
-# land on the box; edit them there. Jinja is used only where a file carries
-# vault secrets (WireGuard peers, EAP users, the Cloudflare token) or is
-# rendered from vault values (certificates, keys).
+# The daemon configs are real files, mirroring where they land on the box;
+# edit them there. What every router gets is under files/etc/, what belongs
+# to one site is under files/<router_site>/etc/ (files/jd/etc/,
+# files/linds/etc/). Jinja is used only where a file carries vault secrets
+# (WireGuard peers, EAP users, the Cloudflare token) or is rendered from
+# vault values (certificates, keys).
 
+# Which site's files this router gets: the name of a directory under files/.
+# No default on purpose (tasks/main.yml refuses to run without it): a router
+# given another site's firewall and DHCP ranges is worse than a failed run.
+# router_site: jd
+
+# What a site has. The daemons behind the first three run on every router
+# unless a site turns one off; the last two need something only some sites
+# have, so a site turns them on (group_vars/jd_router.yml does).
+router_upnp: true # miniupnpd: UPnP IGD + NAT-PMP/PCP for the main LAN
+router_mdns: true # avahi as an mDNS reflector between VLANs
+router_suricata: true # Suricata IDS on the LAN trunk, EVE to Loki
+router_failover: false # wan-failover: needs a second WAN to fail over to
+router_road_warrior: false # IKEv2 remote access (LINDS_MOBILE): its own
+# certificate, the EAP users, an XFRM interface
+
+# Connections `swanctl --list-conns` must show (tasks/validate.yml).
+router_ipsec_connections: [LINDS]
+# Routing tables the validator prints besides main (information only).
+router_routing_tables: []
 # Upgrades are a deliberate act, not a side effect of a config push. A normal
 # run installs what is missing and upgrades nothing: no `apt full-upgrade`,
 # the kernel stays at the installed version, so nothing in the run can reboot

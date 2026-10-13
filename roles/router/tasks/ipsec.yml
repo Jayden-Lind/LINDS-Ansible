@@ -1,8 +1,11 @@
 ---
-# strongSwan through swanctl.conf (files/etc/swanctl/swanctl.conf). The
-# credentials come from the same vault values the vyos role feeds VyOS's PKI
-# store — bare base64 DER — wrapped as PEM by the to_pem filter; the EAP users
-# render into conf.d/secrets.conf, which swanctl.conf includes.
+# strongSwan through swanctl.conf (files/<router_site>/etc/swanctl/
+# swanctl.conf). The credentials come from the same vault values the vyos
+# role fed VyOS's PKI store — bare base64 DER — wrapped as PEM by the to_pem
+# filter. Every router has the site-to-site certificate (one certificate,
+# both ends). A site with remote access (router_road_warrior) also gets that
+# server certificate and the EAP users, which render into
+# conf.d/secrets.conf; its swanctl.conf includes that directory.
 
 - name: swanctl directories
   ansible.builtin.file:
@@ -28,6 +31,7 @@
     - {name: ipsec_remote, value: "{{ ipsec_remote_pub }}"}
   loop_control:
     label: "{{ item.name }}"
+  when: item.name != 'ipsec_remote' or router_road_warrior | bool
   notify: reload swanctl
 
 - name: Private keys
@@ -40,6 +44,7 @@
     - {name: ipsec_remote, value: "{{ ipsec_remote_priv }}"}
   loop_control:
     label: "{{ item.name }}"
+  when: item.name != 'ipsec_remote' or router_road_warrior | bool
   no_log: true
   notify: reload swanctl
 
@@ -47,7 +52,7 @@
   ansible.builtin.find:
     paths: [/etc/swanctl/x509, /etc/swanctl/x509ca, /etc/swanctl/private]
     file_type: file
-    excludes: [IPSEC.pem, ipsec_remote.pem, LINDS-CA.pem]
+    excludes: "{{ ['IPSEC.pem', 'LINDS-CA.pem'] + (['ipsec_remote.pem'] if router_road_warrior | bool else []) }}"
   register: router_swanctl_stale
 
 - name: Remove stale credentials
@@ -61,14 +66,14 @@
 
 - name: charon options
   ansible.builtin.copy:
-    src: etc/strongswan.d/router.conf
+    src: "{{ router_site }}/etc/strongswan.d/router.conf"
     dest: /etc/strongswan.d/router.conf
     mode: '0644'
   notify: restart strongswan
 
 - name: swanctl.conf
   ansible.builtin.copy:
-    src: etc/swanctl/swanctl.conf
+    src: "{{ router_site }}/etc/swanctl/swanctl.conf"
     dest: /etc/swanctl/swanctl.conf
     mode: '0600'
   notify: reload swanctl
@@ -79,6 +84,14 @@
     dest: /etc/swanctl/conf.d/secrets.conf
     mode: '0600'
   no_log: true
+  when: router_road_warrior | bool
+  notify: reload swanctl
+
+- name: No EAP users where there is no remote access
+  ansible.builtin.file:
+    path: /etc/swanctl/conf.d/secrets.conf
+    state: absent
+  when: not router_road_warrior | bool
   notify: reload swanctl
 
 - name: strongswan enabled

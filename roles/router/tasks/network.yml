@@ -1,56 +1,29 @@
 ---
 # systemd-networkd owns every interface. The files are the plain ones in
-# files/etc/systemd/network (edit those); only the WireGuard .netdev files
-# are rendered, because their peer endpoint and public key are vault values.
-# Anything in /etc/systemd/network this role did not write is removed, so
-# deleting a file from the role deletes the interface from the box.
+# files/<router_site>/etc/systemd/network (edit those); only the WireGuard
+# .netdev files are rendered, because their peer endpoint and public key are
+# vault values, and that happens in wireguard.yml, after the firewall is up
+# (tasks/main.yml says why). Anything in /etc/systemd/network this role did
+# not write is removed, so deleting a file from the role deletes the
+# interface from the box.
 #
 # First run on a fresh cloud image: the .link files rename the NICs by MAC
 # (ens18 -> mgmt0 ...) and cloud-init's own network config is retired, which
 # needs a reboot to take cleanly. Later runs reload in place; a changed
 # .netdev is deleted first so networkd recreates it with the new properties.
 
-- name: WireGuard key directory
-  ansible.builtin.file:
-    path: /etc/systemd/network/keys
-    state: directory
-    owner: root
-    group: systemd-network
-    mode: '0750'
-
-- name: WireGuard private keys
-  ansible.builtin.copy:
-    dest: "/etc/systemd/network/keys/{{ item.name }}.key"
-    content: "{{ item.private_key }}\n"
-    owner: root
-    group: systemd-network
-    mode: '0640'
-  loop: "{{ router_wireguard_tunnels }}"
-  loop_control:
-    label: "{{ item.name }}"
-  no_log: true
-  register: router_wg_keys
-
 - name: networkd files
   ansible.builtin.copy:
     src: "{{ item }}"
     dest: "/etc/systemd/network/{{ item | basename }}"
     mode: '0644'
-  with_fileglob: etc/systemd/network/*
+  with_fileglob: "{{ router_site }}/etc/systemd/network/*"
   loop_control:
     label: "{{ item | basename }}"
   register: router_networkd_files
 
-- name: WireGuard netdevs
-  ansible.builtin.template:
-    src: wg.netdev.j2
-    dest: "/etc/systemd/network/20-{{ item.name }}.netdev"
-    mode: '0644'
-  loop: "{{ router_wireguard_tunnels }}"
-  loop_control:
-    label: "{{ item.name }}"
-  register: router_wg_netdevs
-
+# The WireGuard .netdev files are wireguard.yml's; they are named here only
+# so that this prune leaves them alone.
 - name: Prune networkd files this role did not write
   ansible.builtin.find:
     paths: /etc/systemd/network
@@ -122,9 +95,8 @@
 - name: Recreate changed netdevs
   ansible.builtin.command: "networkctl delete {{ item }}"
   loop: >-
-    {{ (router_networkd_files.results | selectattr('item', 'search', '\.netdev$') | selectattr('changed')
-        | map(attribute='item') | map('basename') | map('regex_replace', '^\d+-(.*)\.netdev$', '\1') | list)
-       + (router_wg_netdevs.results | selectattr('changed') | map(attribute='item.name') | list) }}
+    {{ router_networkd_files.results | selectattr('item', 'search', '\.netdev$') | selectattr('changed')
+       | map(attribute='item') | map('basename') | map('regex_replace', '^\d+-(.*)\.netdev$', '\1') | list }}
   when: not router_reboot_required | bool
   failed_when: false
   changed_when: true
@@ -133,7 +105,7 @@
 - name: Reload networkd on any change
   ansible.builtin.debug:
     msg: networkd config changed
-  when: (router_networkd_files.changed or router_wg_netdevs.changed or router_networkd_pruned.changed or router_wg_keys.changed) and not router_reboot_required | bool
+  when: (router_networkd_files.changed or router_networkd_pruned.changed) and not router_reboot_required | bool
   changed_when: true
   notify: reload networkd
 

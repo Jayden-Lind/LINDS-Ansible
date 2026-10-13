@@ -1,6 +1,8 @@
 ---
 # Dual-WAN failover daemon (files/usr/local/sbin/wan-failover, tests in
-# tests/). Candidates and thresholds: files/etc/wan-failover.json.
+# tests/), for a site with a second WAN (router_failover). Candidates and
+# thresholds: files/<router_site>/etc/wan-failover.json. A site without it
+# takes its default route from the WAN's DHCP lease in 30-wan0.network.
 
 - name: wan-failover daemon
   ansible.builtin.copy:
@@ -11,7 +13,7 @@
 
 - name: wan-failover config
   ansible.builtin.copy:
-    src: etc/wan-failover.json
+    src: "{{ router_site }}/etc/wan-failover.json"
     dest: /etc/wan-failover.json
     mode: '0644'
   notify: restart wan-failover
