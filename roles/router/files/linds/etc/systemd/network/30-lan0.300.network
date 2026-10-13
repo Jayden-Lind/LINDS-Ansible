@@ -1,0 +1,12 @@
+# Managed by LINDS-Ansible: roles/router/files/linds/etc/systemd/network/30-lan0.300.network. VLAN 300: servers (DHCP pool LINDS-SERVER: Talos workers, Plex, TrueNAS, the DCs)
+[Match]
+Name=lan0.300
+
+[Link]
+RequiredForOnline=no
+
+[Network]
+Address=10.3.1.1/24
+IPv6AcceptRA=no
+LLDP=no
+EmitLLDP=no

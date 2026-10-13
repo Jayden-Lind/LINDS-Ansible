@@ -1,11 +1,12 @@
 ---
-# ethtool settings the .link files cannot express (files/etc/systemd/system/
-# nic-tuning.service): VF rx ring, UDP GRO forwarding. irqbalance (packages.yml)
-# spreads the VF and virtio queues over the vCPUs.
+# ethtool settings the .link files cannot express
+# (files/<router_site>/etc/systemd/system/nic-tuning.service, per site
+# because it depends on what the NICs are): VF rx ring, UDP GRO forwarding.
+# irqbalance (packages.yml) spreads the VF and virtio queues over the vCPUs.
 
 - name: nic-tuning unit
   ansible.builtin.copy:
-    src: etc/systemd/system/nic-tuning.service
+    src: "{{ router_site }}/etc/systemd/system/nic-tuning.service"
     dest: /etc/systemd/system/nic-tuning.service
     mode: '0644'
   notify:

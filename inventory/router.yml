@@ -1,18 +1,22 @@
 ---
-# jd-router-01 — the Debian 13 replacement for jd-vyos-01 (roles/router).
+# The Debian 13 routers (roles/router): jd-router-01, which replaced
+# jd-vyos-01, and linds-router-01, which replaces linds-vyos-01.
 #
 # The vault values below are copied verbatim from inventory/vyos.yml (same
 # vault password, so they decrypt as-is) so the two inventories stay
 # independent until VyOS is decommissioned; delete them there afterwards.
-# Site data lives in group_vars/jd_router.yml.
+# Site data lives in group_vars/jd_router.yml and group_vars/linds_router.yml.
 router:
   vars:
     ansible_user: jayden
     ansible_python_interpreter: /usr/bin/python3
     # ----- Shared with the vyos group -----
     # pub_key/priv_key: IPsec site-to-site cert + key (VyOS PKI alias IPSEC).
+    #   One certificate, both ends of the tunnel.
     # ipsec_remote_*: IPsec remote-access server cert + key (alias ipsec_remote).
     # ipsec_users: EAP-MSCHAPv2 road-warrior accounts.
+    #   Those two belong to the site with remote access (router_road_warrior,
+    #   jd); the role does not put them on a router without it.
     # cf_dyn_dns_*: Cloudflare dynamic DNS token + zone.
     pub_key: !vault |
       $ANSIBLE_VAULT;1.1;AES256
@@ -470,3 +474,47 @@ router:
             33656631393034323538653564383832343137303733303035643365366463326434633633373336
             3134366537306632340a616336333764333736323535633161643062626530396666643937356434
             6465
+    linds_router:
+      hosts:
+        linds-router-01:
+          # It was built through a management NIC at 10.3.1.250 (VLAN 300)
+          # beside linds-vyos-01; this is its address as the router.
+          ansible_host: 192.168.6.1
+          # ----- Per-site secrets (copied from the 192.168.6.1 host in vyos.yml;
+          # each one compared, by hash, with what linds-vyos-01 was running on
+          # 2026-10-13) -----
+          # dyn_host: the Cloudflare record ddclient keeps pointed at the WAN,
+          #   A and AAAA both (VyOS: ip-version both). jd-router-01 finds this
+          #   end of the tunnel by it.
+          # wg_*: NordVPN tunnel (wg101, VLAN 36). wg_host is a host name
+          #   here, so the wg-reresolve timer follows it.
+          dyn_host: !vault |
+            $ANSIBLE_VAULT;1.1;AES256
+            65316238636531636331313965383562386665393364303338666336376466366263303834376166
+            3663616136646130383836343237656230383832643133650a623763626435373237343732326365
+            34303963306536666234393761623135623263363039623034326132663031646433383130373261
+            6538346531396562650a376165656665646431373934336464363166353862306330383561366634
+            36663632396364653862663362663934393931386566353135666264316434613734
+          wg_priv_key: !vault |
+            $ANSIBLE_VAULT;1.1;AES256
+            61616439313037316436653938613136313437396565316233666365323036623631323364663631
+            6536313264346630353939393735623632656239373031390a333231386537386332396630363864
+            34336662373563666163376264663761653262383236316465613631633565313961323635663862
+            6535326331326439330a363763346562383934373636616136383337396666643063383435393131
+            62623232336330623063666465313939616632386237663063346335663139363866656364646361
+            3034666263636138313761656465623438626536336263356466
+          wg_pub_key: !vault |
+            $ANSIBLE_VAULT;1.1;AES256
+            30356465636437623939336238366434633765326362623365643233386234353332386534393130
+            3937656634663638663839303665333536323931316161330a396133653533333031323334343538
+            30613563366366663530656533613636353666353663383764626231613835326231613564633131
+            6366373565306137320a623230313136363263336636316437386133363332663837303161613236
+            32333538633135396338353130303766363561623061306239633563366239613332383535376231
+            3637303934643363343438333539626432303934653938363732
+          wg_host: !vault |
+            $ANSIBLE_VAULT;1.1;AES256
+            34396235623363326230333237626239343966636430353939373132303730643839386362643634
+            6332373861383961373630643738613362636435306530330a613131323536333334346338613739
+            32616139393938303230323362653535633232656230333533383138393662613836356366626432
+            3430613361303033310a626132356264613331626632666531643964303464336537313064333936
+            39373331373936636532633465336331313764653866383834653637613763663230

@@ -1,0 +1,160 @@
+#!/bin/bash
+# linds-router-cutover: swap LINDS-VyOS for LINDS-Router-01, or swap back.
+# Runs ON linds-proxmox-01, as root, from the console or an SSH session on
+# the LAN. It is not installed by Ansible: copy it there for the day.
+#
+#   scp roles/router/cutover/linds-router-cutover root@192.168.6.205:/root/
+#
+#   ./linds-router-cutover status      what is running, which links are up
+#   ./linds-router-cutover cutover     VyOS off, the new router's LAN + WAN up
+#   ./linds-router-cutover rollback    the reverse
+#   ./linds-router-cutover confirm     cancel a pending timed rollback
+#
+#   ./linds-router-cutover cutover --revert-after 15
+#       the same, and unless `confirm` is run within 15 minutes the host rolls
+#       back by itself. This is for doing it from somewhere else: the session
+#       that started the cutover rides the tunnel that the cutover takes down,
+#       and if the new router does not bring it back there is no way in.
+#
+# What the swap is, and why in this order:
+#   1. VyOS is told not to start with the host (onboot 0): two routers with
+#      the same addresses must never come up together after a power cut.
+#   2. VyOS is shut down. From here the site is offline.
+#   3. The new router's management NIC goes link-down, then its LAN and WAN
+#      NICs come up. Management first: its address and the router's own
+#      10.3.1.1 are the same network on the same wire.
+#   4. The new router is rebooted. It was built with those links down, and
+#      not every daemon recovers from that by itself: kea gives up trying to
+#      open its sockets five minutes after it starts, so DHCP would stay
+#      dead (seen on the test build, 2026-10-13). A boot with the links up
+#      is also exactly what every later boot will be.
+# The links are changed with `qm set ... link_down=`, which Proxmox applies to
+# the running guest without unplugging the NIC as long as nothing else on the
+# netN line changes; this script rewrites only that one word.
+set -euo pipefail
+
+OLD=${OLD:-101}        # LINDS-VyOS
+NEW=${NEW:-114}        # LINDS-Router-01
+MGMT=${MGMT:-net0}     # the new router's NICs, as LINDS-Terraform numbers them
+LAN=${LAN:-net1}
+WAN=${WAN:-net2}
+UNIT=linds-router-revert
+
+die() { echo "linds-router-cutover: $*" >&2; exit 1; }
+
+vm_state() { qm status "$1" 2>/dev/null | awk '{print $2}'; }
+
+# set_link VMID netN up|down: rewrite the NIC's line with only link_down
+# changed. Returns non-zero (and says why) if it could not.
+set_link() {
+    local vmid=$1 nic=$2 want=$3 cur new
+    cur=$(qm config "$vmid" --current 2>/dev/null | sed -n "s/^$nic: //p")
+    if [ -z "$cur" ]; then
+        echo "  VM $vmid has no $nic (or no such VM)" >&2
+        return 1
+    fi
+    new=$(sed -E 's/(^|,)link_down=[01]//; s/^,//' <<<"$cur")
+    [ "$want" = down ] && new="$new,link_down=1"
+    if [ "$new" = "$cur" ]; then
+        echo "  $vmid $nic already $want"
+    else
+        qm set "$vmid" "--$nic" "$new" >/dev/null || return 1
+        echo "  $vmid $nic -> $want"
+    fi
+}
+
+link_of() {
+    if qm config "$1" --current | grep -q "^$2: .*link_down=1"; then echo down; else echo up; fi
+}
+
+status() {
+    echo "VM $OLD ($(qm config "$OLD" | sed -n 's/^name: //p')): $(vm_state "$OLD"), onboot=$(qm config "$OLD" | sed -n 's/^onboot: //p')"
+    echo "VM $NEW ($(qm config "$NEW" | sed -n 's/^name: //p')): $(vm_state "$NEW"), onboot=$(qm config "$NEW" | sed -n 's/^onboot: //p')"
+    echo "  management $MGMT: $(link_of "$NEW" "$MGMT")   LAN $LAN: $(link_of "$NEW" "$LAN")   WAN $WAN: $(link_of "$NEW" "$WAN")"
+    if systemctl is-active --quiet "$UNIT.timer" 2>/dev/null && ! systemctl is-active --quiet "$UNIT.service" 2>/dev/null; then
+        echo "  timed rollback pending (./linds-router-cutover confirm cancels it):"
+        systemctl list-timers --no-pager --no-legend "$UNIT.timer" | sed 's/^/    /'
+    fi
+}
+
+cutover() {
+    local revert=${1:-}
+    [ "$(vm_state "$NEW")" = running ] || die "VM $NEW is not running: build it first"
+    qm config "$NEW" >/dev/null && qm config "$OLD" >/dev/null
+    if [ -n "$revert" ]; then
+        systemctl stop "$UNIT.timer" "$UNIT.service" 2>/dev/null || true
+        systemctl reset-failed "$UNIT.service" 2>/dev/null || true
+        # The rollback runs from a transient unit, which starts with a clean
+        # environment: hand it the VM and NIC names this run was given.
+        systemd-run --quiet --unit="$UNIT" --on-active="${revert}m" \
+            --description="roll LINDS back to VyOS unless confirmed" \
+            --setenv=OLD="$OLD" --setenv=NEW="$NEW" \
+            --setenv=MGMT="$MGMT" --setenv=LAN="$LAN" --setenv=WAN="$WAN" \
+            "$(readlink -f "$0")" rollback
+        echo "Timed rollback armed: $revert minutes. './linds-router-cutover confirm' cancels it."
+    fi
+    echo "1. VM $OLD no longer starts with the host"
+    qm set "$OLD" --onboot 0 >/dev/null
+    echo "2. Shutting down VM $OLD (the site is offline from here)"
+    if [ "$(vm_state "$OLD")" = running ]; then
+        qm shutdown "$OLD" --timeout 90 || qm stop "$OLD"
+    fi
+    [ "$(vm_state "$OLD")" = stopped ] || die "VM $OLD did not stop; nothing else was changed. './linds-router-cutover rollback' starts it again"
+    echo "3. Links on VM $NEW"
+    set_link "$NEW" "$MGMT" down && set_link "$NEW" "$LAN" up && set_link "$NEW" "$WAN" up \
+        || die "could not set the links on VM $NEW. VM $OLD is stopped: './linds-router-cutover rollback' starts it again"
+    echo "4. Rebooting VM $NEW so every daemon starts with its links up"
+    qm reboot "$NEW" --timeout 120 || { qm stop "$NEW"; qm start "$NEW"; }
+    echo "Done. The router is VM $NEW at 192.168.6.1. From here:"
+    echo "  qm guest exec $NEW -- networkctl status wan0"
+    status
+}
+
+# A rollback must end with exactly one router on the wire, whatever goes
+# wrong on the way: if the new router's LAN or WAN cannot be taken link-down
+# it is stopped outright, and the old one is started regardless.
+rollback() {
+    local rc=0
+    echo "1. Links on VM $NEW back to the build state"
+    if set_link "$NEW" "$LAN" down && set_link "$NEW" "$WAN" down; then
+        set_link "$NEW" "$MGMT" up || rc=1
+    else
+        echo "  could not take VM $NEW off the LAN and WAN: stopping it instead" >&2
+        qm stop "$NEW" || true
+        rc=1
+    fi
+    echo "2. Starting VM $OLD, and it starts with the host again"
+    qm set "$OLD" --onboot 1 >/dev/null || rc=1
+    [ "$(vm_state "$OLD")" = running ] || qm start "$OLD" || rc=1
+    if [ $rc -eq 0 ]; then
+        echo "Rolled back. VyOS routes again once it has booted."
+    else
+        echo "Rolled back, with errors above: check 'status'." >&2
+    fi
+    status || true
+    return $rc
+}
+
+confirm() {
+    if systemctl stop "$UNIT.timer" 2>/dev/null; then
+        echo "Timed rollback cancelled."
+    else
+        echo "No timed rollback was pending."
+    fi
+}
+
+case "${1:-}" in
+    status)   status ;;
+    cutover)
+        if [ "${2:-}" = --revert-after ]; then
+            [[ "${3:-}" =~ ^[0-9]+$ ]] || die "--revert-after takes a number of minutes"
+            cutover "$3"
+        elif [ -n "${2:-}" ]; then
+            die "unknown option $2"
+        else
+            cutover
+        fi ;;
+    rollback) rollback ;;
+    confirm)  confirm ;;
+    *) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

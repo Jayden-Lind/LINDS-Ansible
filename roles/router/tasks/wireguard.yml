@@ -1,7 +1,62 @@
 ---
-# The tunnels themselves are networkd netdevs (network.yml). This is the one
-# thing networkd does not do: re-resolve a hostname endpoint. NordVPN rotates
-# servers behind the name; networkd resolves it once at load.
+# WireGuard tunnels: router_wireguard_tunnels in the site's group_vars. A
+# tunnel's .netdev is rendered here, because its peer endpoint and keys are
+# vault values; its .network (address, policy routing) is a plain file in
+# the site's systemd/network directory and network.yml's business. This file
+# runs after firewall.yml on purpose: tasks/main.yml says why.
+
+- name: WireGuard key directory
+  ansible.builtin.file:
+    path: /etc/systemd/network/keys
+    state: directory
+    owner: root
+    group: systemd-network
+    mode: '0750'
+
+- name: WireGuard private keys
+  ansible.builtin.copy:
+    dest: "/etc/systemd/network/keys/{{ item.name }}.key"
+    content: "{{ item.private_key }}\n"
+    owner: root
+    group: systemd-network
+    mode: '0640'
+  loop: "{{ router_wireguard_tunnels }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+  register: router_wg_keys
+
+- name: WireGuard netdevs
+  ansible.builtin.template:
+    src: wg.netdev.j2
+    dest: "/etc/systemd/network/20-{{ item.name }}.netdev"
+    mode: '0644'
+  loop: "{{ router_wireguard_tunnels }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: router_wg_netdevs
+
+# A changed .netdev is deleted first so networkd recreates the tunnel with
+# the new properties (a new one has nothing to delete, which is fine).
+- name: Recreate changed WireGuard netdevs
+  ansible.builtin.command: "networkctl delete {{ item }}"
+  loop: "{{ router_wg_netdevs.results | selectattr('changed') | map(attribute='item.name') | list }}"
+  failed_when: false
+  changed_when: true
+  notify: reload networkd
+
+- name: Reload networkd on a WireGuard change
+  ansible.builtin.debug:
+    msg: WireGuard config changed
+  when: router_wg_netdevs.changed or router_wg_keys.changed
+  changed_when: true
+  notify: reload networkd
+
+- name: Flush handlers (tunnels exist before their timers)
+  ansible.builtin.meta: flush_handlers
+
+# The one thing networkd does not do: re-resolve a hostname endpoint. NordVPN
+# rotates servers behind the name; networkd resolves it once at load.
 
 - name: wg-reresolve script
   ansible.builtin.copy:

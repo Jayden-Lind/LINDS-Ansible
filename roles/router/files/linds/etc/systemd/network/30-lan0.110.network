@@ -1,0 +1,12 @@
+# Managed by LINDS-Ansible: roles/router/files/linds/etc/systemd/network/30-lan0.110.network. VLAN 110: cameras (DHCP pool LINDS_CAMERAS); no internet
+[Match]
+Name=lan0.110
+
+[Link]
+RequiredForOnline=no
+
+[Network]
+Address=10.0.110.1/24
+IPv6AcceptRA=no
+LLDP=no
+EmitLLDP=no

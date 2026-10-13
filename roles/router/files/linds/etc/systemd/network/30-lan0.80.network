@@ -1,0 +1,12 @@
+# Managed by LINDS-Ansible: roles/router/files/linds/etc/systemd/network/30-lan0.80.network. VLAN 80: management (DHCP pool LINDS_MANAGEMENT); no internet bar 10.0.80.4
+[Match]
+Name=lan0.80
+
+[Link]
+RequiredForOnline=no
+
+[Network]
+Address=10.0.80.1/24
+IPv6AcceptRA=no
+LLDP=no
+EmitLLDP=no

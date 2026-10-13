@@ -8,7 +8,7 @@
 
 - name: snmpd config
   ansible.builtin.copy:
-    src: etc/snmp/snmpd.conf
+    src: "{{ router_site }}/etc/snmp/snmpd.conf"
     dest: /etc/snmp/snmpd.conf
     mode: '0600'
   notify: restart snmpd
@@ -22,7 +22,7 @@
 
 - name: sshd listen addresses
   ansible.builtin.copy:
-    src: etc/ssh/sshd_config.d/10-router.conf
+    src: "{{ router_site }}/etc/ssh/sshd_config.d/10-router.conf"
     dest: /etc/ssh/sshd_config.d/10-router.conf
     mode: '0644'
   notify: reload sshd
