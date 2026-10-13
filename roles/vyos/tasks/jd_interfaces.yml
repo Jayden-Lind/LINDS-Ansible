@@ -1,7 +1,0 @@
----
-# Physical + VLAN interfaces. All values come from group_vars/jd_vyos.yml;
-# the CLI syntax lives in templates/jd_interfaces.j2.
-
-- name: Interfaces — WAN, LAN trunk, VLAN sub-interfaces, cellular backup
-  vyos.vyos.vyos_config:
-    lines: "{{ lookup('template', 'jd_interfaces.j2').splitlines() | select | list }}"
