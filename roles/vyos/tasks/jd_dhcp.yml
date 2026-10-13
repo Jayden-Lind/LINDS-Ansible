@@ -1,7 +1,0 @@
----
-# Every DHCP scope on the router, including the VLAN scopes that used to be
-# interleaved with the interface definitions in jd_vlan.yml.
-
-- name: DHCP server — shared networks, subnets, static mappings, dynamic DNS
-  vyos.vyos.vyos_config:
-    lines: "{{ lookup('template', 'dhcp.j2').splitlines() | select | list }}"

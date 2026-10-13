@@ -1,7 +1,0 @@
----
-# Global options, per-chain default actions, and the input/forward rule tables.
-# Rules are data in group_vars/jd_vyos.yml — add a dict entry, not a task.
-
-- name: Firewall — global options, chain defaults, input and forward rules
-  vyos.vyos.vyos_config:
-    lines: "{{ lookup('template', 'firewall.j2').splitlines() | select | list }}"

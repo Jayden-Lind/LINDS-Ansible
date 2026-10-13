@@ -1,7 +1,0 @@
----
-# JD-specific DNS forwarder bits. Cache size, allow-from, upstream resolvers,
-# dnssec and negative-ttl are shared and live in templates/system.j2.
-
-- name: DNS forwarder — listen addresses, DHCP hostname learning, domain stubs
-  vyos.vyos.vyos_config:
-    lines: "{{ lookup('template', 'jd_dns.j2').splitlines() | select | list }}"
