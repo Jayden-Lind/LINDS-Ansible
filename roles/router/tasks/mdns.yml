@@ -1,6 +1,8 @@
 ---
-# mDNS reflector: avahi-daemon repeating multicast DNS between the main LAN,
-# VLAN 52 and VLAN 58 (files/etc/avahi/avahi-daemon.conf says why and how).
+# mDNS reflector: avahi-daemon repeating multicast DNS between the networks
+# the site's files/<router_site>/etc/avahi/avahi-daemon.conf names (it says
+# why and how; the input chain of the site's nftables.conf lets the same
+# interfaces' multicast in).
 # The units are masked while the package installs so the daemon's first start
 # never runs with Debian's config, which answers on every interface, the WANs
 # included. No recommends: libnss-mdns would put mdns4_minimal into
@@ -24,7 +26,7 @@
 
 - name: avahi-daemon config
   ansible.builtin.copy:
-    src: etc/avahi/avahi-daemon.conf
+    src: "{{ router_site }}/etc/avahi/avahi-daemon.conf"
     dest: /etc/avahi/avahi-daemon.conf
     mode: '0644'
   notify: restart avahi-daemon

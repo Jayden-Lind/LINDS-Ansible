@@ -1,0 +1,7 @@
+# Managed by LINDS-Ansible: roles/router/files/linds/etc/systemd/network/20-lan0.300.netdev. VLAN 300: servers (DHCP pool LINDS-SERVER: Talos workers, Plex, TrueNAS, the DCs)
+[NetDev]
+Name=lan0.300
+Kind=vlan
+
+[VLAN]
+Id=300

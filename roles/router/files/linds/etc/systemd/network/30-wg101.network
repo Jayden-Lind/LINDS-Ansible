@@ -1,0 +1,43 @@
+# Managed by LINDS-Ansible: roles/router/files/linds/etc/systemd/network/30-wg101.network. NordVPN tunnel and the
+# policy routing that sends VLAN 36 through it (the tunnel itself is
+# 20-wg101.netdev, rendered from the vault; its default route is in table 100).
+#
+# As on VyOS (`policy route VPN` rule 1, `policy route NordVPN` rule 100):
+# what VLAN 36 sends to a private address is routed normally, everything else
+# goes into table 100. Listing the private ranges, rather than "whatever main
+# has a route for", is deliberate: main also has the WAN's own connected
+# network (a /17 of Telstra customers), and traffic to those would otherwise
+# leave by the WAN with this site's real address.
+[Match]
+Name=wg101
+
+[Link]
+RequiredForOnline=no
+
+[Network]
+Address=10.5.0.2/32
+IPv6AcceptRA=no
+LinkLocalAddressing=no
+
+[RoutingPolicyRule]
+IncomingInterface=lan0.36
+To=10.0.0.0/8
+Table=main
+Priority=1010
+
+[RoutingPolicyRule]
+IncomingInterface=lan0.36
+To=172.16.0.0/12
+Table=main
+Priority=1010
+
+[RoutingPolicyRule]
+IncomingInterface=lan0.36
+To=192.168.0.0/16
+Table=main
+Priority=1010
+
+[RoutingPolicyRule]
+IncomingInterface=lan0.36
+Table=100
+Priority=1011

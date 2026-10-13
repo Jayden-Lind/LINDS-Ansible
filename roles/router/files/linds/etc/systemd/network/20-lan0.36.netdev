@@ -1,0 +1,7 @@
+# Managed by LINDS-Ansible: roles/router/files/linds/etc/systemd/network/20-lan0.36.netdev. VLAN 36 (DHCP pool LINDS_VPN): leaves by the NordVPN tunnel, see 30-wg101.network
+[NetDev]
+Name=lan0.36
+Kind=vlan
+
+[VLAN]
+Id=36

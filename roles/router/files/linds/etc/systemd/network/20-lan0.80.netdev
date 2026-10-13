@@ -1,0 +1,7 @@
+# Managed by LINDS-Ansible: roles/router/files/linds/etc/systemd/network/20-lan0.80.netdev. VLAN 80: management (DHCP pool LINDS_MANAGEMENT); no internet bar 10.0.80.4
+[NetDev]
+Name=lan0.80
+Kind=vlan
+
+[VLAN]
+Id=80

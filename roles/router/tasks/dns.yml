@@ -5,7 +5,7 @@
 
 - name: pdns-recursor config
   ansible.builtin.copy:
-    src: etc/powerdns/recursor.yml
+    src: "{{ router_site }}/etc/powerdns/recursor.yml"
     dest: /etc/powerdns/recursor.yml
     mode: '0644'
   notify: restart pdns-recursor

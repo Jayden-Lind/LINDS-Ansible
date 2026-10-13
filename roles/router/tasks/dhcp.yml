@@ -9,7 +9,7 @@
 
 - name: kea candidate configs
   ansible.builtin.copy:
-    src: "etc/kea/{{ item }}"
+    src: "{{ router_site }}/etc/kea/{{ item }}"
     dest: "/etc/kea/.{{ item }}.candidate"
     owner: root
     group: _kea

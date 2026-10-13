@@ -33,14 +33,18 @@
     state: directory
     mode: '0755'
 
+# miniupnpd.conf is the site's (its LAN, its name); the hooks that swap
+# Debian's table setup for ours are the same everywhere.
 - name: miniupnpd config
   ansible.builtin.copy:
-    src: "etc/{{ item }}"
-    dest: "/etc/{{ item }}"
+    src: "{{ item.src }}"
+    dest: "/etc/{{ item.name }}"
     mode: '0644'
   loop:
-    - miniupnpd/miniupnpd.conf
-    - default/miniupnpd
+    - {name: miniupnpd/miniupnpd.conf, src: "{{ router_site }}/etc/miniupnpd/miniupnpd.conf"}
+    - {name: default/miniupnpd, src: etc/default/miniupnpd}
+  loop_control:
+    label: "{{ item.name }}"
   notify: restart miniupnpd
 
 - name: Unmask miniupnpd (config in place)

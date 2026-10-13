@@ -1,0 +1,9 @@
+# Managed by LINDS-Ansible: roles/router/files/linds/etc/systemd/network/10-mgmt0.link. mgmt0: the NIC this
+# router is built through while linds-vyos-01 is still the router (see
+# 30-mgmt0.network). Delete both files once the NIC is gone from the VM.
+[Match]
+MACAddress=bc:24:11:06:01:00
+Type=ether
+
+[Link]
+Name=mgmt0

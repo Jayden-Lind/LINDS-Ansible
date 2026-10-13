@@ -1,0 +1,50 @@
+# Managed by LINDS-Ansible: roles/router/files/linds/etc/systemd/network/30-lan0.network. LAN trunk: untagged
+# 192.168.6.0/24 plus the VLAN sub-interfaces.
+# Addresses appear with carrier, as on any Linux box. Daemons that bind the
+# service addresses before the link is up (a router still being built with
+# lan0 held down at the hypervisor) rely on net.ipv4.ip_nonlocal_bind=1 from
+# sysctl.d/90-router.conf. Do NOT add ConfigureWithoutCarrier here: with it,
+# 10.3.1.1 exists on the link-down lan0.300 while the build management leg
+# on VLAN 300 uses linds-vyos-01 at 10.3.1.1 as its gateway, and the kernel
+# discards VyOS's ARP requests as martian-source (they come from a "local"
+# address).
+# No IPv6AcceptRA: this is the interface the router sends RAs on; accepting
+# them would let a rogue RA on the LAN install a default route on the router.
+[Match]
+Name=lan0
+
+[Link]
+RequiredForOnline=no
+
+[Network]
+Address=192.168.6.1/24
+IPv6AcceptRA=no
+IPv6SendRA=yes
+DHCPPrefixDelegation=yes
+IPv6DuplicateAddressDetection=1
+LLDP=no
+EmitLLDP=no
+VLAN=lan0.36
+VLAN=lan0.80
+VLAN=lan0.110
+VLAN=lan0.300
+
+# The first /64 of the delegated /56, as on VyOS (pd 0, sla-id 0). Only this
+# network has IPv6; the VLANs are IPv4 only.
+[DHCPPrefixDelegation]
+UplinkInterface=wan0
+SubnetId=0x0
+Announce=yes
+Assign=yes
+Token=static:::1
+
+# As VyOS's router-advert on eth0: preference high, the other-config flag
+# (nothing here answers DHCPv6; clients take DNS from DHCPv4), no RDNSS.
+# networkd puts the link's MTU (1500) in the RA by itself.
+[IPv6SendRA]
+RouterLifetimeSec=1800
+RouterPreference=high
+EmitDNS=no
+EmitDomains=no
+Managed=no
+OtherInformation=yes
