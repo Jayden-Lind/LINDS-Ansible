@@ -1,6 +1,11 @@
 ---
+# Two routers, the two ends of the site-to-site tunnel. Name the one you
+# mean: --limit jd-router-01 or --limit linds-router-01. Without a limit
+# they are done one after the other (serial), never both at once, and a
+# failure on the first leaves the second untouched.
 - name: Debian router (roles/router)
   hosts: router
+  serial: 1
   become: true
   # A run that fails after a config file changed must still restart the
   # daemon that reads it; without this the notification is lost and the next

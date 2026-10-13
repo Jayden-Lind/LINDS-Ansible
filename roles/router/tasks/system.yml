@@ -44,7 +44,7 @@
 
 - name: /etc/resolv.conf
   ansible.builtin.copy:
-    src: etc/resolv.conf
+    src: "{{ router_site }}/etc/resolv.conf"
     dest: /etc/resolv.conf
     mode: '0644'
 

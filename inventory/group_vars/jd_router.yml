@@ -1,12 +1,21 @@
 ---
 # jd-router-01 — the Debian 13 replacement for jd-vyos-01 (roles/router).
 #
-# Nearly everything is a plain file in roles/router/files/etc/ (edit those).
-# What is here is what the few remaining templates need: the WireGuard
-# tunnels (their endpoint and public key are vaulted in inventory/router.yml)
-# and the interface list the validator checks for.
+# Nearly everything is a plain file: roles/router/files/jd/etc/ for what is
+# this site's, roles/router/files/etc/ for what every router gets (edit
+# those). What is here is what the few remaining templates need: the
+# WireGuard tunnels (their endpoint and public key are vaulted in
+# inventory/router.yml), which of the role's optional parts this site has,
+# and what the validator checks for.
 
 router_hostname: jd-router-01
+# The directory under roles/router/files/ that holds this site's files.
+router_site: jd
+
+# A second WAN (the cellular modem on VLAN 99) and remote access for phones
+# and laptops; UPnP, the mDNS reflector and Suricata are on by default.
+router_failover: true
+router_road_warrior: true
 
 # Kernel from trixie-backports (7.x) rather than stable's 6.12. The role adds
 # the backports source, installs linux-image-cloud-amd64 from it and reboots
@@ -37,8 +46,8 @@ router_wireguard_tunnels:
       address: "{{ wg_host }}"
       public_key: "{{ wg_pub_key }}"
 
-# Every interface files/etc/systemd/network defines; validate.yml fails the
-# run if networkd is not showing one of them.
+# Every interface files/jd/etc/systemd/network defines; validate.yml fails
+# the run if networkd is not showing one of them.
 router_expected_interfaces:
   - lan0
   - wan0
@@ -51,3 +60,14 @@ router_expected_interfaces:
   - wg101
   - ipsec0
   - ipsec10
+
+# What else validate.yml checks or prints for this site.
+router_ipsec_connections: [LINDS, LINDS_MOBILE]
+# recursor.yml listens on lan0's link-local by interface index
+# ([fe80::...%2]:53); the run fails if lan0 is no longer index 2.
+router_dns_linklocal_ifindex: 2
+router_routing_tables:
+  - {id: 1001, name: wan0}
+  - {id: 1002, name: lan0.99}
+  - {id: 90, name: wg10}
+  - {id: 100, name: wg101}

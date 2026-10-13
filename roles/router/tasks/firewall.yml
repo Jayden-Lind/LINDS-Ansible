@@ -1,10 +1,10 @@
 ---
-# One ruleset file (files/etc/nftables.conf), validated before install,
-# replaced atomically on reload.
+# One ruleset file (files/<router_site>/etc/nftables.conf), validated before
+# install, replaced atomically on reload.
 
 - name: nftables ruleset
   ansible.builtin.copy:
-    src: etc/nftables.conf
+    src: "{{ router_site }}/etc/nftables.conf"
     dest: /etc/nftables.conf
     mode: '0644'
     validate: nft -c -f %s

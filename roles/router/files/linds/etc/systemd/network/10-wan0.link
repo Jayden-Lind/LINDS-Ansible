@@ -1,0 +1,13 @@
+# Managed by LINDS-Ansible: roles/router/files/linds/etc/systemd/network/10-wan0.link. wan0: named by MAC so
+# PCI slot order never matters. A virtio NIC on the host's vmbr1 (eno1, the
+# NBN port), the same kind of device as lan0, so the same offloads.
+[Match]
+MACAddress=bc:24:11:06:01:02
+Type=ether
+
+[Link]
+Name=wan0
+GenericReceiveOffload=yes
+GenericSegmentationOffload=yes
+TCPSegmentationOffload=yes
+GenericReceiveOffloadHardware=no

@@ -1,6 +1,15 @@
 ---
 # Suricata IDS, detection-only on the LAN trunk, EVE JSON to Loki through an
-# rsyslog imfile relay (never journald). Config: files/etc/suricata/.
+# rsyslog imfile relay (never journald). Config: files/etc/suricata/, the
+# same on every router: the tap is lan0, which every site's .link files name.
+
+# Installed here rather than with the rest (packages.yml) so that a site
+# without the IDS (router_suricata) does not get a daemon running on
+# Debian's defaults.
+- name: Suricata packages
+  ansible.builtin.apt:
+    name: [suricata, suricata-update]
+    state: present
 
 - name: suricata.yaml
   ansible.builtin.copy:
