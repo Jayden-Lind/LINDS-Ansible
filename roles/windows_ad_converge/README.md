@@ -7,10 +7,10 @@ all domain controllers agree about one computer account.
 
 1. On each domain controller, it runs `repadmin /syncall <dc> /Aed` two times.
    It also runs `repadmin /kcc` when the computer must be absent.
-2. If a domain controller does not have the replication name of the computer
-   (`E3514235-4B06-11D1-AB04-00C04FC2DCD2/*`), it sends the computer account,
-   the server object and the NTDS settings to that domain controller with
-   `Sync-ADObject`.
+2. It finds each domain controller that does not have the replication name
+   of the computer (`E3514235-4B06-11D1-AB04-00C04FC2DCD2/*`). It sends the
+   computer account, the server object and the NTDS settings to that domain
+   controller with `Sync-ADObject`.
 3. It compares the computer account on all domain controllers (object GUID,
    password date, service names). It repeats steps 1 to 3 until they agree, or
    until the time-out.

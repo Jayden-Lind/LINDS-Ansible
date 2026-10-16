@@ -29,9 +29,12 @@ A server can be in more than one group.
 
 1. It stops if the server is an Evaluation installation.
 2. It applies the baseline.
-3. For `windows_dc`: it promotes the server, makes it known to every domain
-   controller, waits for the RID pool, runs `dcdiag`, gets the LDAPS
-   certificate, and puts it in the time hierarchy.
+3. For `windows_dc`:
+   - It promotes the server.
+   - It makes the server known to every domain controller.
+   - It waits for the RID pool and runs `dcdiag`.
+   - It gets the LDAPS certificate.
+   - It puts the server in the time hierarchy.
 4. For `windows_ca`: it installs or restores the CA.
 5. For `windows_fileserver`: it brings the data volumes online and makes the
    shares and NFS exports.

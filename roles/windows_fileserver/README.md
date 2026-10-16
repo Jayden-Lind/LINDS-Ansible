@@ -10,9 +10,9 @@ shadow copy schedule.
    it online, makes it writable and gives it its drive letter.
 2. It installs the file server roles (and NFS and DFS Replication if needed),
    and restarts if needed.
-3. If the server is a replication member and is not yet in a replication
-   group, it removes the replication data of an earlier member from the
-   volumes (`System Volume Information\DFSR` and each `DfsrPrivate` link).
+3. It removes the replication data of an earlier member from the volumes:
+   `System Volume Information\DFSR` and each `DfsrPrivate` link. It does this
+   only for a replication member that is not yet in a replication group.
 4. It makes each SMB share in `windows_fileserver_shares` with exactly the
    listed permissions.
 5. It sets the NFS server settings and makes each NFS export with exactly the
