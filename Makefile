@@ -4,9 +4,6 @@ lint:
 update-requirements:
 	ansible-galaxy install -r requirements.yml --force
 
-kubeadm-reset:
-	ansible kubernetes -a "kubeadm reset -f"
-
 # --- Windows ------------------------------------------------------------------
 # See docs/windows/README.md. Every target needs a Kerberos ticket (make kinit),
 # except venv, kinit, windows-prepare and windows-data-disk.

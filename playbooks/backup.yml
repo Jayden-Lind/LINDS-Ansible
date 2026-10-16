@@ -1,7 +1,0 @@
----
-- name: Setup backup server
-  hosts: backup
-  remote_user: root
-  roles:
-    - common
-    - backup

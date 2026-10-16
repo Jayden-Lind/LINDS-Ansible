@@ -1,8 +1,9 @@
 # LINDS-Ansible
 
 This repository configures the hosts of the two sites, JD and LINDS: the
-Proxmox hosts, the routers, the Kubernetes nodes, and the Windows domain
-`linds.com.au`. Terraform (LINDS-Terraform) makes the VMs. Ansible configures
+Proxmox hosts, the routers, the media and torrent hosts, the TrueNAS, and the
+Windows domain `linds.com.au`. The Kubernetes cluster runs Talos and is not
+managed here. Terraform (LINDS-Terraform) makes the VMs. Ansible configures
 what runs in them.
 
 All text in this repository uses Simplified Technical English. See
@@ -35,16 +36,11 @@ All text in this repository uses Simplified Technical English. See
 
 | Playbook | What it does |
 | --- | --- |
-| [backup](playbooks/backup.md) | The backup host |
-| [dev](playbooks/dev.md) | The development host |
-| [kubernetes](playbooks/kubernetes.md) | The kubeadm cluster (not the Talos cluster) |
 | [minecraft](playbooks/minecraft.md) | The Minecraft host |
 | [plex](playbooks/plex.md) | Plex Media Server and its media mounts |
 | [proxmox](playbooks/proxmox.md) | The JD Proxmox host (read the WARNING first) |
 | [router](playbooks/router.md) | The Debian routers (always with `--limit`) |
-| [site](playbooks/site.md) | Eight of the playbooks above, in order (does not run now) |
 | [storage_health](playbooks/storage_health.md) | Disk and pool health checks on the Proxmox hosts |
-| [terraform](playbooks/terraform.md) | The Terraform host |
 | [torrent](playbooks/torrent.md) | The qBittorrent hosts |
 | [truenas](playbooks/truenas.md) | The TrueNAS hosts |
 | [vyos](playbooks/vyos.md) | The VyOS router at LINDS (`linds-vyos-01`) |
