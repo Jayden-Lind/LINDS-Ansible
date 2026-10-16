@@ -26,8 +26,8 @@ proxmox:
               atime: "off"
               acltype: posix
           # Backs jd-s3-01 (versitygw, LXC 107): buckets are plain files under
-          # /mnt/NAS/s3/buckets. VM/truenas-nas/minio (the old MinIO data) is
-          # no longer managed; it stays until LXC 106 is deleted, then goes too.
+          # /mnt/NAS/s3/buckets. VM/truenas-nas/minio (the old MinIO data) was
+          # destroyed on 2026-10-17 with LXC 106.
           - name: VM/truenas-nas/s3
             properties:
               recordsize: 1M
@@ -92,6 +92,6 @@ proxmox:
         # owns it: it sets the environment (the root credentials) and re-adopts
         # the container through an import block. Listing it here as well put two
         # writers on the same /etc/pve/lxc/<id>.conf, and this entry, still
-        # describing MinIO (LXC 106, retired 2026-10-17), would have restarted
-        # it with the address versitygw (LXC 107) now uses.
+        # describing MinIO (LXC 106, deleted 2026-10-17), would have recreated
+        # it on the address versitygw (LXC 107) now uses.
         proxmox_lxc_containers: []
