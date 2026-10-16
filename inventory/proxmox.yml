@@ -25,7 +25,10 @@ proxmox:
               compression: zstd
               atime: "off"
               acltype: posix
-          - name: VM/truenas-nas/minio
+          # Backs jd-s3-01 (versitygw, LXC 107): buckets are plain files under
+          # /mnt/NAS/s3/buckets. VM/truenas-nas/minio (the old MinIO data) is
+          # no longer managed; it stays until LXC 106 is deleted, then goes too.
+          - name: VM/truenas-nas/s3
             properties:
               recordsize: 1M
           - name: HDD-20T/data
@@ -77,7 +80,7 @@ proxmox:
           # blocks every few hours - 14 dailies pinned 20.9G of deleted data.
           - VM/truenas-nas/k8s-iscsi/v/pvc-6bc3d715-6306-4c54-a4ca-871de99d36f1
           # monitoring/storage-loki-0: WAL and compactor scratch (chunks live
-          # in MinIO) - 3.7G of snapshots for ~20MB of live data.
+          # on jd-s3-01) - 3.7G of snapshots for ~20MB of live data.
           - VM/truenas-nas/k8s-iscsi/v/pvc-cf4eacc1-da88-451b-92a7-71126abc6559
           # valheim/valheim-server-files: the SteamCMD-downloaded game server
           # (~4G), re-fetched from Steam in about a minute and replaced
@@ -85,33 +88,10 @@ proxmox:
           # zvol (pvc-95d1127b, ~66M) and stays on dailies.
           - VM/truenas-nas/k8s-iscsi/v/pvc-8a4d142e-81a0-42b0-a61b-73229e7ff2e2
 
-        proxmox_lxc_containers:
-          - vmid: 106
-            hostname: jd-minio-01
-            description: "MinIO S3 (OCI image, migrated from jd-truenas-01)"
-            # OCI image must be staged in advance with:
-            #   pveam download local <oci-tar>
-            ostemplate: local:vztmpl/minio_latest.tar
-            storage: ssd-mixed
-            rootfs_size: 4
-            cores: 2
-            memory: 1024
-            swap: 256
-            unprivileged: true
-            onboot: true
-            network:
-              bridge: vmbr0
-              ip: 10.0.53.20/24
-              gw: 10.0.53.1
-              tag: 53
-            mounts:
-              - id: 0
-                host_path: /mnt/NAS/minio
-                ct_path: /export
-                # Map container UID 0 to on-disk UID 473 so MinIO root
-                # can read/write the existing data (preserves ownership)
-                idmap: "u:0:473:1;g:0:473:1"
-            entrypoint: "/usr/bin/docker-entrypoint.sh minio server /export --console-address :9002"
-            env:
-              MINIO_ROOT_USER: "{{ vault_minio_root_user }}"
-              MINIO_ROOT_PASSWORD: "{{ vault_minio_root_password }}"
+        # The only container here was the S3 server, and LINDS-Terraform/bootstrap
+        # owns it: it sets the environment (the root credentials) and re-adopts
+        # the container through an import block. Listing it here as well put two
+        # writers on the same /etc/pve/lxc/<id>.conf, and this entry, still
+        # describing MinIO (LXC 106, retired 2026-10-17), would have restarted
+        # it with the address versitygw (LXC 107) now uses.
+        proxmox_lxc_containers: []
