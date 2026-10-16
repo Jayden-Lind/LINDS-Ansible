@@ -3,6 +3,7 @@
 #
 #   make windows-baseline HOST=<fqdn>
 #   make windows-baseline HOST=<fqdn> UPDATES=true     # and install updates
+#   make windows-baseline HOST=<fqdn> TAGS=cpu-mitigations   # one setting only
 #
 # Servers built by playbooks/windows-build.yml get this as they are built. The
 # ones that were here before do not until this is run against them, one at a
@@ -13,6 +14,7 @@
   hosts: localhost
   connection: local
   gather_facts: false
+  tags: always
   tasks:
     - name: The host must be named and known
       ansible.builtin.assert:

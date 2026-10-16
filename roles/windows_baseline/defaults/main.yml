@@ -26,6 +26,13 @@ windows_baseline_event_logs:
 # Remote Desktop on, with Network Level Authentication required.
 windows_baseline_rdp: true
 
+# Windows' own mitigations for Spectre variant 2 and Meltdown. true keeps
+# Windows' default; false turns them off (and with them the MDS buffer
+# clearing on an Intel host). They protect the kernel from code that already
+# runs inside the guest; the hypervisor keeps the VMs apart either way. Takes
+# effect at the next restart.
+windows_baseline_cpu_mitigations: true
+
 # Install Windows updates as part of the baseline. Off by default because it
 # can take an hour and restarts the server; the build playbook turns it on.
 windows_baseline_updates: false

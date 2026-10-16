@@ -10,12 +10,21 @@ dfsr_folders:
   - business doc
   - Cheryls Files
   - holiday videos
+  - immich
   - Jayden
   - Music
   - papa usb
   - Personal Files
   - Photos
+  - server
   - Zoe
+
+# For a new folder whose data is on one member only: that member. The role
+# makes it the primary member when it gives the folder its first content path,
+# and never again. The folder must not exist on the other members yet.
+dfsr_initial_primary:
+  immich: JD-FS-01
+  server: LINDS-DC
 
 # Content path root per member. The folder name is appended to it, so the two
 # members' differing drive letters are the only thing that has to be stated.
@@ -39,6 +48,7 @@ dfsr_staging_quota_mb: 102400
 # big photo trees. Anything not listed gets dfsr_staging_quota_mb.
 dfsr_staging_quota_overrides_mb:
   holiday videos: 300000
+  immich: 49152    # the 32 largest files are 45 GiB together
   Jayden: 200000
   Photos: 200000
 

@@ -26,3 +26,7 @@ ansible_winrm_operation_timeout_sec: 840
 
 # Port 5985 is plaintext HTTP at the transport layer, but Kerberos message
 # encryption is enforced above it, so payloads are never on the wire in clear.
+
+# CPU side-channel mitigations in the guests are off, by the owner's decision
+# (17 October 2026). See roles/windows_baseline/defaults/main.yml.
+windows_baseline_cpu_mitigations: false

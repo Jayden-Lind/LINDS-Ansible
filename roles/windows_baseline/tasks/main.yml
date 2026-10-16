@@ -79,6 +79,23 @@
       }
   when: windows_baseline_rdp | bool
 
+- name: Set Windows' CPU side-channel mitigations
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management
+    name: "{{ item }}"
+    data: 3
+    type: dword
+    state: "{{ 'absent' if windows_baseline_cpu_mitigations | bool else 'present' }}"
+  loop: [FeatureSettingsOverride, FeatureSettingsOverrideMask]
+  register: windows_baseline_mitigations
+  tags: cpu-mitigations
+
+- name: Say that the change needs a restart
+  ansible.builtin.debug:
+    msg: The change to the CPU mitigations takes effect when {{ inventory_hostname }} next restarts.
+  when: windows_baseline_mitigations is changed
+  tags: cpu-mitigations
+
 - name: Install Windows updates
   ansible.windows.win_updates:
     category_names: "{{ windows_baseline_update_categories }}"

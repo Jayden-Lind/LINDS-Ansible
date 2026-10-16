@@ -95,7 +95,7 @@ windows-state-plain:
 # One existing server at a time; see the header of the playbook.
 windows-baseline:
 	$(WINDOWS_PLAY) playbooks/windows-baseline.yml -e target=$(HOST) \
-	  -e windows_baseline_updates=$(or $(UPDATES),false)
+	  -e windows_baseline_updates=$(or $(UPDATES),false) $(if $(TAGS),--tags $(TAGS))
 
 # REPLACING=true when a server of the same name is about to be built: the
 # choice of bridgehead then stays pinned until the build playbook releases it.
