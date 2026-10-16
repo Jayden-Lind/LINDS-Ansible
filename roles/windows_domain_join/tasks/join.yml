@@ -2,7 +2,7 @@
 # Runs on the machine that is joining, over the bootstrap connection.
 # Expects windows_domain_join_blob (from provision.yml, via hostvars).
 
-- name: Consume the offline-join blob
+- name: Use the offline-join data
   ansible.windows.win_powershell:
     parameters:
       Blob: "{{ windows_domain_join_blob }}"

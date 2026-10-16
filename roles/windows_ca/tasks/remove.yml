@@ -1,5 +1,5 @@
 ---
-- name: See whether a CA is configured here
+- name: Find out if the server has a CA
   ansible.windows.win_powershell:
     script: |
       $Ansible.Changed = $false
@@ -18,13 +18,13 @@
       $Ansible.Changed = $true
   when: windows_ca_present.output[0]
 
-- name: Remove the role itself, which is what blocks a demotion
+- name: Remove the CA role, which blocks a demotion
   ansible.windows.win_feature:
     name: ADCS-Cert-Authority
     state: absent
   register: windows_ca_feature_removed
 
-- name: Restart if removing it asked for one
+- name: Restart if the removal needs it
   ansible.windows.win_reboot:
     reboot_timeout: 1200
   when: windows_ca_feature_removed.reboot_required

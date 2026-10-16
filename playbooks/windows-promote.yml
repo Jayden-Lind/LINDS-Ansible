@@ -1,0 +1,119 @@
+---
+# Make a domain member what its inventory groups say: a domain controller
+# (windows_dc), the CA (windows_ca), a file server (windows_fileserver), or a
+# combination.
+#
+#   make windows-promote HOST=<fqdn>
+#
+# Read playbooks/windows-promote.md before you use it.
+
+- name: Check the request
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: always
+  tasks:
+    - name: Make sure that the server is in the inventory
+      ansible.builtin.assert:
+        that:
+          - target is defined
+          - target in groups['windows']
+          - hostvars[target].windows_domain is defined
+        fail_msg: Give -e target=<fqdn>, a host in the windows group of the inventory.
+
+    - name: Choose the domain controller that does the work (the partner)
+      ansible.builtin.import_tasks: tasks/windows-partner-dc.yml
+
+- name: Stop if the server is an Evaluation installation
+  hosts: "{{ target | default('none') }}"
+  gather_facts: false
+  roles:
+    - windows_edition
+
+- name: Apply the baseline
+  hosts: "{{ target | default('none') }}"
+  gather_facts: false
+  roles:
+    - windows_baseline
+
+- name: Promote the server to a domain controller
+  hosts: "{{ target | default('none') }}"
+  gather_facts: false
+  tasks:
+    - name: Install AD DS and DNS and promote the server
+      ansible.builtin.import_role:
+        name: windows_domain_controller
+      when: inventory_hostname in groups['windows_dc'] | default([])
+
+# A domain controller that does not have the replication name of the new
+# domain controller cannot pull from it, and so cannot get the name. Thus the
+# partner sends the new account to the other domain controllers directly.
+- name: Make the new domain controller known to every other domain controller
+  hosts: windows_partner_dc
+  gather_facts: false
+  tasks:
+    - name: Send its account to the others and wait until they agree
+      ansible.builtin.import_role:
+        name: windows_ad_converge
+      vars:
+        windows_ad_converge_computer: "{{ hostvars[target].windows_hostname | default(target.split('.')[0]) }}"
+        windows_ad_converge_state: present
+      when: target in groups['windows_dc'] | default([])
+
+- name: Finish the domain controller
+  hosts: "{{ target | default('none') }}"
+  gather_facts: false
+  tasks:
+    - name: Wait for the RID pool and run the health checks
+      ansible.builtin.import_role:
+        name: windows_domain_controller
+        tasks_from: finish
+      when: inventory_hostname in groups['windows_dc'] | default([])
+
+    - name: Put the server in the domain time hierarchy
+      ansible.builtin.import_role:
+        name: windows_dc_time
+      when: inventory_hostname in groups['windows_dc'] | default([])
+
+- name: Install or restore the certification authority
+  hosts: "{{ target | default('none') }}"
+  gather_facts: false
+  tasks:
+    - name: Install the CA, from the backup if there is one
+      ansible.builtin.import_role:
+        name: windows_ca
+        tasks_from: install
+      when: inventory_hostname in groups['windows_ca'] | default([])
+
+    # A domain controller that is also the CA cannot get its LDAPS certificate
+    # before the CA is there.
+    - name: Get the LDAPS certificate from the new CA
+      ansible.builtin.import_role:
+        name: windows_domain_controller
+        tasks_from: ldaps
+      when:
+        - inventory_hostname in groups['windows_ca'] | default([])
+        - inventory_hostname in groups['windows_dc'] | default([])
+        - windows_dc_require_ldaps | default(true) | bool
+
+- name: Make the server a file server
+  hosts: "{{ target | default('none') }}"
+  gather_facts: false
+  tasks:
+    - name: Bring the data volumes online and make the shares and exports
+      ansible.builtin.import_role:
+        name: windows_fileserver
+      when: inventory_hostname in groups['windows_fileserver'] | default([])
+
+# A retirement before this server can have left a preferred bridgehead on the
+# partner (REPLACING=true). The new server is now known at both sites, so the
+# topology generator can choose again.
+- name: Let the topology generator choose the bridgehead again
+  hosts: windows_partner_dc
+  gather_facts: false
+  tasks:
+    - name: Release the preferred bridgehead, if there is one
+      ansible.builtin.import_role:
+        name: windows_dc_retire
+        tasks_from: bridgehead-release
+      when: target in groups['windows_dc'] | default([])

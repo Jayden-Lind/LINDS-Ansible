@@ -1,5 +1,5 @@
 ---
-- name: Enable the AD Recycle Bin
+- name: Turn on the AD Recycle Bin
   ansible.windows.win_powershell:
     script: |
       Import-Module ActiveDirectory
@@ -12,7 +12,7 @@
       }
   when: enable_ad_recycle_bin | bool
 
-- name: Place FSMO roles
+- name: Move the FSMO roles to their domain controllers
   ansible.windows.win_powershell:
     parameters:
       Placement: "{{ fsmo_placement }}"

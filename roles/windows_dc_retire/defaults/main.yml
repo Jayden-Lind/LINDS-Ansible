@@ -1,22 +1,32 @@
 ---
-# Demotes a domain controller and removes it from the domain, so that a
-# replacement can take its name.
-#
-# Runs on the server being retired, as the operator (delegated Kerberos
-# ticket). After the demotion the server is a plain member with a new local
-# Administrator password; by default that password is random and discarded,
-# because the next step is to switch the machine off.
+# The playbook playbooks/windows-retire-dc.yml sets the name and the address of
+# the server to retire. The other values are safe defaults.
 
-windows_domain: linds.com.au
+# The computer name and the IPv4 address of the server to retire.
+windows_dc_retire_machine: ""
+windows_dc_retire_address: ""
 
+# The new local Administrator password after the demotion. By default it is
+# random and nobody keeps it, because the next step stops the server.
 windows_dc_retire_local_password: "{{ lookup('ansible.builtin.env', 'WINDOWS_LOCAL_ADMIN_PASSWORD') | default(lookup('ansible.builtin.password', '/dev/null', length=32,
   chars=['ascii_letters', 'digits']), true) }}"
 
-# Shut the server down once it is out of the domain.
+# Stop the server after it has left the domain.
 windows_dc_retire_shutdown: true
 
-# bridgehead.yml: the name of the server being retired (set by the playbook),
-# and how long to wait for replication between the sites to be seen working
-# through the domain controller that stays.
-windows_dc_retire_machine: ""
+# Continue although the server holds replicated files that its partner does
+# not have. Those files go to PreExisting if the server joins again.
+windows_dc_retire_accept_unique_files: false
+
+# Keep the preferred bridgehead after the retirement. Set it to true when a new
+# server with the same name comes next (make windows-retire-dc REPLACING=true).
+# windows-promote.yml then releases it.
+windows_dc_retire_keep_bridgehead: false
+
+# How long to wait for replication between the sites to work through the
+# domain controller that stays.
 windows_dc_retire_bridgehead_timeout: 900
+
+# The DNS clean-up: the time between two scans, and the maximum time.
+windows_dc_retire_dns_settle: 200
+windows_dc_retire_dns_timeout: 1800

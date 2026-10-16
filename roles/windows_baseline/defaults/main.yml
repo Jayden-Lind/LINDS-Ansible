@@ -1,40 +1,37 @@
 ---
-# Baseline for every Windows server. Each item below answers a finding in the
-# October 2026 audit (see docs/windows-domain.md).
+# The baseline of every Windows server. See README.md.
 
-# Windows Firewall on for every profile. Rules are left alone.
+# Turn on Windows Firewall for these profiles. The role does not change rules.
 windows_baseline_firewall_profiles:
   - Domain
   - Private
   - Public
 
-# Microsoft Defender real-time protection on. Defender already excludes the
-# AD DS, DNS and DFS-R working files by itself when those roles are installed.
+# Turn on Microsoft Defender real-time protection. Defender excludes the files
+# of AD DS, DNS and DFS Replication by itself.
 windows_baseline_defender_realtime: true
 
-# The Print Spooler has no business on a server that shares no printers, and on
-# a domain controller it is a known way in.
+# Stop the Print Spooler. These servers share no printers, and on a domain
+# controller the spooler is a known attack path.
 windows_baseline_disable_spooler: true
 
-# Event logs big enough to hold more than a day. The Security log on the
-# domain controllers was rolling over in about 24 hours.
+# The maximum size of each event log. The Security log must keep more than
+# one day.
 windows_baseline_event_logs:
   Security: 1GB
   System: 256MB
   Application: 256MB
 
-# Remote Desktop on, with Network Level Authentication required.
+# Allow Remote Desktop, with Network Level Authentication.
 windows_baseline_rdp: true
 
-# Windows' own mitigations for Spectre variant 2 and Meltdown. true keeps
-# Windows' default; false turns them off (and with them the MDS buffer
-# clearing on an Intel host). They protect the kernel from code that already
-# runs inside the guest; the hypervisor keeps the VMs apart either way. Takes
-# effect at the next restart.
+# The Windows mitigations for Spectre variant 2 and Meltdown. true keeps the
+# Windows default. false turns them off, and with them the MDS buffer clearing
+# on an Intel host. The change takes effect at the next restart.
 windows_baseline_cpu_mitigations: true
 
-# Install Windows updates as part of the baseline. Off by default because it
-# can take an hour and restarts the server; the build playbook turns it on.
+# Install Windows updates. This can take one hour and restarts the server.
+# windows-prepare.yml and windows-join.yml set it to true.
 windows_baseline_updates: false
 windows_baseline_update_categories:
   - SecurityUpdates
@@ -42,8 +39,7 @@ windows_baseline_update_categories:
   - UpdateRollups
   - DefinitionUpdates
 
-# Updates left to Windows' own updater. These report success, are offered
-# again at the next search, and so on; win_updates rightly calls that a loop
-# and fails the run after everything else has gone in.
+# Updates that the role does not install. They report success and are offered
+# again, so win_updates stops with a loop. Windows Update installs them.
 windows_baseline_update_reject:
   - KB5007651 # Update for Windows Security platform

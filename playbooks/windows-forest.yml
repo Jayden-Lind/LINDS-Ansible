@@ -1,18 +1,11 @@
 ---
-# Create a new forest on a freshly built server.
+# Make a new server the first domain controller of a new forest. Use it for a
+# test forest, or to make the domain again from nothing.
 #
 #   ansible-playbook -i <inventory> playbooks/windows-forest.yml \
 #       -e target=<fqdn> -e windows_forest_domain=<domain>
 #
-# The server must have been through `make windows-prepare` and the bootstrap
-# and baseline stages of playbooks/windows-build.yml (it has its name and
-# address, and is not in any domain). This talks to it as its local
-# Administrator; afterwards that account is the new domain's Administrator,
-# with the same password, and every other server joins with
-# playbooks/windows-build.yml.
-#
-# For a lab and for rebuilding the domain from nothing. The role refuses if a
-# domain of that name already answers.
+# Read playbooks/windows-forest.md before you use it.
 
 - name: Check the request
   hosts: localhost
@@ -30,10 +23,9 @@
 - name: First domain controller of a new forest
   hosts: "{{ target | default('unset') }}"
   gather_facts: false
+  vars_files:
+    - vars/windows-local-admin.yml
   vars:
     ansible_host: "{{ windows_ipv4_address }}"
-    ansible_user: Administrator
-    ansible_password: "{{ vault_windows_bootstrap_password }}"
-    ansible_winrm_transport: ntlm
   roles:
     - windows_forest

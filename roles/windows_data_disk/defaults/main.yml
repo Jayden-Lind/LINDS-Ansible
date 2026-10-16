@@ -1,0 +1,4 @@
+---
+# The VM of the server and its data disks: windows_vm from the inventory host of
+# the server. The playbook sets it.
+windows_data_disk_vm: {}

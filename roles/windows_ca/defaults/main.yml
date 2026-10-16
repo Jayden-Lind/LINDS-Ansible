@@ -1,35 +1,15 @@
 ---
-# The certification authority: an enterprise root CA on a domain controller
-# or member server.
-#
-#   backup.yml    key (PKCS#12), database and registry settings into a
-#                 temporary folder on the CA, for the playbook to fetch and
-#                 vault (playbooks/windows-ca-backup.yml)
-#   remove.yml    take the CA role off a server that is being retired. A
-#                 domain controller cannot be demoted while it has it. The
-#                 key and database stay on that server's disk; what matters
-#                 is that a backup was taken first.
-#   install.yml   put the CA on a server: restored from the backup in the
-#                 state directory if there is one (same name, same key,
-#                 everything issued stays valid), created new otherwise; then
-#                 publish the templates listed below
-#
-# A CA is installed by the operator (it writes to the forest's configuration,
-# which takes an enterprise administrator), but its database is only handed
-# over to, and taken back from, the server's own SYSTEM account.
-
-# Name of a CA created new. A restored one keeps the name in its certificate.
-windows_ca_name: "{{ (windows_domain | default('linds.com.au')).split('.')[0] }}-CA"
+# The name of a new CA. A restored CA keeps the name in its certificate.
+windows_ca_name: "{{ windows_domain.split('.')[0] }}-CA"
 windows_ca_key_length: 2048
 windows_ca_hash: SHA256
 windows_ca_validity_years: 10
 
-# Certificate templates the CA issues. Empty: leave whatever is published.
-# After a restore the list is the default set, not what the old server had:
-# it lives in the directory and goes when the role is removed.
+# The certificate templates that the CA issues. Empty: the role does not change
+# the list. After a restore the CA issues the default set.
 windows_ca_templates: []
 
-# Where backups are (playbook variable; the CA's files are in ca/backup).
+# The state directory. The backup of the CA is in ca/backup in it.
 windows_state_dir: "{{ playbook_dir }}/../windows-state"
 
 # Set by playbooks/windows-ca-backup.yml.

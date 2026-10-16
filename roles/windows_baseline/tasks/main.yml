@@ -41,7 +41,7 @@
     start_mode: disabled
   when: windows_baseline_disable_spooler | bool
 
-- name: Size the event logs
+- name: Set the sizes of the event logs
   ansible.windows.win_eventlog:
     name: "{{ item.key }}"
     maximum_size: "{{ item.value }}"

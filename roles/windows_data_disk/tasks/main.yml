@@ -1,0 +1,68 @@
+---
+# Runs on the hypervisor as root. It attaches the data disks in
+# windows_data_disk_vm.data_disks to the VM windows_data_disk_vm.id. A data
+# disk belongs to another VM, so a rebuild of the server cannot delete it.
+
+- name: Find the other VMs with each disk that run
+  ansible.builtin.shell: |
+    set -eu
+    for id in {{ item.never_running_with | join(' ') }}; do
+      qm status "$id" | grep -q 'status: stopped' || echo "$id"
+    done
+  args:
+    executable: /bin/bash
+  loop: "{{ windows_data_disk_vm.data_disks }}"
+  loop_control:
+    label: "{{ item.volume }}"
+  register: windows_data_disk_running
+  changed_when: false
+
+- name: Stop if one of them runs
+  ansible.builtin.assert:
+    that: item.stdout | trim | length == 0
+    fail_msg: >-
+      {{ item.item.volume }} is also attached to VM {{ item.stdout_lines | join(', ') }}, which is
+      running. Two machines writing one volume destroy it. Shut that VM
+      down for good first (for a server being replaced:
+      playbooks/windows-retire-dc.yml).
+  loop: "{{ windows_data_disk_running.results }}"
+  loop_control:
+    label: "{{ item.item.volume }}"
+
+- name: Stop the other VMs from starting with the host, and protect the owner
+  ansible.builtin.shell: |
+    set -eu
+    changed=no
+    for id in {{ item.never_running_with | join(' ') }}; do
+      config=$(qm config "$id")
+      if echo "$config" | grep -q '^onboot: 1'; then qm set "$id" --onboot 0 >/dev/null; changed=yes; fi
+      # The volume is named after the VM that owns it: <storage>:vm-<id>-disk-<n>.
+      if [ "{{ item.volume.split(':')[1].split('-')[1] }}" = "$id" ] && ! echo "$config" | grep -q '^protection: 1'; then
+        qm set "$id" --protection 1 >/dev/null; changed=yes
+      fi
+    done
+    echo "$changed"
+  args:
+    executable: /bin/bash
+  loop: "{{ windows_data_disk_vm.data_disks }}"
+  loop_control:
+    label: "{{ item.volume }}"
+  register: windows_data_disk_guard
+  changed_when: windows_data_disk_guard.stdout | trim == 'yes'
+
+- name: Attach each disk to the VM of the server
+  ansible.builtin.shell: |
+    set -eu
+    if qm config {{ windows_data_disk_vm.id }} | grep -q '^{{ item.slot }}: {{ item.volume }},'; then echo already; exit 0; fi
+    if qm config {{ windows_data_disk_vm.id }} | grep -q '^{{ item.slot }}:'; then
+      echo "{{ item.slot }} of VM {{ windows_data_disk_vm.id }} already holds another disk" >&2; exit 1
+    fi
+    qm set {{ windows_data_disk_vm.id }} --{{ item.slot }} {{ item.volume }},{{ item.options }} >/dev/null
+    echo attached
+  args:
+    executable: /bin/bash
+  loop: "{{ windows_data_disk_vm.data_disks }}"
+  loop_control:
+    label: "{{ item.volume }} as {{ item.slot }} of VM {{ windows_data_disk_vm.id }}"
+  register: windows_data_disk_attach
+  changed_when: windows_data_disk_attach.stdout | trim == 'attached'

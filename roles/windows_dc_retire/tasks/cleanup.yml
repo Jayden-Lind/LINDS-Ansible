@@ -1,0 +1,58 @@
+---
+# Runs on the domain controller that stays (the partner), after the demotion.
+# It removes what is left of the retired server: the computer account, the
+# empty server object under its site, and its DNS records on every DNS server.
+
+# The demotion was recorded on one domain controller. It is not necessarily
+# this one.
+- name: Bring every domain controller up to date
+  ansible.builtin.import_role:
+    name: windows_ad_converge
+
+- name: Delete the computer account and the empty server object
+  ansible.windows.win_powershell:
+    parameters:
+      Machine: "{{ windows_dc_retire_machine }}"
+    script: "{{ lookup('ansible.builtin.file', 'directory-objects.ps1') }}"
+  register: windows_dc_retire_cleanup
+
+- name: Show what was removed
+  ansible.builtin.debug:
+    msg: "{{ windows_dc_retire_cleanup.output | default([]) }}"
+
+# A domain controller that does not know about the removal continues to issue
+# tickets for the old machine. Then a new server with the same name cannot be
+# reached or joined.
+- name: Wait until no domain controller knows the server
+  ansible.builtin.import_role:
+    name: windows_ad_converge
+  vars:
+    windows_ad_converge_computer: "{{ windows_dc_retire_machine }}"
+    windows_ad_converge_state: absent
+
+# A DNS server reads changes from the directory every three minutes. A server
+# that has not read the removal can write the records back. Thus the task
+# deletes the records on every DNS server, and stops only when two scans,
+# more than three minutes apart, find nothing.
+- name: Remove its DNS records from every DNS server until they stay removed
+  ansible.windows.win_powershell:
+    parameters:
+      Machine: "{{ windows_dc_retire_machine }}"
+      Address: "{{ windows_dc_retire_address }}"
+      Domain: "{{ windows_domain }}"
+      SettleSeconds: "{{ windows_dc_retire_dns_settle | int }}"
+      TimeoutSeconds: "{{ windows_dc_retire_dns_timeout | int }}"
+    script: "{{ lookup('ansible.builtin.file', 'dns-records.ps1') }}"
+  register: windows_dc_retire_dns
+
+- name: Show the DNS records that were removed
+  ansible.builtin.debug:
+    msg: "{{ windows_dc_retire_dns.output | default([]) }}"
+
+# If a new server with the same name comes next, the preferred bridgehead stays
+# until windows-promote.yml has made the new server known at both sites.
+# Otherwise the other site can choose the new server before it can talk to it.
+- name: Let the topology generator choose the bridgehead again
+  ansible.builtin.import_tasks: bridgehead-release.yml
+  when: not (windows_dc_retire_keep_bridgehead | bool)
+  tags: bridgehead-release

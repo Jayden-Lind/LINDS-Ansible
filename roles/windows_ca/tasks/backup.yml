@@ -38,7 +38,7 @@
   become_method: ansible.builtin.runas
   become_user: SYSTEM
 
-- name: Collect it, and remove it from the server whatever happens
+- name: Copy it to the control node, and always remove it from the server
   vars:
     taken: "{{ windows_ca_backup_taken.output[0] | from_json }}"
   block:

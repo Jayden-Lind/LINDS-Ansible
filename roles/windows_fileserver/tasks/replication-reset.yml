@@ -1,14 +1,12 @@
 ---
-# For a data disk that was a DFS Replication member on another server and
-# has just arrived on this one. The disk still carries the old member's
-# replication database and, in every replicated folder, a DfsrPrivate link
-# into it. A member that joins with either in place is refused by the service
-# or, worse, collides with its partner instead of matching it: see "the DFS-R
-# stale junction trap" and "never make a newly-added member the primary" in
-# docs/windows-domain.md.
+# For a data disk that came from a replication member on another server. The
+# disk still has the replication database of the old member, and a
+# DfsrPrivate link in each replicated folder. With either of them, the service
+# refuses the member, or the member collides with its partner. See
+# docs/windows/runbooks/replication.md.
 #
-# Only ever done while this server is not a replication member (a fresh
-# rebuild); the first task makes sure of that.
+# The tasks run only while this server is in no replication group. The first
+# task makes sure of that.
 - name: Make sure this server is not a replication member yet
   ansible.windows.win_powershell:
     script: |
@@ -55,6 +53,6 @@
   become_method: ansible.builtin.runas
   become_user: SYSTEM
 
-- name: Report
+- name: Show the result
   ansible.builtin.debug:
     msg: "{{ windows_fileserver_reset.output | default(['already a replication member: nothing cleared']) }}"

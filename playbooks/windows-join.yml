@@ -1,0 +1,159 @@
+---
+# Give a new clone its name and static address, apply the baseline, and join it
+# to the domain. The join is offline: a domain controller makes the computer
+# account, and no domain password goes to the new server.
+#
+#   make windows-join HOST=<fqdn> ADDRESS=<DHCP address of the clone>
+#
+# Read playbooks/windows-join.md before you use it.
+
+- name: Check the request
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: always
+  tasks:
+    - name: Make sure that the server is in the inventory with its identity
+      ansible.builtin.assert:
+        that:
+          - target is defined
+          - target in groups['windows']
+          - hostvars[target].windows_hostname is defined
+          - hostvars[target].windows_ipv4_address is defined
+          - hostvars[target].windows_domain is defined
+        fail_msg: >-
+          Give -e target=<fqdn>, a host in the windows group with windows_hostname
+          and windows_ipv4_address in the inventory.
+
+    - name: Choose the domain controller that does the work (the partner)
+      ansible.builtin.import_tasks: tasks/windows-partner-dc.yml
+
+- name: Give the clone its name and static address
+  hosts: "{{ target | default('none') }}"
+  gather_facts: false
+  vars_files:
+    - vars/windows-local-admin.yml
+  vars:
+    ansible_host: "{{ bootstrap_address }}"
+  tasks:
+    - name: Set the name and the address, then restart
+      ansible.builtin.import_role:
+        name: windows_bootstrap
+      when: bootstrap_address is defined
+
+- name: Apply the baseline and the updates before the server joins the domain
+  hosts: "{{ target | default('none') }}"
+  gather_facts: false
+  vars_files:
+    - vars/windows-local-admin.yml
+  vars:
+    ansible_host: "{{ windows_ipv4_address }}"
+    windows_baseline_updates: true
+  pre_tasks:
+    # The previous play leaves the server to rename, re-address and restart itself.
+    - name: Wait for the server at its static address
+      ansible.builtin.wait_for_connection:
+        delay: 30
+        connect_timeout: 10
+        sleep: 10
+        timeout: 900
+
+    - name: Make sure that the server has its new name
+      ansible.windows.win_powershell:
+        script: |
+          $Ansible.Changed = $false
+          $env:COMPUTERNAME
+      register: windows_join_name
+      changed_when: false
+      failed_when: windows_join_name.output[0] | lower != windows_hostname | lower
+  roles:
+    - windows_baseline
+
+- name: Find out if the server is in the domain
+  hosts: "{{ target | default('none') }}"
+  gather_facts: false
+  vars_files:
+    - vars/windows-local-admin.yml
+  vars:
+    ansible_host: "{{ windows_ipv4_address }}"
+  tasks:
+    - name: Read the domain membership
+      ansible.windows.win_powershell:
+        script: |
+          $Ansible.Changed = $false
+          [bool](Get-CimInstance Win32_ComputerSystem).PartOfDomain
+      register: windows_join_membership
+      changed_when: false
+
+    - name: Remember if a join is necessary
+      ansible.builtin.set_fact:
+        windows_join_needed: "{{ not windows_join_membership.output[0] }}"
+
+- name: Make the computer account on the partner
+  hosts: windows_partner_dc
+  gather_facts: false
+  tasks:
+    - name: Make the computer account and the offline-join data
+      ansible.builtin.import_role:
+        name: windows_domain_join
+        tasks_from: provision
+      vars:
+        windows_domain_join_machine: "{{ hostvars[target].windows_hostname }}"
+      when: hostvars[target].windows_join_needed
+
+- name: Join the domain
+  hosts: "{{ target | default('none') }}"
+  gather_facts: false
+  vars_files:
+    - vars/windows-local-admin.yml
+  vars:
+    ansible_host: "{{ windows_ipv4_address }}"
+  tasks:
+    - name: Use the offline-join data
+      ansible.builtin.import_role:
+        name: windows_domain_join
+        tasks_from: join
+      vars:
+        windows_domain_join_blob: "{{ hostvars[groups['windows_partner_dc'][0]].windows_domain_join_blob }}"
+      when: windows_join_needed
+
+# The server changes its password at the domain controller nearest to it. Until
+# all domain controllers have the new password, some issue tickets with the old
+# one. The new server accepts those now, but not after its promotion. Thus the
+# next play copies the new password to every domain controller, and the last
+# play renews the Kerberos ticket of the operator, which discards the old
+# service tickets. Both run also when the server was already in the domain, so
+# that a second run after a failure is safe.
+- name: Copy the new computer account to every domain controller
+  hosts: windows_partner_dc
+  gather_facts: false
+  tasks:
+    - name: Replicate until every domain controller has it
+      ansible.builtin.import_role:
+        name: windows_ad_converge
+      vars:
+        windows_ad_converge_computer: "{{ hostvars[target].windows_hostname }}"
+        windows_ad_converge_state: present
+
+# connection: local, because inventory/wsl.yml lists localhost as an ordinary
+# host that Ansible would reach over SSH.
+- name: Discard old tickets for this name
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Renew the Kerberos ticket
+      ansible.builtin.command:
+        cmd: timeout 30 kinit -R
+        stdin: ""
+      register: windows_join_renew
+      changed_when: false
+      failed_when: false
+
+    - name: Tell the operator if the ticket did not renew
+      ansible.builtin.debug:
+        msg: >-
+          The Kerberos ticket did not renew
+          ({{ windows_join_renew.stderr | default('') | trim }}). If the next
+          step fails with "credentials were rejected", run `make kinit`.
+      when: windows_join_renew.rc != 0

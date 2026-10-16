@@ -1,0 +1,7 @@
+---
+# Connect as the local Administrator of a new server, before it is in the
+# domain. The template sets this password; it is in the vault. Each play sets
+# `ansible_host` itself: the DHCP address first, the static address later.
+ansible_user: Administrator
+ansible_password: "{{ vault_windows_bootstrap_password }}"
+ansible_winrm_transport: ntlm

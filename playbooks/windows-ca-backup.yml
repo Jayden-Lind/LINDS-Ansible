@@ -1,28 +1,10 @@
 ---
-# Back up the certification authority into the state directory, encrypted
-# with the Ansible vault.
+# Back up the key, the database and the settings of the certification
+# authority to windows-state/ca/backup, encrypted with the Ansible vault.
 #
-#   make windows-ca-backup [WINDOWS_STATE=<dir>]
+#   make windows-ca-backup
 #
-# Needs a Kerberos ticket (`make kinit`). Writes, under <state>/ca/backup/:
-#
-#   <CA>.p12                 certificate and private key        (vault)
-#   <CA>-database.zip        what the CA has issued and revoked (vault)
-#   <CA>-configuration.reg   its registry settings              (plain text)
-#   password.yml             the password of the .p12           (vault)
-#
-# The key does not change, so the .p12 only needs taking again after the CA
-# certificate is renewed. The database does: run this after issuing or
-# revoking anything that matters, and always just before moving the CA.
-#
-# The .p12 is password-protected from the moment it is written on the CA and
-# never exists unprotected anywhere; the password travels separately and both
-# end up encrypted with the vault. After that, the CA's key is exactly as safe
-# as the vault password: the state directory is in a public repository.
-#
-# To restore: decrypt the three files with `ansible-vault decrypt`, then on the
-# new server `Restore-CARoleService -Path <folder> -Password <password>`
-# (the database unzipped into <folder>\DataBase) and `reg import` the settings.
+# Read playbooks/windows-ca-backup.md before you use it.
 
 - name: Prepare
   hosts: localhost
@@ -109,6 +91,6 @@
             path: "{{ windows_ca_backup_work }}"
             state: absent
 
-    - name: Report
+    - name: Show the result
       ansible.builtin.debug:
         msg: "{{ [windows_ca_backup_stored.stdout] + windows_ca_backup_verified.stdout_lines }}"
