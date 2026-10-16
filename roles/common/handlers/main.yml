@@ -5,3 +5,7 @@
     state: restarted
     enabled: true
 
+- name: Update GRUB
+  ansible.builtin.command: update-grub
+  changed_when: true
+

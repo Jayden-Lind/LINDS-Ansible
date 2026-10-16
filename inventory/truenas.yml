@@ -1,15 +1,23 @@
 ---
+# jd-truenas-01 is not a TrueNAS any more: the name now points at the storage
+# address of jd-proxmox-02, which exports /mnt/NAS itself (inventory/proxmox.yml).
 truenas:
   children:
-    jd_truenas:
-      hosts:
-        jd-truenas-01.linds.com.au:
-      vars:
-        hostname: jd-truenas-01.linds.com.au
     linds_truenas:
       hosts:
         linds-truenas-01.linds.com.au:
+          ansible_host: 10.3.1.50
       vars:
-        hostname: linds-truenas-01.linds.com.au
+        ansible_user: root
+        truenas_hostname: linds-truenas-01.linds.com.au
+        # The NFS export that Plex, the LINDS torrent host and Kubernetes use.
+        truenas_nfs_shares:
+          - path: /mnt/ZFS_NAS
+            networks:
+              - 10.3.1.0/24
+              - 10.0.53.0/24
+              - 10.0.36.0/24
+            maproot_user: root
+            maproot_group: wheel
         # alloy-podlogs LoadBalancer in the k8s cluster, RFC5424 UDP listener
         truenas_syslog_server: 172.16.1.23:1514

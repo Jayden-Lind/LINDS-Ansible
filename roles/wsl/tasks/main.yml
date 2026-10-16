@@ -20,7 +20,8 @@
       3839366633333934660a636631363030633761346138653634306362666631316237626161306635
       6639
     scope: global
-  become_user: jayden
+  become: true
+  become_user: "{{ wsl_user }}"
 
 - name: Set global Git email
   community.general.git_config:
@@ -33,12 +34,8 @@
       6163653564353862310a303162313063343133633161363762343061343063663331656564656332
       30633465323634653861626462646461383162623939363533373533306135653631
     scope: global
-  become_user: jayden
-
-- name: Include Ansible vars
-  ansible.builtin.include_vars:
-    file: main.yml
-    name: ansible_vars
+  become: true
+  become_user: "{{ wsl_user }}"
 
 - name: Include Ansible task
   ansible.builtin.include_tasks:

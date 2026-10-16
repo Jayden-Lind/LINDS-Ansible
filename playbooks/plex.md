@@ -1,25 +1,22 @@
 # plex.yml
 
-The `plex.yml` playbook installs Plex Media Server and mounts the media
-shares. It applies the roles `common` and `plex`.
+The playbook installs Plex Media Server and mounts the media shares on the
+Plex host. It applies the roles `common` and `plex`.
 
 ## Before you start
 
-- Run the commands from the repository root. `ansible.cfg` reads the
-  inventory and the `vault_password` file from there.
+- Run the commands from the repository root.
 - Install the Galaxy roles and collections: `make update-requirements`.
+- The play uses `become: true`. Your user needs `sudo` without a password on
+  the host.
 
 ## Procedure
 
-1. Run `ansible-playbook playbooks/plex.yml`.
+1. Run `ansible-playbook playbooks/plex.yml --check --diff`.
+2. Run `ansible-playbook playbooks/plex.yml`.
 
 ## What it changes
 
-- The group `plex` in `inventory/plex.yml`. Its only host is
-  `linds-plex-01.linds.com.au`, in the group `linds`.
-- For the settings, see [roles/common/README.md](../roles/common/README.md)
-  and [roles/plex/README.md](../roles/plex/README.md).
-
-## If it fails
-
-- Read "Known problems" in the two role READMEs.
+- The group `plex`: `linds-plex-01.linds.com.au` (`inventory/plex.yml`).
+- See [roles/common/README.md](../roles/common/README.md) and
+  [roles/plex/README.md](../roles/plex/README.md).

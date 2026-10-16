@@ -18,8 +18,3 @@
     opts: vers=4.2,soft
     state: mounted
     boot: true
-  register: mount
-
-- name: Mount NAS if changed
-  ansible.builtin.command: mount -a
-  when: mount.changed

@@ -1,9 +1,4 @@
 ---
-- name: Include vars
-  ansible.builtin.include_vars:
-    file: torrent.yml
-    name: torrent
-
 - name: Deploy qBittorrent configuration
   ansible.builtin.include_tasks: config.yml
   vars:
@@ -21,10 +16,5 @@
     src: "jd-truenas-01.linds.com.au:/mnt/HDD"
     fstype: nfs4
     opts: defaults,rsize=1048576,wsize=1048576,noatime,nconnect=4,soft
-    state: present
+    state: mounted
     boot: true
-  register: mount
-
-- name: Mount NAS if changed
-  ansible.builtin.command: mount -a
-  when: mount.changed

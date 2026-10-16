@@ -1,49 +1,43 @@
 # truenas
 
-The `truenas` role configures TrueNAS hosts through the TrueNAS middleware:
-the `NAS` dataset, the host name, an NFS share, snapshots, services and
-remote syslog.
+The `truenas` role configures the TrueNAS at LINDS through its middleware
+(`arensb.truenas` and `midclt`).
 
 ## What it does
 
-1. Makes the dataset `NAS`.
-2. Sets the host name to `hostname`.
-3. On `jd_truenas`: shares `/mnt/NAS` over NFS as `NFS_NAS_Kubernetes` to
-   `10.0.50.0/24`, `10.0.53.0/24` and `10.3.1.0/24`. Root maps to
-   `root:wheel`.
-4. On `jd_truenas`: adds a recursive snapshot task for `NAS`. It runs every
-   day at 02:00 and keeps each snapshot for 2 weeks.
-5. Enables and starts the `ssh` and `nfs` services.
-6. If `truenas_syslog_server` is set, makes it the remote syslog server (UDP).
-   It uses `midclt`, because the collection has no module for this setting.
+1. Sets the host name to `truenas_hostname`.
+2. Makes each NFS share in `truenas_nfs_shares`, with its networks and its
+   root mapping.
+3. If `truenas_syslog_server` is set, sends syslog to that server.
+
+## What it does not do
+
+It does not make snapshot tasks. The pool `NAS` on `linds-truenas-01` is the
+target of the nightly pull from `jd-proxmox-02` (replication task 2). Local
+snapshots on a replication target stop the next incremental pull.
 
 ## Requirements
 
-- Install the collection `arensb.truenas`: `make update-requirements`.
-- The play sets `middleware_method: client` in the environment.
+- The collection `arensb.truenas`: `make update-requirements`.
+- SSH as `root` (the inventory sets `ansible_user: root`).
 
 ## Variables
 
-The role has no defaults. `inventory/truenas.yml` sets these values.
-
-| Variable | Value | Description |
+| Variable | Default | Description |
 | --- | --- | --- |
-| `hostname` | `jd-truenas-01.linds.com.au` or `linds-truenas-01.linds.com.au` | The host name to set. |
-| `truenas_syslog_server` | `172.16.1.23:1514` (`linds_truenas` only) | The Alloy RFC 5424 UDP listener in the Kubernetes cluster. If it is not set, the role does not change syslog. |
+| `truenas_hostname` | `""` | The host name. Empty: no change. |
+| `truenas_nfs_shares` | `[]` | `{path, networks, maproot_user, maproot_group}` for each share. |
+| `truenas_syslog_server` | `""` | `host:port` of a syslog server. Empty: no change. |
+| `truenas_syslog_transport` | `UDP` | The syslog transport. |
+
+`inventory/truenas.yml` sets the values for `linds-truenas-01`.
 
 ## How to use it
 
-`playbooks/truenas.yml` applies this role to the group `truenas`. See
-[playbooks/truenas.md](../../playbooks/truenas.md).
-
-## Safety
-
-**CAUTION:** The role replaces the list of remote syslog servers with one
-server, `truenas_syslog_server`.
+`playbooks/truenas.yml`. See [playbooks/truenas.md](../../playbooks/truenas.md).
 
 ## Known problems
 
-- The snapshot names start with `hourly-`, but the task runs once a day.
-- `inventory/proxmox.yml` also exports `/mnt/NAS` over NFS, from
-  `jd-proxmox-02`. Not known if `jd-truenas-01.linds.com.au` is still a
-  TrueNAS host. Make sure before you run the role on `jd_truenas`.
+- The JD host `jd-truenas-01` is not a TrueNAS any more. The name points at
+  the storage address of `jd-proxmox-02`, which exports `/mnt/NAS` and
+  `/mnt/HDD` itself. The inventory does not list it.

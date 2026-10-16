@@ -1,63 +1,42 @@
 ---
-- name: Create a filesystem
-  arensb.truenas.filesystem:
-    name: NAS
+# The role does not make snapshot tasks. On linds-truenas-01 the pool NAS is
+# the target of the nightly pull from jd-proxmox-02 (replication task 2), and
+# local snapshots on a target stop the next incremental pull.
 
-- name: Update hostname
+- name: Set the host name
   arensb.truenas.hostname:
-    name: "{{ hostname }}"
+    name: "{{ truenas_hostname }}"
+  when: truenas_hostname | length > 0
 
-- name: Share out NAS
+- name: Share the datasets with NFS
   arensb.truenas.sharing_nfs:
-    name: NFS_NAS_Kubernetes
-    path: /mnt/NAS
-    networks:
-      - 10.0.50.0/24
-      - 10.0.53.0/24
-      - 10.3.1.0/24
-    maproot_user: root
-    maproot_group: wheel
-  when: inventory_hostname in groups['jd_truenas']
+    path: "{{ item.path }}"
+    networks: "{{ item.networks | default(omit) }}"
+    maproot_user: "{{ item.maproot_user | default(omit) }}"
+    maproot_group: "{{ item.maproot_group | default(omit) }}"
+  loop: "{{ truenas_nfs_shares }}"
+  loop_control:
+    label: "{{ item.path }}"
 
-- name: Create snapshos
-  arensb.truenas.pool_snapshot_task:
-    dataset: NAS
-    lifetime_value: 2
-    lifetime_unit: weeks
-    minute: "0"
-    hour: "2"
-    day: "*"
-    month: "*"
-    name_format: hourly-%Y-%m-%d_%H:%M
-    match:
-      dataset: NAS
-      name_format: hourly-
-    recursive: true
-  when: inventory_hostname in groups['jd_truenas']
+- name: Read the syslog settings
+  ansible.builtin.command: midclt call system.advanced.config
+  register: truenas_advanced
+  changed_when: false
+  check_mode: false
+  when: truenas_syslog_server | length > 0
 
-- name: Enable Services
-  arensb.truenas.service:
-    name: "{{ item }}"
-    enabled: true
-    state: started
-  with_items:
-    - ssh
-    - nfs
-
-# arensb.truenas has no module for system.advanced, so this goes through the
-# middleware CLI. RFC5424 must go to Alloy's 1514 listener: 514 is the strict
-# RFC3164 port for legacy gear, and TrueNAS's RFC5424 frames failed to parse
-# there ("expecting a sequence number"), so none of its logs reached Loki
-# until 2026-09-05. Idempotent: only calls update when the value differs.
-- name: Remote syslog -> Alloy RFC5424 UDP listener (k8s)
-  ansible.builtin.shell: |
-    set -e
-    want='{{ truenas_syslog_server }}'
-    have=$(midclt call system.advanced.config | python3 -c 'import sys,json; s=json.load(sys.stdin)["syslogservers"]; print(s[0]["host"] if s else "")')
-    if [ "$have" != "$want" ]; then
-      midclt call system.advanced.update "{\"syslogservers\":[{\"host\":\"$want\",\"transport\":\"UDP\"}]}" >/dev/null
-      echo SYSLOG_CHANGED
-    fi
-  register: truenas_syslog
-  changed_when: "'SYSLOG_CHANGED' in truenas_syslog.stdout"
-  when: truenas_syslog_server is defined
+# TrueNAS 25.10 keeps a list, syslogservers: [{host, transport, tls_certificate}].
+- name: Send syslog to the remote server
+  ansible.builtin.command:
+    argv:
+      - midclt
+      - call
+      - system.advanced.update
+      - "{{ {'syslogservers': [{'host': truenas_syslog_server, 'transport': truenas_syslog_transport}]} | to_json }}"
+  changed_when: true
+  when:
+    - truenas_syslog_server | length > 0
+    - (truenas_advanced.stdout | from_json).syslogservers | default([])
+      | map(attribute='host') | list != [truenas_syslog_server]
+      or (truenas_advanced.stdout | from_json).syslogservers | default([])
+      | map(attribute='transport') | list != [truenas_syslog_transport]

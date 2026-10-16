@@ -1,30 +1,20 @@
 # truenas.yml
 
-The `truenas.yml` playbook configures the TrueNAS hosts through the TrueNAS
-middleware. It applies the role `truenas`.
+The playbook configures the TrueNAS at LINDS: the host name, the NFS share and
+syslog. It applies the role `truenas`.
 
 ## Before you start
 
-- Run the commands from the repository root. `ansible.cfg` reads the
-  inventory and the `vault_password` file from there.
+- Run the commands from the repository root.
 - Install the collection `arensb.truenas`: `make update-requirements`.
-- Not known if `jd-truenas-01.linds.com.au` is still a TrueNAS host. Make sure
-  before you include `jd_truenas`.
+- You can connect to `10.3.1.50` as `root` with SSH.
 
 ## Procedure
 
-1. Run `ansible-playbook playbooks/truenas.yml --limit linds_truenas`.
-2. If `jd-truenas-01.linds.com.au` is a TrueNAS host, run
-   `ansible-playbook playbooks/truenas.yml --limit jd_truenas`.
+1. Run `ansible-playbook playbooks/truenas.yml --check --diff`.
+2. Run `ansible-playbook playbooks/truenas.yml`.
 
 ## What it changes
 
-- The group `truenas` in `inventory/truenas.yml`:
-  `jd-truenas-01.linds.com.au` (group `jd_truenas`) and
-  `linds-truenas-01.linds.com.au` (group `linds_truenas`).
-- The play sets `middleware_method: client` in the environment.
-- For the settings, see [roles/truenas/README.md](../roles/truenas/README.md).
-
-## If it fails
-
-- Read "Known problems" in the role README.
+- The group `truenas`: `linds-truenas-01.linds.com.au` (`10.3.1.50`).
+- See [roles/truenas/README.md](../roles/truenas/README.md).

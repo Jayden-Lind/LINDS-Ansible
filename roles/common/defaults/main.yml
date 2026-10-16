@@ -5,6 +5,8 @@ common_rsyslog_remote_line: "*.* @(o)172.16.1.23:1514;RSYSLOG_SyslogProtocol23Fo
 
 common_enable_qemu_guest_agent: true
 
+common_timezone: Australia/Melbourne
+
 common_disable_mitigations: true
 
 common_sysctl_enabled: true

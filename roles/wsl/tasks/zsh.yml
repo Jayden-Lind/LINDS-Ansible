@@ -7,27 +7,27 @@
 
 - name: Change default shell to Zsh for the user
   ansible.builtin.user:
-    name: "{{ user }}"
+    name: "{{ wsl_user }}"
     shell: "{{ zsh_path }}"
   become: true
 
 - name: Download and install Oh My Zsh
-  ansible.builtin.shell: sh -c '$(curl -fsSL {{ oh_my_zsh_url }})'
+  ansible.builtin.shell: sh -c "$(curl -fsSL {{ oh_my_zsh_url }})" "" --unattended
   args:
-    creates: /home/{{ user }}/.oh-my-zsh
+    creates: /home/{{ wsl_user }}/.oh-my-zsh
   become: true
-  become_user: "{{ user }}"
+  become_user: "{{ wsl_user }}"
 
 - name: Ensure ~/.zshrc exists for the user
   ansible.builtin.copy:
-    dest: /home/{{ user }}/.zshrc
+    dest: /home/{{ wsl_user }}/.zshrc
     content: |
-      export ZSH="/home/{{ user }}/.oh-my-zsh"
+      export ZSH="/home/{{ wsl_user }}/.oh-my-zsh"
       ZSH_THEME="robbyrussell"
       plugins=(git)
-      export PATH="$PATH:/home/jayden/.local/bin"
+      export PATH="$PATH:/home/{{ wsl_user }}/.local/bin"
       source $ZSH/oh-my-zsh.sh
       alias goland=/opt/GoLand-2024.3/bin/goland.sh
       alias webstorm=/opt/WebStorm-243.26053.12/bin/webstorm.sh
   become: true
-  become_user: "{{ user }}"
+  become_user: "{{ wsl_user }}"

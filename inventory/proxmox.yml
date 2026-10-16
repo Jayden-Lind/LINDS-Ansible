@@ -21,7 +21,7 @@ proxmox:
           - name: VM/truenas-nas
             properties:
               mountpoint: /mnt/NAS
-              recordsize: 1M
+              recordsize: "1048576"   # 1 MiB; the zfs module compares the number
               compression: zstd
               atime: "off"
               acltype: posix
@@ -30,42 +30,16 @@ proxmox:
           # no longer managed; it stays until LXC 106 is deleted, then goes too.
           - name: VM/truenas-nas/s3
             properties:
-              recordsize: 1M
+              recordsize: "1048576"   # 1 MiB; the zfs module compares the number
           - name: HDD-20T/data
             properties:
               mountpoint: /mnt/HDD
-              recordsize: 1M
+              recordsize: "1048576"   # 1 MiB; the zfs module compares the number
               # lz4 early-aborts on incompressible media, so it is close to
               # free on this pool and catches whatever compressible files
               # land alongside it. Set live on 2026-09-02 (pool root too).
               compression: lz4
               atime: "off"
-
-        proxmox_nfs_exports:
-          - path: /mnt/NAS
-            options: rw,no_root_squash,insecure,no_subtree_check
-            networks:
-              - 10.0.50.0/24
-              - 10.0.53.0/24
-              - 10.3.1.0/24
-              - 10.0.36.0/24
-          - path: /mnt/HDD
-            options: rw,anonuid=0,anongid=0,all_squash,insecure,no_subtree_check
-            networks:
-              - 10.0.53.0/24
-              - 10.0.50.0/24
-
-        proxmox_iscsi_targets:
-          - iqn: iqn.2005-10.org.truenas:arr-suite
-            portal_ip: 10.0.50.246
-            portal_port: 3260
-            luns:
-              - name: arr-iscsi
-                wwn: f41b5e6d-1ccd-400e-bff4-713ef6d53d9f
-                plugin: fileio
-                path: /mnt/NAS/arr-iscsi
-                size: 21474840576
-                write_back: true
 
         proxmox_sanoid_policies:
           - dataset: VM/truenas-nas

@@ -1,6 +1,16 @@
 ---
-- name: Enable legacy crypto policies (bad)
-  ansible.builtin.command: update-crypto-policies --set legacy
+- name: Read the crypto policy
+  ansible.builtin.command: update-crypto-policies --show
+  register: plex_crypto_policy_now
+  changed_when: false
+  check_mode: false
+
+# LEGACY allows old, weak algorithms. It was set before this role was written
+# down, and the reason is not known.
+- name: Set the crypto policy
+  ansible.builtin.command: update-crypto-policies --set {{ plex_crypto_policy }}
+  changed_when: true
+  when: plex_crypto_policy_now.stdout | trim != plex_crypto_policy
 
 - name: Install CIFS and NFS utils
   ansible.builtin.dnf:

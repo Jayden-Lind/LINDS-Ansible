@@ -5,16 +5,10 @@
     state: directory
     owner: root
     group: root
-    mode: "0700"
 
-- name: Render iSCSI saveconfig.json
-  ansible.builtin.template:
-    src: saveconfig.json.j2
-    dest: "{{ proxmox_iscsi_saveconfig }}"
-    owner: root
-    group: root
-    mode: "0600"
-  notify: Reload iSCSI target
+# The role does not write saveconfig.json. democratic-csi (the Kubernetes
+# storage driver) makes the iSCSI targets and saves the file. A copy from
+# this repository would replace those targets.
 
 # Boot-time race: targetctl restore can run before ZFS zvol /dev links from
 # late-imported pools exist, silently dropping block backstores + LUN mappings

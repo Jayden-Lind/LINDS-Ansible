@@ -24,26 +24,13 @@
     src: 99needrestart
     dest: /etc/apt/apt.conf.d/99needrestart
 
-- name: Ensure GRUB configuration file is present
-  ansible.builtin.copy:
-    dest: /etc/default/grub
-    content: |
-      # If you change this file, run 'update-grub' afterwards to update
-      # /boot/grub/grub.cfg.
-      # For full documentation of the options in this file, see:
-      #   info -f grub -n 'Simple configuration'
-
-      GRUB_DEFAULT=0
-      GRUB_TIMEOUT_STYLE=hidden
-      GRUB_TIMEOUT=0
-      GRUB_DISTRIBUTOR=`( . /etc/os-release; echo ${NAME:-Ubuntu} ) 2>/dev/null || echo Ubuntu`
-      GRUB_CMDLINE_LINUX_DEFAULT="{{ (common_disable_mitigations | bool) | ternary('mitigations=off', '') }}"
-      GRUB_CMDLINE_LINUX=""
-
-- name: Update GRUB configuration
-  ansible.builtin.command: update-grub
-  changed_when: true
-  when: common_disable_mitigations | bool
+# Only the kernel command line. The other lines of the file stay as they are.
+- name: Set the kernel command line in the GRUB defaults
+  ansible.builtin.lineinfile:
+    path: /etc/default/grub
+    regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
+    line: GRUB_CMDLINE_LINUX_DEFAULT="{{ (common_disable_mitigations | bool) | ternary('mitigations=off', '') }}"
+  notify: Update GRUB
 
 - name: Install Ubuntu HWE kernel
   ansible.builtin.apt:

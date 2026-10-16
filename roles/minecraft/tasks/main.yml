@@ -1,34 +1,27 @@
 ---
-- name: Install Java
+- name: Install Java and the tools
   ansible.builtin.dnf:
-    name: "{{ item }}"
+    name:
+      - screen
+      - java-latest-openjdk
+      - nfs-utils
+      - net-tools
+      - wget
     state: present
-  with_items:
-    - screen
-    - java-latest-openjdk
-    - nfs-utils
-    - net-tools
-    - wget
 
-- name: Start server on startup
-  ansible.builtin.cron:
-    name: Minecraft server
-    special_time: reboot
-    job: /root/LINDS/script.sh
-
-- name: Start server on startup
+- name: Start the server at boot
   ansible.builtin.cron:
     name: Minecraft server
     special_time: reboot
     job: screen -d -m bash -c 'cd /root/LINDS/ && /root/LINDS/script.sh'
 
-- name: Hugepages for Minecraft Server Opt
+- name: Set huge pages for the Minecraft server
   ansible.posix.sysctl:
     name: vm.nr_hugepages
     value: "12288"
     state: present
 
-- name: Create mount folder
+- name: Make the mount folder
   ansible.builtin.file:
     path: /mnt/NAS
     state: directory
@@ -36,7 +29,7 @@
     group: root
     mode: "0555"
 
-- name: Mount NFS NAS
+- name: Mount the NAS
   ansible.posix.mount:
     path: /mnt/NAS
     src: jd-truenas-01.linds.com.au:/mnt/NAS
@@ -45,9 +38,11 @@
     state: mounted
     boot: true
 
-- name: Copy Minecraft server to NAS
+# Copy into /mnt/NAS/minecraft, so that the folder is /mnt/NAS/minecraft/LINDS
+# every time and not LINDS/LINDS after the first copy.
+- name: Copy the server to the NAS every night
   ansible.builtin.cron:
     name: Minecraft server copy
     hour: 23
     minute: 0
-    job: cp -pr /root/LINDS /mnt/NAS/minecraft/LINDS/
+    job: mkdir -p /mnt/NAS/minecraft && cp -pr /root/LINDS /mnt/NAS/minecraft/

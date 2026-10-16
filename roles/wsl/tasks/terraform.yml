@@ -1,46 +1,59 @@
 ---
-- name: Install Terraform
+- name: Install the tools for the HashiCorp repository
   ansible.builtin.apt:
-    name: "{{ item }}"
-    state: latest
-  with_items:
-    - gnupg
-    - software-properties-common
+    name:
+      - gnupg
+      - curl
+    state: present
 
-- name: Update apt cache
+# terraform and packer are not in the Ubuntu archive. They come from the
+# HashiCorp apt repository.
+- name: Add the HashiCorp signing key
+  ansible.builtin.shell: >
+    curl -fsSL https://apt.releases.hashicorp.com/gpg |
+    gpg --yes --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+  args:
+    creates: /usr/share/keyrings/hashicorp-archive-keyring.gpg
+
+- name: Add the HashiCorp repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com {{ ansible_facts.distribution_release }} main"
+    filename: hashicorp
+    state: present
+
+- name: Install Terraform and Packer
   ansible.builtin.apt:
+    name:
+      - packer
+      - terraform
+    state: present
     update_cache: true
-    cache_valid_time: 0
-
-- name: Install Terraform Packer
-  ansible.builtin.apt:
-    name: "{{ item }}"
-    state: latest
-  with_items:
-    - packer
-    - terraform
 
 - name: Clone LINDS Terraform
   ansible.builtin.git:
     repo: https://github.com/Jayden-Lind/LINDS-Terraform.git
-    dest: "{{ vars.root_dir }}/LINDS-Terraform"
-  ignore_errors: true
+    dest: "{{ wsl_root_dir }}/LINDS-Terraform"
+    update: false
+  become: true
+  become_user: "{{ wsl_user }}"
 
 - name: Check if the initialization file exists
   ansible.builtin.shell: |
-    find "{{ vars.root_dir }}/LINDS-Terraform" -name .terraform | uniq
-  become_user: jayden
+    find "{{ wsl_root_dir }}/LINDS-Terraform" -name .terraform | uniq
+  become: true
+  become_user: "{{ wsl_user }}"
   register: init_check
 
 - name: Initialise Terraform
   ansible.builtin.shell: |
-    find "{{ vars.root_dir }}/LINDS-Terraform" -type f -name '*.tf' -exec dirname {} \; | uniq | while read dir; do
+    find "{{ wsl_root_dir }}/LINDS-Terraform" -type f -name '*.tf' -exec dirname {} \; | uniq | while read dir; do
       echo "Initializing Terraform in directory $dir"
       cd "$dir"
       terraform init
       cd -
     done
-  become_user: jayden
+  become: true
+  become_user: "{{ wsl_user }}"
   args:
     executable: /bin/bash
   when: init_check.stdout_lines | length == 0
@@ -48,9 +61,10 @@
 - name: Copy var files for Terraform
   ansible.builtin.copy:
     src: "{{ item }}"
-    dest: "{{ vars.root_dir }}/LINDS-Terraform/proxmox/"
+    dest: "{{ wsl_root_dir }}/LINDS-Terraform/proxmox/"
     mode: preserve
-  become_user: jayden
+  become: true
+  become_user: "{{ wsl_user }}"
   with_items:
     - proxmox_jd_terraform.tfvars
     - proxmox_linds_terraform.tfvars
@@ -58,14 +72,17 @@
 - name: Copy var files for Terraform
   ansible.builtin.copy:
     src: "{{ item }}"
-    dest: "{{ vars.root_dir }}/LINDS-Terraform/packer/"
+    dest: "{{ wsl_root_dir }}/LINDS-Terraform/packer/"
     mode: preserve
-  become_user: jayden
+  become: true
+  become_user: "{{ wsl_user }}"
   with_items:
     - packer_jd.pkrvars.hcl
     - packer_linds.pkrvars.hcl
 
 - name: Init packer
   ansible.builtin.shell: |
-    cd {{ vars.root_dir }}/LINDS-Terraform/packer && packer init -upgrade .
-  become_user: jayden
+    cd {{ wsl_root_dir }}/LINDS-Terraform/packer && packer init -upgrade .
+  become: true
+  become_user: "{{ wsl_user }}"
+  changed_when: false
