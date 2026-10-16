@@ -435,10 +435,15 @@ layout above), and the notes are JD's.
   LINDS→JD traffic was lost for 75 seconds until the whole connection was
   terminated (`swanctl --terminate --ike LINDS`) and JD dialled again.
 * **BGP export to LINDS carries the JD LANs** (`JD-LANS`: 10.0.50.0/24,
-  10.0.53.0/24, and the road-warrior pool 10.0.10.0/24 so LINDS can answer
-  remote-access clients), which VyOS did not. FRR does not refresh a neighbour when a
-  route-map changes: `vtysh -c 'clear ip bgp 10.255.0.2 soft out'` after
-  editing the export.
+  10.0.53.0/24, VLAN 58's 10.0.58.0/24, and the road-warrior pool
+  10.0.10.0/24 so LINDS can answer remote-access clients). VyOS sent LINDS
+  everything: its `RM-EXPORT-IPSEC` was defined but applied to no neighbour.
+  A JD network missing from `JD-LANS` gets no answer from LINDS, which sends
+  the replies out its WAN. VLAN 58 was missing from 2026-09-06 to
+  2026-10-16, and the Shield's Plex fell back to LINDS-Plex-01's public
+  address through NordVPN. VLAN 51 (no hosts) is still not sent. FRR does
+  not refresh a neighbour when a route-map changes: `vtysh -c 'clear ip bgp
+  10.255.0.2 soft out'` after editing the export.
 * **k8s export prefix-lists need `le 32`.** The Talos nodes advertise
   specific routes only (/24 pod CIDRs, /32 service and LoadBalancer IPs),
   never the aggregates the prefix-lists name (10.244.0.0/16, 10.96.0.0/12,
