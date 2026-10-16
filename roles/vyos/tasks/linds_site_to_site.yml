@@ -46,12 +46,17 @@
       - set interfaces vti vti0 mtu 1436
       - set interfaces vti vti0 ip adjust-mss clamp-mss-to-pmtu
 
+# remote-address is JD's A-only name: jd-pfsense.linds.com.au has an AAAA
+# for JD's road warriors, VyOS dialled that and JD refused it (applied by hand
+# on 2026-10-15; roles/router/files/linds/etc/swanctl/swanctl.conf says why).
+# remote-address takes several values, so on a live box `set` adds the name:
+# delete jd-pfsense.linds.com.au as well.
 - name: IPsec — site-to-site peer LINDS (peers JD vyos)
   vyos.vyos.vyos_config:
     lines:
       - set vpn ipsec site-to-site peer LINDS connection-type initiate
       - set vpn ipsec site-to-site peer LINDS local-address any
-      - set vpn ipsec site-to-site peer LINDS remote-address jd-pfsense.linds.com.au
+      - set vpn ipsec site-to-site peer LINDS remote-address jd.linds.com.au
       - set vpn ipsec site-to-site peer LINDS authentication mode x509
       - set vpn ipsec site-to-site peer LINDS authentication remote-id %any
       - set vpn ipsec site-to-site peer LINDS authentication use-x509-id

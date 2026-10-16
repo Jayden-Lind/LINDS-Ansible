@@ -405,6 +405,35 @@ layout above), and the notes are JD's.
   `valheim.linds.com.au` through a CNAME at `dyn_host` got the AAAA and
   timed out while the owner, on internal DNS with no AAAA, could not
   reproduce it.
+* **The site-to-site tunnel dials IPv4 at both ends.** JD dials
+  `linds-pfsense.linds.com.au` and LINDS dials `jd.linds.com.au`
+  (`dyn_host_v4`); both names have only an A record. LINDS must not dial
+  `jd-pfsense.linds.com.au`: charon dials the first address the resolver
+  returns, for that name the road warriors' AAAA, and JD's `LINDS`
+  connection matches the peer by the address of `linds-pfsense`, which is
+  IPv4 only. linds-vyos-01 dialled `jd-pfsense` until 2026-10-15; every
+  attempt went over IPv6 and failed, so only JD ever brought the tunnel
+  up. `ipsec0`'s MTU (1436) is sized for an IPv4 outer header as well: over
+  IPv6 a full-size packet is about 12 bytes too big for the WAN, and TCP
+  falls back on path MTU discovery.
+* **After a WAN failover the tunnel follows the best path**
+  (`prefer_best_path = yes` in jd's `strongswan.d/router.conf`). Without it
+  charon keeps an SA on any path that still works: after the failover of
+  2026-10-14 the `LINDS` SA stayed bound to the modem's 192.168.0.87 for a
+  day and a half, its packets leaving by wan0 only because rule 200
+  masqueraded them. The move is a MOBIKE path check, which tries every
+  address the peer has advertised and keeps the first that answers, so it
+  can land on IPv6 for as long as LINDS answers IKE over IPv6. linds-vyos-01
+  does, and the test on 2026-10-15 moved the tunnel to IPv6. After a
+  failover, `swanctl --list-sas --ike LINDS` should show IPv4 addresses; if
+  it shows IPv6, `swanctl --terminate --ike LINDS` and JD dials again over
+  IPv4 within a second.
+* **Two `LINDS` SAs at once** happen when both ends dial at the same moment;
+  a VyOS IPsec commit does that, since VyOS dials again on reload while JD's
+  trap does too. While LINDS is still linds-vyos-01, never terminate one of
+  them by id: on 2026-10-15 VyOS kept sending on the deleted one, and
+  LINDS→JD traffic was lost for 75 seconds until the whole connection was
+  terminated (`swanctl --terminate --ike LINDS`) and JD dialled again.
 * **BGP export to LINDS carries the JD LANs** (`JD-LANS`: 10.0.50.0/24,
   10.0.53.0/24, and the road-warrior pool 10.0.10.0/24 so LINDS can answer
   remote-access clients), which VyOS did not. FRR does not refresh a neighbour when a
@@ -598,6 +627,8 @@ from the box. Everything that VyOS did and this router does differently:
 * **New MAC addresses.** The WAN lease, and so the public address and the
   delegated prefix, may change at cutover. ddclient updates
   `linds-pfsense.linds.com.au` within minutes and JD's end follows the name.
+  JD also accepts this end only from the address that name has, so
+  whichever end dials, the tunnel waits for the record.
 
 ### Building it
 
@@ -716,7 +747,7 @@ On linds-proxmox-01, with `cutover/linds-router-cutover` copied to `/root`.
    |---|---|
    | `networkctl status wan0` | a lease, and a delegated prefix on `lan0` |
    | `ip route show default` | `default via … dev wan0 proto dhcp`; `ip -6 route show default` has the RA's |
-   | `swanctl --list-sas` | `LINDS` ESTABLISHED. If the public address changed, JD cannot find this end until the DNS record has (ddclient, within five minutes); this end initiates either way |
+   | `swanctl --list-sas` | `LINDS` ESTABLISHED. If the public address changed, the tunnel waits for the DNS record of `linds-pfsense.linds.com.au` (ddclient checks every five minutes, and the record's TTL is five minutes): JD dials that name and accepts this end only from its address |
    | `vtysh -c 'show bgp summary'` | 10.3.1.100, 10.3.1.101 and 10.255.0.1 established with prefixes |
    | `wg show wg101` | a recent handshake; from 10.0.36.2, `curl ifconfig.me` is NordVPN's address |
    | a LAN client | renews its lease, resolves an outside name and `linds-dc.linds.com.au`, has IPv6 |
