@@ -10,7 +10,7 @@ Name=wg10
 RequiredForOnline=no
 
 [Network]
-Address=10.5.0.2/32
+Address=10.5.0.2/16
 IPv6AcceptRA=no
 LinkLocalAddressing=no
 
