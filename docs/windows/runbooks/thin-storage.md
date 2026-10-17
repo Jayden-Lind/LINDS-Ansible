@@ -16,17 +16,33 @@ Windows sends TRIM.
 
 ## Find the difference
 
-Compare what the host has with what Windows uses:
+Compare what the host has with what Windows uses (`Get-Volume`, size minus
+free):
 
 ```shell
 lvs -o lv_name,lv_size,data_percent NAS/vm-102-disk-0      # LINDS
-zfs get used,logicalreferenced NAS-SSD/vm-1103-disk-0      # JD
+zfs get logicalreferenced NAS-SSD/vm-1103-disk-0           # JD
 ```
 
+**NOTE:** At JD, compare `logicalreferenced`, not `used`. The pool is a
+5-wide raidz1 and the zvol has 16 KiB blocks, so `used` includes parity and
+padding: about 6.6 TiB for 5.6 TiB of data. That difference cannot be freed.
+
 On 17 October 2026 the LINDS volume held about 1.4 TiB more than NTFS used.
-The shadow copies from before the 12 October rebuild kept the old replication
-data. That space comes back when those copies age out, at the end of November
-2026.
+The shadow copies kept the replication data that the 12 October rebuild
+deleted. The owner had all shadow copies on both NAS volumes deleted that day,
+then the procedure below ran two times:
+
+| Step | LINDS thin pool `NAS` |
+| --- | --- |
+| Before | 62.2% |
+| Shadow copies deleted | 61.6% |
+| First pass (128 GiB files, 30 s apart) | 55.5% |
+| Second pass (64 GiB files, 20 s apart) | 55.2% |
+
+About 780 GiB came back. About 600 GiB stays mapped although NTFS shows it as
+free. TRIM can free only whole 64 KiB chunks of the pool, so a chunk that is
+only partly free stays.
 
 ## Procedure: free the space that missed its TRIM
 
@@ -62,5 +78,12 @@ old versions.
 
 1. List the shadow copies: `vssadmin list shadows /for=E:`.
 2. Delete the oldest: `vssadmin delete shadows /for=E: /oldest`. Repeat for
-   each copy that you do not need.
-3. Compare the host and Windows again.
+   each copy that you do not need. To delete all of them, use
+   `vssadmin delete shadows /for=E: /all /quiet`. For 64 copies this takes
+   more than five minutes, longer than one WinRM call can wait; the command
+   continues on the server.
+3. Do the procedure above. Deleting a shadow copy does not send TRIM for the
+   space that it kept.
+4. Start the shadow copy scheduled task of the volume once, so that there is a
+   current copy before the next scheduled one.
+5. Compare the host and Windows again.
