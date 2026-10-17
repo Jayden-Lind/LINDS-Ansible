@@ -1,6 +1,8 @@
 ---
-- hosts: truenas
-  collections: arensb.truenas
+- name: Configure the TrueNAS hosts
+  hosts: truenas
+  collections:
+    - arensb.truenas
   environment:
     middleware_method: client
   roles:

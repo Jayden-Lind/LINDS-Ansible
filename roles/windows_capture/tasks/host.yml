@@ -1,5 +1,5 @@
 ---
-- name: Read what this server is, shares and runs
+- name: Read the features, shares and services of the server
   ansible.windows.win_powershell:
     script: "{{ lookup('ansible.builtin.file', role_path ~ '/files/host.ps1') }}"
   register: windows_capture_host

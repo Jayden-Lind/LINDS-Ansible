@@ -1,11 +1,3 @@
 ---
-# Reads the Windows domain as it is and hands the result to
-# scripts/windows_state.py, which writes it out as files worth diffing. Every
-# task here is read-only on the servers, with one exception: the Group Policy
-# capture writes a zip of backups into the temporary folder of the domain
-# controller it runs on, which is fetched and removed again.
-#
-# Where the files go is the playbook's business (windows_state_dir there).
-
-# Work directory on the controller, set by playbooks/windows-capture.yml.
+# The work directory on the control node. playbooks/windows-capture.yml sets it.
 windows_capture_work: ""

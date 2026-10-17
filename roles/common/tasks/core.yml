@@ -21,6 +21,11 @@
     logrotate_frequency: daily
     logrotate_dateext: true
 
+# The distribution keeps the clock in time (chrony or systemd-timesyncd).
+- name: Set the time zone
+  community.general.timezone:
+    name: "{{ common_timezone }}"
+
 - name: Include authorized_keys
   ansible.posix.authorized_key:
     user: root

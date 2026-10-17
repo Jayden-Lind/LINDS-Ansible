@@ -1,0 +1,31 @@
+---
+# Runs on the server to retire. It compares the files in its replicated
+# folders with the files of its replication partner. A member that joins a
+# replicated folder again with data on its disk keeps only the files that its
+# partner also has. It moves its other files to `DfsrPrivate\PreExisting`, and
+# they do not replicate. Thus a file that only this server holds must go to the
+# partner before the server goes.
+
+- name: Install the replication management tools
+  ansible.windows.win_feature:
+    name: RSAT-DFS-Mgmt-Con
+    state: present
+
+- name: Compare its replicated files with the files of its partner
+  ansible.windows.win_powershell:
+    script: "{{ lookup('ansible.builtin.file', 'unique-files.ps1') }}"
+  register: windows_dc_retire_unique
+  changed_when: false
+
+- name: Stop if it holds files that its partner does not have
+  vars:
+    found: "{{ windows_dc_retire_unique.output[0] | default('{}') | from_json }}"
+  ansible.builtin.assert:
+    that: (found.count | default(0) | int == 0) or (windows_dc_retire_accept_unique_files | bool)
+    success_msg: "{{ found.compared | default(0) }} replicated files compared; none exists only here."
+    fail_msg: >-
+      {{ found.count | default(0) }} of {{ found.compared | default(0) }} replicated files exist only on
+      {{ inventory_hostname }}. They would go to PreExisting, and not replicate, when it joins again.
+      The first of them: {{ found.first | default([]) | join('; ') }}.
+      Let replication finish, or copy them to the partner, or set
+      windows_dc_retire_accept_unique_files=true to continue.

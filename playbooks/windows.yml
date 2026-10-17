@@ -1,25 +1,29 @@
 ---
-# Windows domain baseline for linds.com.au.
+# Apply the settings of the whole domain: sites, recovery, NAS replication,
+# the directory (OUs, groups, users, GPO links) and the time hierarchy.
 #
-# Requires a Kerberos ticket - run `make kinit` first. Nothing here stores a
-# credential.
+#   make windows-check      # show what would change
+#   make windows            # apply
+#   make windows TAGS=dfsr  # one part only: topology, recovery, dfsr, directory or time
 #
-# Forest-wide state (site topology, FSMO placement, Recycle Bin) is applied
-# from a single DC; per-host state (time hierarchy) runs everywhere.
+# Read playbooks/windows.md before you use it.
 
-- name: AD forest topology and recoverability
+- name: Apply the settings of the forest and the domain
   hosts: windows_dc[0]
   gather_facts: false
   roles:
-    - windows_ad_topology
-    - windows_ad_recovery
-    - windows_dfsr
+    - role: windows_ad_topology
+      tags: topology
+    - role: windows_ad_recovery
+      tags: recovery
+    - role: windows_dfsr
+      tags: dfsr
     - role: windows_directory
       tags: directory
 
-- name: Per-DC configuration
+- name: Put every domain controller in the time hierarchy
   hosts: windows_dc
   gather_facts: false
   roles:
-    - windows_dc_time
-
+    - role: windows_dc_time
+      tags: time

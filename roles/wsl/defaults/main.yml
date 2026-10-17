@@ -1,0 +1,4 @@
+---
+# The user of the workstation, and the folder for the git clones.
+wsl_user: "{{ user | default('jayden') }}"
+wsl_root_dir: "/home/{{ wsl_user }}/git"

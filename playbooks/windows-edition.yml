@@ -1,0 +1,37 @@
+---
+# Convert an Evaluation installation to the full edition. You type the product
+# key at the prompt of the make target. Ansible does not keep it.
+#
+#   make windows-edition HOST=<fqdn> ADDRESS=<DHCP address>   # a clone that is not in the domain
+#   make windows-edition HOST=<fqdn>                          # a server that is in the domain
+#
+# Read playbooks/windows-edition.md before you use it.
+
+- name: Check the request
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Make sure that the server is in the inventory
+      ansible.builtin.assert:
+        that:
+          - target is defined
+          - target in groups['windows']
+        fail_msg: Give -e target=<fqdn>, a host in the windows group of the inventory.
+
+# Only one of the next two plays runs: the first if bootstrap_address is given.
+- name: Convert the edition of a clone that is not in the domain
+  hosts: "{{ target | default('none') if bootstrap_address is defined else 'none' }}"
+  gather_facts: false
+  vars_files:
+    - vars/windows-local-admin.yml
+  vars:
+    ansible_host: "{{ bootstrap_address }}"
+  roles:
+    - windows_edition
+
+- name: Convert the edition of a domain member
+  hosts: "{{ target | default('none') if bootstrap_address is not defined else 'none' }}"
+  gather_facts: false
+  roles:
+    - windows_edition

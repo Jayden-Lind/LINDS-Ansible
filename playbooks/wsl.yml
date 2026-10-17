@@ -1,5 +1,6 @@
 ---
-- hosts: wsl
+- name: Set up the WSL workstation
+  hosts: wsl
   connection: local
   become: true
   vars:
@@ -12,4 +13,3 @@
       3430
   roles:
     - wsl
-  tasks:

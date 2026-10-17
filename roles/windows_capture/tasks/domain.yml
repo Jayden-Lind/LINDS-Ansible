@@ -14,14 +14,14 @@
   changed_when: false
   check_mode: false
 
-- name: Report on and back up every Group Policy object
+- name: Make a report and a backup of each GPO
   ansible.windows.win_powershell:
     script: "{{ lookup('ansible.builtin.file', role_path ~ '/files/gpo.ps1') }}"
   register: windows_capture_gpo
   changed_when: false
   check_mode: false
 
-- name: Collect the Group Policy archive, and remove it from the server
+- name: Copy the GPO archive to the control node, and remove it from the server
   block:
     - name: Fetch the archive
       ansible.builtin.fetch:

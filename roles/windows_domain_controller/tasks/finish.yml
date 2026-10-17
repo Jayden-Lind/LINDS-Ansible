@@ -1,9 +1,8 @@
 ---
-# The second half of making a domain controller, run once every other domain
-# controller has been told about it (playbooks/windows-build.yml does that
-# from an established partner in between: the others cannot authenticate to
-# the newcomer until they hold its finished account, so nothing it offers
-# them itself reaches them).
+# The second part of the promotion. It runs after every other domain
+# controller knows the new one: playbooks/windows-promote.yml sends the new
+# account from the partner first, because the others cannot authenticate to
+# the new domain controller before they have its account.
 - name: Wait for its RID pool
   ansible.windows.win_powershell:
     parameters:
@@ -34,20 +33,20 @@
   changed_when: false
   failed_when: windows_dc_health.output | length > 0
 
-# Not here for a server that is itself the CA: the CA is put back after this
-# role, and playbooks/windows-build.yml runs ldaps.yml once it is.
-- name: LDAPS certificate
+# Not here for a server that is also the CA: the CA comes after this role, and
+# playbooks/windows-promote.yml runs ldaps.yml after the CA.
+- name: Get the LDAPS certificate
   ansible.builtin.import_tasks: ldaps.yml
   when:
     - windows_dc_require_ldaps | bool
     - inventory_hostname not in groups['windows_ca'] | default([])
 
-- name: Close the pre-domain WinRM opening left by the template
+- name: Close the WinRM firewall rule of the template
   community.windows.win_firewall_rule:
     name: WinRM bootstrap
     state: absent
 
-- name: Report the result
+- name: Show the result
   ansible.builtin.debug:
     msg: >-
       {{ inventory_hostname }} is a domain controller in site

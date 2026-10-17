@@ -13,11 +13,11 @@
   register: windows_edition_state
   changed_when: false
 
-- name: Report the edition
+- name: Show the edition
   ansible.builtin.debug:
     msg: "{{ inventory_hostname }} is {{ windows_edition_state.output[0].edition }}"
 
-- name: Stop at an Evaluation install unless a key was supplied
+- name: Stop at an Evaluation installation if there is no product key
   ansible.builtin.assert:
     that: >-
       not windows_edition_state.output[0].evaluation
@@ -40,7 +40,7 @@
     - windows_edition_state.output[0].evaluation
     - windows_product_key | length > 0
 
-- name: Convert the Evaluation install to {{ windows_edition_target }}
+- name: Convert the Evaluation installation to {{ windows_edition_target }}
   ansible.windows.win_powershell:
     parameters:
       Edition: "{{ windows_edition_target }}"

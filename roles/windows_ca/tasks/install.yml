@@ -5,7 +5,7 @@
     state: present
     include_management_tools: true
 
-- name: See whether a CA is already configured here
+- name: Find out if the server has a CA
   ansible.windows.win_powershell:
     script: |
       $Ansible.Changed = $false
@@ -13,7 +13,7 @@
   register: windows_ca_configured
   changed_when: false
 
-- name: Look for a backup to restore from
+- name: Find a backup to restore
   ansible.builtin.find:
     paths: "{{ windows_state_dir }}/ca/backup"
     patterns: "*.p12"
@@ -46,7 +46,7 @@
     - not windows_ca_configured.output[0]
     - windows_ca_backups.files | length == 0
 
-- name: Publish exactly the listed certificate templates
+- name: Publish only the listed certificate templates
   ansible.windows.win_powershell:
     parameters:
       Templates: "{{ windows_ca_templates }}"
@@ -60,7 +60,7 @@
       foreach ($t in $have | Where-Object { $_ -notin $Templates }) { Remove-CATemplate -Name $t -Force; $Ansible.Changed = $true }
   when: windows_ca_templates | length > 0
 
-- name: Check that the CA answers, and say what it is
+- name: Make sure that the CA answers
   ansible.windows.win_powershell:
     script: |
       $ErrorActionPreference = 'Stop'
@@ -75,6 +75,6 @@
   register: windows_ca_report
   changed_when: false
 
-- name: Report
+- name: Show the result
   ansible.builtin.debug:
     msg: "{{ windows_ca_report.output[0] }}"

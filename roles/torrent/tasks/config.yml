@@ -5,14 +5,13 @@
 # in-memory settings over the file we just deployed, silently reverting it.
 # main.yml runs service.yml after this, which starts the service again.
 
+# Compare the content only. qBittorrent saves the file with its own mode
+# (0644), so a mode check would stop the service on every run.
 - name: Check whether the qBittorrent config needs updating
   become: true
   ansible.builtin.copy:
     src: "{{ torrent_config_src }}"
     dest: "{{ torrent_config_dir }}/qBittorrent.conf"
-    owner: root
-    group: root
-    mode: "0600"
   check_mode: true
   register: torrent_config_check
 

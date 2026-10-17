@@ -16,7 +16,7 @@
     reboot_timeout: 900
   when: windows_dc_features.reboot_required
 
-- name: See whether this server is already a domain controller
+- name: Find out if the server is a domain controller
   ansible.windows.win_powershell:
     script: |
       $Ansible.Changed = $false
@@ -25,7 +25,7 @@
   register: windows_dc_state
   changed_when: false
 
-- name: A restore-mode password is needed to promote
+- name: Stop if there is no restore-mode password
   ansible.builtin.assert:
     that: windows_dsrm_password | length >= 12
     fail_msg: >-
@@ -97,7 +97,7 @@
           $Ansible.Changed = $true
       }
 
-- name: Point the server's own resolver at a partner first, then itself
+- name: Set the resolvers of the server, a partner first and then itself
   ansible.windows.win_powershell:
     parameters:
       Servers: "{{ windows_dc_dns_client_servers }}"

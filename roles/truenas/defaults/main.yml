@@ -1,0 +1,10 @@
+---
+# The host name of the TrueNAS. Empty: the role does not change it.
+truenas_hostname: ""
+
+# NFS shares: [{path, networks, maproot_user, maproot_group}].
+truenas_nfs_shares: []
+
+# A remote syslog server, host:port. Empty: the role does not change it.
+truenas_syslog_server: ""
+truenas_syslog_transport: UDP

@@ -27,7 +27,7 @@
       Provisioning a join for it would reset the machine password of a live
       DC. Demote and remove the old one first (playbooks/windows-retire-dc.yml).
 
-- name: Create the computer account and the offline-join blob
+- name: Make the computer account and the offline-join data
   ansible.windows.win_powershell:
     parameters:
       Machine: "{{ windows_domain_join_machine }}"
@@ -64,7 +64,7 @@
     windows_ad_converge_computer: "{{ windows_domain_join_machine }}"
     windows_ad_converge_state: present
 
-- name: Keep the blob for the machine that is joining
+- name: Keep the offline-join data for the new server
   ansible.builtin.set_fact:
     windows_domain_join_blob: "{{ windows_domain_join_provision.output[0] }}"
   no_log: true

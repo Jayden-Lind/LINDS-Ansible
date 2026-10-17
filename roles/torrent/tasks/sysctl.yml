@@ -7,6 +7,8 @@
     owner: root
     group: root
     mode: '0644'
+    modification_time: preserve
+    access_time: preserve
 
 - name: Apply sysctl tuning for torrenting VM (persist + apply)
   become: true

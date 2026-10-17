@@ -1,0 +1,31 @@
+---
+# The AD sites, subnets and site link (role windows_ad_topology), and the FSMO
+# role holders (role windows_ad_recovery). Apply with `make windows`.
+
+ad_sites:
+  - JD
+  - LINDS
+
+# 10.0.51.0/24 is not in this list on purpose. It has no DNS records and no
+# known hosts, so its site is not known. An older entry in AD gives it to LINDS.
+ad_subnets:
+  - { name: "10.0.50.0/24", site: JD, description: "JD servers / VLAN 50" }
+  - { name: "10.0.53.0/24", site: JD, description: "JD Talos / storage VLAN 53" }
+  - { name: "10.3.1.0/24", site: LINDS, description: "LINDS servers" }
+  - { name: "192.168.6.0/24", site: LINDS, description: "LINDS LAN" }
+  - { name: "10.0.80.0/24", site: LINDS, description: "LINDS cameras / IoT" }
+
+ad_site_link:
+  name: LINDS-SITELINK
+  cost: 100
+  replication_frequency_minutes: 15
+  sites: [JD, LINDS]
+
+# The PDC emulator and the RID master are at JD, with the most clients. The
+# other three are at LINDS, so that no single server holds all five.
+fsmo_placement:
+  PDCEmulator: jd-dc-01.linds.com.au
+  RIDMaster: jd-dc-01.linds.com.au
+  SchemaMaster: linds-dc.linds.com.au
+  DomainNamingMaster: linds-dc.linds.com.au
+  InfrastructureMaster: linds-dc.linds.com.au

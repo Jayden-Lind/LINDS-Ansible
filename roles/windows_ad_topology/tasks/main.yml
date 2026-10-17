@@ -2,7 +2,7 @@
 # Runs against a single DC - site topology is forest-wide, so applying it on
 # every DC would just race. Target with `--limit` or run_once.
 
-- name: Ensure AD sites exist
+- name: Make the AD sites
   ansible.windows.win_powershell:
     parameters:
       SiteNames: "{{ ad_sites }}"
@@ -17,7 +17,7 @@
         }
       }
 
-- name: Place each domain controller in its site
+- name: Move each domain controller to its site
   ansible.windows.win_powershell:
     parameters:
       Placement: "{{ dict(groups['windows_dc'] | map('extract', hostvars, 'ansible_host') | zip(groups['windows_dc'] | map('extract', hostvars, 'ad_site'))) }}"
@@ -33,7 +33,7 @@
         }
       }
 
-- name: Ensure subnets exist and map to the right site
+- name: Make the subnets and give each its site
   ansible.windows.win_powershell:
     parameters:
       Subnets: "{{ ad_subnets }}"
@@ -59,7 +59,7 @@
         }
       }
 
-- name: Ensure the site link spans both sites at the right frequency
+- name: Set the sites, the cost and the interval of the site link
   ansible.windows.win_powershell:
     parameters:
       LinkName: "{{ ad_site_link.name }}"
@@ -84,6 +84,7 @@
           -Cost $Cost -ReplicationFrequencyInMinutes $Freq
         $Ansible.Changed = $true
       }
+  when: ad_site_link.name is defined
 
 # Promoting the forest's first domain controller creates this delegation and
 # names only that server in it. Retiring a domain controller removes every NS
@@ -92,7 +93,8 @@
 # delegation. Every DNS server here holds both zones, so no lookup goes
 # through the delegation today; it is what a server holding the parent zone
 # alone would follow.
-- name: Delegate _msdcs to every domain controller
+
+- name: Add every domain controller to the _msdcs delegation
   ansible.windows.win_powershell:
     script: |
       Import-Module ActiveDirectory, DnsServer

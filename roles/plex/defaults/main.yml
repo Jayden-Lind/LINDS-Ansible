@@ -1,0 +1,3 @@
+---
+# The system crypto policy on a RedHat-family host. Not used on Debian.
+plex_crypto_policy: LEGACY

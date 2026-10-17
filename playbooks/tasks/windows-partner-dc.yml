@@ -1,9 +1,9 @@
 ---
-# Chooses the existing domain controller that creates, or cleans up, the
-# directory objects of the server named in `target`, and puts it in the group
-# windows_partner_dc. One in the same AD site if there is one: that is the one
-# the server itself talks to. `-e windows_join_dc=<fqdn>` overrides the choice.
-- name: Pick the domain controller that will act for it
+# Choose the existing domain controller that makes or removes the directory
+# objects of the server in `target` (the partner), and put it in the group
+# windows_partner_dc. Prefer a domain controller in the same AD site, because
+# the server talks to that one. `-e windows_join_dc=<fqdn>` sets it.
+- name: Choose the partner domain controller
   ansible.builtin.add_host:
     name: "{{ windows_join_dc | default((same_site + others) | first) }}"
     groups: windows_partner_dc

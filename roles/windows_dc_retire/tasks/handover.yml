@@ -1,0 +1,58 @@
+---
+# Runs on the domain controller that stays (the partner). It takes over what the
+# server to retire carries: its FSMO roles and its place in the replication
+# groups. A step that does not apply does nothing.
+
+- name: Move the FSMO roles of the server to retire to this domain controller
+  ansible.windows.win_powershell:
+    parameters:
+      Leaving: "{{ windows_dc_retire_machine }}"
+    script: |
+      param([string]$Leaving)
+      $ErrorActionPreference = 'Stop'
+      Import-Module ActiveDirectory
+      $Ansible.Changed = $false
+      $dc = Get-ADDomainController -Filter "Name -eq '$Leaving'"
+      if (-not $dc) { return 'not a domain controller any more' }
+      $roles = @($dc.OperationMasterRoles | ForEach-Object { "$_" })
+      if (-not $roles) { return 'holds no FSMO roles' }
+      Move-ADDirectoryServerOperationMasterRole -Identity $env:COMPUTERNAME -OperationMasterRole $roles -Confirm:$false
+      $Ansible.Changed = $true
+      "moved to $($env:COMPUTERNAME): $($roles -join ', ')"
+  register: windows_dc_retire_fsmo
+
+- name: Show the FSMO roles
+  ansible.builtin.debug:
+    msg: "{{ windows_dc_retire_fsmo.output }}"
+
+# The DFS Replication cmdlets are necessary for the next step. Without them the
+# step would do nothing and pass.
+- name: Install the replication management tools on this domain controller
+  ansible.windows.win_feature:
+    name: RSAT-DFS-Mgmt-Con
+    state: present
+
+- name: Remove the server to retire from its replication groups
+  ansible.windows.win_powershell:
+    parameters:
+      Leaving: "{{ windows_dc_retire_machine }}"
+    script: |
+      param([string]$Leaving)
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      Import-Module DFSR
+      # SYSVOL's own group is not one of these; demotion deals with that.
+      $left = @()
+      foreach ($group in Get-DfsReplicationGroup -GroupName * -ErrorAction SilentlyContinue | Where-Object GroupName -ne 'Domain System Volume') {
+          if (Get-DfsrMember -GroupName $group.GroupName | Where-Object ComputerName -ieq $Leaving) {
+              Remove-DfsrMember -GroupName $group.GroupName -ComputerName $Leaving -Force
+              $left += $group.GroupName
+          }
+      }
+      $Ansible.Changed = $left.Count -gt 0
+      if ($left) { "removed from: $($left -join ', ')" } else { 'not a member of any replication group' }
+  register: windows_dc_retire_dfsr
+
+- name: Show the replication groups
+  ansible.builtin.debug:
+    msg: "{{ windows_dc_retire_dfsr.output }}"

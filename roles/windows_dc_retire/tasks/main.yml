@@ -65,7 +65,7 @@
   failed_when: windows_dc_retire_role.output[0] >= 4
   changed_when: false
 
-- name: Shut the retired server down
+- name: Stop the retired server
   ansible.windows.win_powershell:
     script: |
       $Ansible.Changed = $true

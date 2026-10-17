@@ -1,6 +1,6 @@
 ---
 # Depth by depth, so that a parent exists before its children.
-- name: Organizational units
+- name: Make the OUs
   microsoft.ad.ou:
     name: "{{ item.1.ou.split(',')[0].split('=', 1)[1] }}"
     path: "{{ (item.1.ou.split(',')[1:] + [windows_directory_base]) | join(',') }}"
@@ -12,7 +12,7 @@
   loop_control:
     label: "{{ item.1.ou }}"
 
-- name: Groups
+- name: Make the groups
   microsoft.ad.group:
     name: "{{ item.name }}"
     path: "{{ item.ou }},{{ windows_directory_base }}"
@@ -24,7 +24,7 @@
   loop_control:
     label: "{{ item.name }}"
 
-- name: Users
+- name: Make the users
   microsoft.ad.user:
     identity: "{{ item.name }}"
     name: "{{ item.display_name | default(item.name) }}"
@@ -45,7 +45,7 @@
 # --check cannot preview the membership of a group, or of a user, that the
 # same run would create: it does not exist yet. Those show as errors in a
 # check run, are ignored there, and are not errors in a real one.
-- name: Members of the groups this repository owns, exactly
+- name: Set the exact members of the owned groups
   microsoft.ad.group:
     identity: "{{ item.key }}"
     members:
@@ -56,7 +56,7 @@
     label: "{{ item.key }}"
   ignore_errors: "{{ ansible_check_mode }}"
 
-- name: Members of the privileged groups, exactly
+- name: Set the exact members of the privileged groups
   microsoft.ad.group:
     identity: "{{ item.key }}"
     members:
@@ -67,105 +67,23 @@
     label: "{{ item.key }}"
   ignore_errors: "{{ ansible_check_mode }}"
 
-- name: Group Policy links, in order
+- name: Set the GPO links in order
   ansible.windows.win_powershell:
     parameters:
       Base: "{{ windows_directory_base }}"
       Links: "{{ windows_directory_gpo_links | to_json }}"
-    script: |
-      [CmdletBinding(SupportsShouldProcess)]
-      param([string]$Base, [string]$Links)
-      $ErrorActionPreference = 'Stop'
-      Import-Module GroupPolicy
-      $Ansible.Changed = $false
-      $changes = @()
-      $wanted = $Links | ConvertFrom-Json
-      foreach ($container in $wanted.PSObject.Properties) {
-          $target = if ($container.Name -eq 'domain') { $Base } else { "$($container.Name),$Base" }
-          $have = @((Get-GPInheritance -Target $target).GpoLinks | Sort-Object Order)
-          $want = @($container.Value)
-          for ($i = 0; $i -lt $want.Count; $i++) {
-              $name = $want[$i].gpo
-              $enabled  = if ($null -eq $want[$i].enabled)  { 'Yes' } elseif ($want[$i].enabled)  { 'Yes' } else { 'No' }
-              $enforced = if ($want[$i].enforced) { 'Yes' } else { 'No' }
-              $order = $i + 1
-              $link = $have | Where-Object DisplayName -eq $name
-              if (-not $link) {
-                  $changes += "link '$name' to $target at $order"
-                  if ($PSCmdlet.ShouldProcess($target, "link $name")) {
-                      New-GPLink -Name $name -Target $target -LinkEnabled $enabled -Enforced $enforced -Order $order | Out-Null
-                  }
-              } elseif ($link.Order -ne $order -or $link.Enabled -ne ($enabled -eq 'Yes') -or $link.Enforced -ne ($enforced -eq 'Yes')) {
-                  $changes += "'$name' on ${target}: order $($link.Order)->$order, enabled $($link.Enabled)->$enabled, enforced $($link.Enforced)->$enforced"
-                  if ($PSCmdlet.ShouldProcess($target, "correct link $name")) {
-                      Set-GPLink -Name $name -Target $target -LinkEnabled $enabled -Enforced $enforced -Order $order | Out-Null
-                  }
-              }
-          }
-          # A script block, not `ForEach-Object gpo`: that form honours -WhatIf and
-          # returns nothing in check mode, which made every link look unwanted.
-          $names = @($want | ForEach-Object { $_.gpo })
-          foreach ($extra in $have | Where-Object { $_.DisplayName -notin $names }) {
-              $changes += "unlink '$($extra.DisplayName)' from $target (not in the code)"
-              if ($PSCmdlet.ShouldProcess($target, "unlink $($extra.DisplayName)")) {
-                  Remove-GPLink -Guid $extra.GpoId -Target $target | Out-Null
-              }
-          }
-      }
-      $Ansible.Changed = $changes.Count -gt 0
-      $changes
+    script: "{{ lookup('ansible.builtin.file', 'gpo-links.ps1') }}"
   register: windows_directory_links
 
-- name: Password policy and machine account quota
+- name: Set the password policy and the machine account quota
   ansible.windows.win_powershell:
     parameters:
       Policy: "{{ windows_directory_password_policy | default({}) | to_json }}"
       Quota: "{{ windows_directory_machine_account_quota | default(-1) | int }}"
-    script: |
-      [CmdletBinding(SupportsShouldProcess)]
-      param([string]$Policy, [int]$Quota)
-      $ErrorActionPreference = 'Stop'
-      Import-Module ActiveDirectory
-      $Ansible.Changed = $false
-      $changes = @()
-      $domain = Get-ADDomain
-      $want = $Policy | ConvertFrom-Json
-      if ($want.PSObject.Properties.Count) {
-          $have = Get-ADDefaultDomainPasswordPolicy
-          $now = [ordered]@{
-              min_length = $have.MinPasswordLength; complexity = $have.ComplexityEnabled; history = $have.PasswordHistoryCount
-              max_age_days = $have.MaxPasswordAge.Days; min_age_days = $have.MinPasswordAge.Days
-              lockout_threshold = $have.LockoutThreshold; lockout_minutes = [int]$have.LockoutDuration.TotalMinutes
-              lockout_window_minutes = [int]$have.LockoutObservationWindow.TotalMinutes; reversible_encryption = $have.ReversibleEncryptionEnabled
-          }
-          $different = @($now.Keys | Where-Object { $null -ne $want.$_ -and "$($want.$_)" -ne "$($now[$_])" })
-          if ($different) {
-              $changes += $different | ForEach-Object { "password policy ${_}: $($now[$_]) -> $($want.$_)" }
-              if ($PSCmdlet.ShouldProcess($domain.DNSRoot, 'set the password policy')) {
-                  $merged = @{}; $now.Keys | ForEach-Object { $merged[$_] = if ($null -ne $want.$_) { $want.$_ } else { $now[$_] } }
-                  Set-ADDefaultDomainPasswordPolicy -Identity $domain.DistinguishedName `
-                      -MinPasswordLength $merged.min_length -ComplexityEnabled ([bool]$merged.complexity) -PasswordHistoryCount $merged.history `
-                      -MaxPasswordAge (New-TimeSpan -Days $merged.max_age_days) -MinPasswordAge (New-TimeSpan -Days $merged.min_age_days) `
-                      -LockoutThreshold $merged.lockout_threshold -LockoutDuration (New-TimeSpan -Minutes $merged.lockout_minutes) `
-                      -LockoutObservationWindow (New-TimeSpan -Minutes $merged.lockout_window_minutes) `
-                      -ReversibleEncryptionEnabled ([bool]$merged.reversible_encryption)
-              }
-          }
-      }
-      if ($Quota -ge 0) {
-          $current = (Get-ADObject $domain.DistinguishedName -Properties 'ms-DS-MachineAccountQuota').'ms-DS-MachineAccountQuota'
-          if ($current -ne $Quota) {
-              $changes += "machine account quota: $current -> $Quota"
-              if ($PSCmdlet.ShouldProcess($domain.DNSRoot, 'set the machine account quota')) {
-                  Set-ADDomain -Identity $domain.DistinguishedName -Replace @{ 'ms-DS-MachineAccountQuota' = $Quota }
-              }
-          }
-      }
-      $Ansible.Changed = $changes.Count -gt 0
-      $changes
+    script: "{{ lookup('ansible.builtin.file', 'password-policy.ps1') }}"
   register: windows_directory_policy
 
-- name: Find what exists in the domain and is not in the code
+- name: List what is in the domain but not in the code
   ansible.windows.win_powershell:
     parameters:
       Users: "{{ windows_directory_users | map(attribute='name') | list }}"
@@ -191,7 +109,7 @@
   changed_when: false
   check_mode: false
 
-- name: Report
+- name: Show the result
   ansible.builtin.debug:
     msg:
       gpo_links: "{{ windows_directory_links.output | default([]) }}"

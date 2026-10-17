@@ -1,17 +1,17 @@
 ---
-- name: Stop qbittorrent (legacy unit), if started
+# qbittorrent-nox@root.service runs in the slice system-qbittorrent\x2dnox.slice.
+# Do not stop that slice: it stops the service. Only an old unit
+# qbittorrent.service, if it exists, is stopped and disabled.
+- name: Read the services
+  ansible.builtin.service_facts:
+
+- name: Stop and disable the old qbittorrent unit
   become: true
   ansible.builtin.service:
     name: qbittorrent
     state: stopped
-  ignore_errors: true
-
-- name: Stop qbittorrent slice (legacy), if started
-  become: true
-  ansible.builtin.service:
-    name: system-qbittorrent\x2dnox.slice
-    state: stopped
-  ignore_errors: true
+    enabled: false
+  when: "'qbittorrent.service' in ansible_facts.services"
 
 - name: Enable and start qBittorrent
   become: true
@@ -19,4 +19,3 @@
     name: "{{ torrent_service_name }}"
     state: started
     enabled: true
-

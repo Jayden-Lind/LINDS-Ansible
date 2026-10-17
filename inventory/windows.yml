@@ -13,7 +13,7 @@ windows:
         linds-dc.linds.com.au:
           ansible_host: 10.3.1.200
           ad_site: LINDS
-          # Rebuilt by playbooks/windows-build.yml from the Windows template.
+          # Built from the Windows template on 2026-10-12 (VM 113 on linds-proxmox-01).
           # Also the CA and the LINDS file server: see the groups below, and
           # inventory/host_vars/linds-dc.linds.com.au/ for its shares.
           windows_hostname: LINDS-DC
@@ -38,8 +38,7 @@ windows:
         linds-dc2.linds.com.au:
           ansible_host: 10.3.1.201
           ad_site: LINDS
-          # Built by playbooks/windows-build.yml from the Windows template
-          # (VM 112 on linds-proxmox-01) on 2026-10-11.
+          # Built from the Windows template on 2026-10-11 (VM 112 on linds-proxmox-01).
           windows_hostname: LINDS-DC2
           windows_ipv4_address: 10.3.1.201
           windows_ipv4_prefix: 24

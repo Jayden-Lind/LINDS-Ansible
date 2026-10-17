@@ -26,3 +26,21 @@ ansible_winrm_operation_timeout_sec: 840
 
 # Port 5985 is plaintext HTTP at the transport layer, but Kerberos message
 # encryption is enforced above it, so payloads are never on the wire in clear.
+
+# The domain.
+windows_domain: linds.com.au
+windows_domain_netbios: LINDS
+
+# The DNS forwarders of the domain controllers (jd-router-01).
+windows_dc_dns_forwarders:
+  - 10.0.50.1
+
+# The external NTP servers of the PDC emulator.
+ntp_servers:
+  - 0.au.pool.ntp.org
+  - 1.au.pool.ntp.org
+  - 2.au.pool.ntp.org
+
+# CPU side-channel mitigations in the guests are off, by the decision of the
+# owner (17 October 2026). See roles/windows_baseline/README.md.
+windows_baseline_cpu_mitigations: false

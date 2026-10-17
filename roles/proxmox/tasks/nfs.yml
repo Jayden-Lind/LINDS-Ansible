@@ -1,12 +1,6 @@
 ---
-- name: Render /etc/exports
-  ansible.builtin.template:
-    src: exports.j2
-    dest: "{{ proxmox_exports_file }}"
-    owner: root
-    group: root
-    mode: "0644"
-  notify: Reload NFS exports
+# LINDS-Terraform (proxmox/nfs.tf) writes /etc/exports. The role only keeps
+# the NFS server running. Two writers of one file would undo each other.
 
 - name: Enable and start NFS server
   ansible.builtin.systemd:

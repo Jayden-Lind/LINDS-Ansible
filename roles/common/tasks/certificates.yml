@@ -1,26 +1,39 @@
 ---
-- name: Update-ca-trust
+# Trust the LINDS CA. The trust store is rebuilt only when the CA file changes.
+
+- name: Turn on the shared trust store (RedHat)
   ansible.builtin.command: update-ca-trust enable
+  changed_when: false
   when: ansible_facts['os_family'] == "RedHat"
 
-- name: Copy LINDS-CA
+- name: Copy the LINDS CA (RedHat)
   ansible.builtin.copy:
     src: LINDS-CA.enc
     dest: /etc/pki/ca-trust/source/anchors/LINDS-CA.cer
     decrypt: true
+    mode: "0644"
+  register: common_ca_redhat
   when: ansible_facts['os_family'] == "RedHat"
 
-- name: Trust LINDS-CA
+- name: Rebuild the trust store (RedHat)
   ansible.builtin.command: update-ca-trust extract
-  when: ansible_facts['os_family'] == "RedHat"
+  changed_when: true
+  when:
+    - ansible_facts['os_family'] == "RedHat"
+    - common_ca_redhat is changed
 
-- name: Copy LINDS-CA
+- name: Copy the LINDS CA (Debian)
   ansible.builtin.copy:
     src: LINDS-CA.enc
     dest: /usr/local/share/ca-certificates/LINDS-CA.crt
     decrypt: true
+    mode: "0644"
+  register: common_ca_debian
   when: ansible_facts['os_family'] == "Debian"
 
-- name: Update CA certificates
+- name: Rebuild the trust store (Debian)
   ansible.builtin.command: update-ca-certificates
-  when: ansible_facts['os_family'] == "Debian"
+  changed_when: true
+  when:
+    - ansible_facts['os_family'] == "Debian"
+    - common_ca_debian is changed

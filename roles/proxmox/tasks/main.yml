@@ -1,27 +1,37 @@
 ---
+# Each part has a tag, so that one part can run alone (--tags fan-control).
 - name: Install storage packages
   ansible.builtin.import_tasks: packages.yml
+  tags: packages
 
 - name: Configure ZFS module parameters
   ansible.builtin.import_tasks: zfs-tunables.yml
+  tags: zfs
 
 - name: Keep drive write caches on
   ansible.builtin.import_tasks: drive-cache.yml
+  tags: drive-cache
 
 - name: Enforce ZFS dataset properties
   ansible.builtin.import_tasks: zfs.yml
+  tags: zfs
 
-- name: Configure NFS server
+- name: Keep the NFS server running
   ansible.builtin.import_tasks: nfs.yml
+  tags: nfs
 
-- name: Configure iSCSI target
+- name: Configure the iSCSI target service
   ansible.builtin.import_tasks: iscsi.yml
+  tags: iscsi
 
 - name: Configure sanoid snapshots
   ansible.builtin.import_tasks: sanoid.yml
+  tags: sanoid
 
 - name: Manage LXC containers
   ansible.builtin.import_tasks: lxc.yml
+  tags: lxc
 
 - name: Configure fan control service
   ansible.builtin.import_tasks: fan-control.yml
+  tags: fan-control

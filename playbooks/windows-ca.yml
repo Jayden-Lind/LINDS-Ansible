@@ -1,12 +1,10 @@
 ---
-# Put the certification authority on a server: restored from the backup in
-# the state directory if there is one, created new if not.
+# Install the certification authority on one server: restored from the backup
+# in windows-state/ca/backup if there is one, new if there is not.
 #
 #   make windows-ca HOST=<fqdn>
 #
-# Needs a Kerberos ticket (`make kinit`). HOST must be in the windows_ca group.
-# playbooks/windows-build.yml does this by itself for such a host; this is for
-# running it alone.
+# Read playbooks/windows-ca.md before you use it.
 
 - name: Check the request
   hosts: localhost

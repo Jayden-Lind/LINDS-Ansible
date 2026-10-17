@@ -4,9 +4,15 @@
 #
 # PrimaryMember is deliberately not declared. It is a one-shot initial-sync
 # flag that DFSR clears itself once a member has built its database; asserting
-# it here would re-arm an initial sync on every run.
+# it here would re-arm an initial sync on every run. The one exception is
+# dfsr_initial_primary: a new folder's member that holds the data is made
+# primary at the moment its membership gets its first content path.
 
-- name: Ensure the replication group exists
+- name: Stop here if no replication group is set
+  ansible.builtin.meta: end_role
+  when: not dfsr_group
+
+- name: Make the replication group
   ansible.windows.win_powershell:
     parameters:
       Group: "{{ dfsr_group }}"
@@ -21,7 +27,7 @@
           $Ansible.Changed = $true
       }
 
-- name: Ensure the replicated folders exist
+- name: Make the replicated folders
   ansible.windows.win_powershell:
     parameters:
       Group: "{{ dfsr_group }}"
@@ -42,7 +48,7 @@
           }
       }
 
-- name: Ensure the members exist
+- name: Add the members
   ansible.windows.win_powershell:
     parameters:
       Group: "{{ dfsr_group }}"
@@ -63,7 +69,7 @@
           }
       }
 
-- name: Ensure content paths and quotas match
+- name: Set the content paths and the quotas
   ansible.windows.win_powershell:
     parameters:
       Group: "{{ dfsr_group }}"
@@ -72,70 +78,13 @@
       StagingQuota: "{{ dfsr_staging_quota_mb | int }}"
       StagingOverrides: "{{ dfsr_staging_quota_overrides_mb }}"
       ConflictQuota: "{{ dfsr_conflict_quota_mb | int }}"
-    script: |
-      param([string]$Group, [string[]]$Folders, [hashtable]$MemberRoots,
-            [int]$StagingQuota, [hashtable]$StagingOverrides, [int]$ConflictQuota)
-      $ErrorActionPreference = 'Stop'
-      Import-Module DFSR
-      $Ansible.Changed = $false
+      InitialPrimary: "{{ dfsr_initial_primary | default({}) }}"
+    script: "{{ lookup('ansible.builtin.file', 'memberships.ps1') }}"
 
-      foreach ($member in $MemberRoots.Keys) {
-          $root = $MemberRoots[$member]
-          foreach ($f in $Folders) {
-              $want = "$root\$f"
-              $staging = if ($StagingOverrides.ContainsKey($f)) { [int]$StagingOverrides[$f] } else { $StagingQuota }
-              # Get-DfsrMembership has no -FolderName; it returns every folder's
-              # membership for the member, so pick this folder's out of that.
-              $have = Get-DfsrMembership -GroupName $Group -ComputerName $member -ErrorAction Stop |
-                        Where-Object { $_.FolderName -eq $f }
-
-              # Not $args - that is an automatic variable, and splatting it
-              # would not refer to this hashtable.
-              $set = @{}
-              if ($have.ContentPath -ne $want)                          { $set.ContentPath = $want }
-              if ($have.StagingPathQuotaInMB -ne $staging)              { $set.StagingPathQuotaInMB = $staging }
-              if ($have.ConflictAndDeletedQuotaInMB -ne $ConflictQuota) { $set.ConflictAndDeletedQuotaInMB = $ConflictQuota }
-              if (-not $have.Enabled)                                   { $set.DisableMembership = $false }
-
-              if ($set.Count) {
-                  Set-DfsrMembership -GroupName $Group -FolderName $f -ComputerName $member `
-                      @set -Force | Out-Null
-                  "$member/$f -> $($set.Keys -join ',')"
-                  $Ansible.Changed = $true
-              }
-          }
-      }
-
-- name: Ensure connections exist and are enabled
+- name: Make and enable the connections
   ansible.windows.win_powershell:
     parameters:
       Group: "{{ dfsr_group }}"
       Connections: "{{ dfsr_connections }}"
       Rdc: "{{ dfsr_rdc_enabled | bool }}"
-    script: |
-      param([string]$Group, [object[]]$Connections, [bool]$Rdc)
-      $ErrorActionPreference = 'Stop'
-      Import-Module DFSR
-      $Ansible.Changed = $false
-
-      foreach ($c in $Connections) {
-          $existing = Get-DfsrConnection -GroupName $Group `
-                        -SourceComputerName $c.source `
-                        -DestinationComputerName $c.destination -ErrorAction SilentlyContinue
-
-          if (-not $existing) {
-              Add-DfsrConnection -GroupName $Group `
-                  -SourceComputerName $c.source -DestinationComputerName $c.destination | Out-Null
-              "created $($c.source) -> $($c.destination)"
-              $Ansible.Changed = $true
-              continue
-          }
-
-          if (-not $existing.Enabled -or $existing.RdcEnabled -ne $Rdc) {
-              Set-DfsrConnection -GroupName $Group `
-                  -SourceComputerName $c.source -DestinationComputerName $c.destination `
-                  -DisableConnection $false -DisableRDC (-not $Rdc) | Out-Null
-              "updated $($c.source) -> $($c.destination)"
-              $Ansible.Changed = $true
-          }
-      }
+    script: "{{ lookup('ansible.builtin.file', 'connections.ps1') }}"

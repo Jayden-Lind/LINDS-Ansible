@@ -1,30 +1,11 @@
 ---
-# Capture the Windows domain as it is, into files worth diffing.
+# Read the domain, Group Policy, DNS, the CA and each server, and write the
+# result to windows-state/. It changes nothing on the servers.
 #
-#   make windows-capture                      # into ./windows-state
-#   make windows-capture WINDOWS_STATE=<dir>  # somewhere else
+#   make windows-capture
+#   git diff -- windows-state
 #
-# Needs a Kerberos ticket (`make kinit`). Changes nothing on the servers: it
-# reads the directory, DNS, Group Policy, the CA and each server, and writes
-#
-#   domain/   the domain, sites, OUs with their GPO links, groups, users,
-#             computers, service accounts, who is privileged, delegation
-#   gpo/      every Group Policy object: settings report, permissions, and a
-#             backup that Import-GPO can restore
-#   dns/      zones and the records somebody created
-#   ca/       the CA's settings, every certificate template, the trust stores
-#   hosts/    per server: features, shares and their permissions, services,
-#             scheduled tasks, software, security settings
-#
-# Run it, look at `git diff` in the state directory, commit. What the diff
-# shows is what changed in the domain since the last capture, whoever or
-# whatever changed it. Things that change by themselves (logon times, free
-# space, update revisions) are left out so that it shows nothing else.
-#
-# This repository is public. The files that name people, say who holds which
-# rights or show what is weak or switched off are encrypted with the vault as
-# they are written; the list is SENSITIVE in scripts/windows_state.py, and
-# windows-state/README.md says how to read them.
+# Read playbooks/windows-capture.md before you use it.
 
 - name: Prepare
   hosts: localhost

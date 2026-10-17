@@ -30,8 +30,17 @@
     state: stopped
     enabled: false
 
-- name: Disable mitigations
+- name: Read the kernel arguments
+  ansible.builtin.command: grubby --info=ALL
+  register: common_grubby
+  changed_when: false
+  check_mode: false
+  when: common_disable_mitigations | bool
+
+- name: Add mitigations=off to every kernel that does not have it
   ansible.builtin.command: grubby --update-kernel=ALL --args="mitigations=off"
   changed_when: true
-  when: common_disable_mitigations | bool
+  when:
+    - common_disable_mitigations | bool
+    - common_grubby.stdout_lines | select('match', '^args=') | reject('search', 'mitigations=off') | list | length > 0
 

@@ -1,5 +1,5 @@
 ---
-- name: Determine whether this DC holds the PDC emulator role
+- name: Find out if this domain controller is the PDC emulator
   ansible.windows.win_powershell:
     script: |
       Import-Module ActiveDirectory
@@ -12,7 +12,7 @@
   check_mode: false
   register: pdc_check
 
-- name: Configure the PDC emulator as the domain's external time source
+- name: Make the PDC emulator use the external NTP servers
   ansible.windows.win_powershell:
     parameters:
       Peers: "{{ ntp_servers | map('regex_replace', '$', ',0x8') | join(' ') }}"
@@ -29,7 +29,7 @@
       }
   when: pdc_check.output[0] | bool
 
-- name: Configure non-PDC DCs to follow the domain hierarchy
+- name: Make the other domain controllers follow the domain hierarchy
   ansible.windows.win_powershell:
     script: |
       $Ansible.Changed = $false
