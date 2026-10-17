@@ -27,15 +27,20 @@
     label: "{{ item.key }}"
   register: proxmox_zfs_param_stat
 
+# Write the value directly. The copy module cannot write to sysfs: it makes a
+# temporary file beside the target, and sysfs refuses that.
 - name: Apply runtime-writable ZFS parameters
-  ansible.builtin.copy:
-    content: "{{ item.item.value }}"
-    dest: "/sys/module/zfs/parameters/{{ item.item.key }}"
-    mode: "0644"
+  ansible.builtin.shell: |
+    f=/sys/module/zfs/parameters/{{ item.item.key }}
+    if [ "$(cat "$f")" != "{{ item.item.value }}" ]; then
+      echo "{{ item.item.value }}" > "$f"
+      echo changed
+    fi
   loop: "{{ proxmox_zfs_param_stat.results }}"
   loop_control:
     label: "{{ item.item.key }} = {{ item.item.value }}"
   when:
     - item.stat.exists
     - item.stat.writeable
-  changed_when: false
+  register: proxmox_zfs_param_set
+  changed_when: "'changed' in proxmox_zfs_param_set.stdout"
