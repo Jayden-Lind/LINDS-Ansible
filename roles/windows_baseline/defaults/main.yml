@@ -30,6 +30,17 @@ windows_baseline_rdp: true
 # on an Intel host. The change takes effect at the next restart.
 windows_baseline_cpu_mitigations: true
 
+# The offloads of the VirtIO network adapter, at the driver defaults: large
+# send (LSO) and receive segment coalescing (RSC) on. With them off, the server
+# sends and receives 1500-byte packets only. A change restarts the adapter, and
+# the network stops for about 3 seconds. {} leaves the adapter as it is.
+windows_baseline_nic_offloads:
+  "*LsoV2IPv4": "1"
+  "*LsoV2IPv6": "1"
+  OffLoad.TxLSO: "2"
+  "*RscIPv4": "1"
+  "*RscIPv6": "1"
+
 # Install Windows updates. This can take one hour and restarts the server.
 # windows-prepare.yml and windows-join.yml set it to true.
 windows_baseline_updates: false

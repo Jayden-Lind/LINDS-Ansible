@@ -12,7 +12,9 @@ The role applies the security baseline to a Windows server.
 6. It allows Remote Desktop with Network Level Authentication, and opens its
    firewall rules.
 7. It sets the CPU side-channel mitigations of Windows (see Variables).
-8. If `windows_baseline_updates` is true, it installs Windows updates and
+8. It keeps the large send and receive offloads of the VirtIO network adapter
+   on. If a value changes, it restarts the adapter.
+9. If `windows_baseline_updates` is true, it installs Windows updates and
    restarts the server.
 
 ## Requirements
@@ -30,6 +32,7 @@ The role applies the security baseline to a Windows server.
 | `windows_baseline_event_logs` | Security 1 GB, System and Application 256 MB | The maximum size of each log. |
 | `windows_baseline_rdp` | `true` | Allow Remote Desktop with Network Level Authentication. |
 | `windows_baseline_cpu_mitigations` | `true` | `false` turns off the Spectre variant 2 and Meltdown mitigations (and MDS buffer clearing). The inventory sets `false`. |
+| `windows_baseline_nic_offloads` | LSO and RSC on (the driver defaults) | The properties of the VirtIO network adapter to keep, by registry keyword. `{}` leaves the adapter as it is. |
 | `windows_baseline_updates` | `false` | Install updates. `windows-prepare.yml` and `windows-join.yml` set `true`. |
 | `windows_baseline_update_categories` | security, critical, rollups, definitions | The update categories. |
 | `windows_baseline_update_reject` | `KB5007651` | Updates that the role does not install. |
@@ -38,6 +41,8 @@ The role applies the security baseline to a Windows server.
 
 - `make windows-baseline HOST=<fqdn>` applies it to one server.
 - `make windows-baseline HOST=<fqdn> TAGS=cpu-mitigations` applies one setting.
+- `make windows-baseline HOST=<fqdn> TAGS=nic-offloads` applies the network
+  adapter offloads only.
 - The build playbooks apply it to each new server.
 
 ## Safety
@@ -51,6 +56,16 @@ the Intel host at LINDS the mitigations cost about 5 to 10% of system-call
 speed; on the AMD host at JD no mitigation was on. They protect the kernel from
 code that already runs in the server. The hypervisor keeps the VMs apart in
 both cases.
+
+**CAUTION:** A change to the network adapter offloads restarts the adapter 15
+seconds after the task. The network stops for about 3 seconds. The server
+closes its SMB connections, and the clients connect again by themselves. The
+role waits for the server to answer again.
+
+**NOTE:** With large send offload (LSO) off, the server sends only 1500-byte
+packets. With receive segment coalescing (RSC) off, the host must cut every
+packet for the server to 1500 bytes. On `jd-fs-01` both were off. SMB reads
+from the cluster then got about 210 MB/s for each stream.
 
 ## Known problems
 
