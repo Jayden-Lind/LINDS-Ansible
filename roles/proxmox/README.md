@@ -65,8 +65,3 @@ boot.
 
 - The host is `jd-proxmox-02`, but the inventory still calls it
   `jd-proxmox-01.linds.com.au`.
-- On 17 October 2026, two settings in the repository were not on the host:
-  the TRIM floor `zfs_trim_extent_bytes_min=1048576` in `zfs.conf` (added to
-  the repository on 14 August 2026), and the files in
-  `/etc/modules-load.d/` for the iSCSI modules. A run of the tags `zfs` and
-  `packages` adds them.
