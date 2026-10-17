@@ -96,6 +96,24 @@
   when: windows_baseline_mitigations is changed
   tags: cpu-mitigations
 
+- name: Keep the offloads of the VirtIO network adapter on
+  ansible.windows.win_powershell:
+    parameters:
+      Offloads: "{{ windows_baseline_nic_offloads | to_json }}"
+    script: "{{ lookup('ansible.builtin.file', 'nic-offloads.ps1') }}"
+  register: windows_baseline_nic
+  when: windows_baseline_nic_offloads | length > 0
+  tags: nic-offloads
+
+- name: Wait for the server after the adapter restart
+  ansible.builtin.wait_for_connection:
+    delay: 30
+    timeout: 300
+  when:
+    - windows_baseline_nic is changed
+    - not ansible_check_mode
+  tags: nic-offloads
+
 - name: Install Windows updates
   ansible.windows.win_updates:
     category_names: "{{ windows_baseline_update_categories }}"
