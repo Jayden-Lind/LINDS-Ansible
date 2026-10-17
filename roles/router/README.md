@@ -360,6 +360,17 @@ layout above), and the notes are JD's.
   spreads the queues. All of it is ethtool, none of it is expressible in
   `.link` files. `ethtool -k lan0 | grep -E "^(scatter|tcp-seg|generic)"`
   must show four `on`s.
+* **Hardware GRO is on for lan0 at JD** (`GenericReceiveOffloadHardware=yes`
+  in `files/jd/etc/systemd/network/10-lan0.link`). The host then gives
+  `lan0` TCP packets of up to 64 KB. If it is off, the host cuts each packet
+  into 1500-byte frames before the router gets it. One flow between two
+  VLANs then gets about 330 MB/s instead of 1.5 GB/s. This matters most for
+  SMB between the cluster (VLAN 53) and `jd-fs-01` (main LAN). The kernel
+  turns LRO off on a router, but it keeps this offload, because virtio-net
+  reports it as `rx-gro-hw`. Check: `ethtool -k lan0 | grep rx-gro-hw` shows
+  `on`, and on the host `ethtool -k tap1101i0` shows
+  `tcp-segmentation-offload: on`. The Suricata ring (tpacket v3, below)
+  captures these packets whole.
 * **Suricata runs `workers`, not `autofp`.** tpacket v3 only exists in the
   workers runmode; under autofp it silently fell back to v2, whose fixed
   frame size truncated every GRO super-packet at 1514 bytes
