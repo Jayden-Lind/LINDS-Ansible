@@ -405,6 +405,11 @@ layout above), and the notes are JD's.
     Suricata 7 has no limit, and a plain HTTP download at line rate keeps
     the worker at 100%. `tcp.stream_depth_reached` counts the sessions
     that reached it.
+  * The EVE `tls` log is extended: each event has the SNI, the TLS
+    version and the JA3/JA3S hashes. The "Top TLS SNI" panel of the
+    Suricata dashboard reads `tls_sni`. Rules that match on the SNI work
+    with or without it, because the client hello is inspected before the
+    bypass.
   * Check: `capture.kernel_packets` does not move during an SMB copy from
     the cluster, and `eve.json` still has `dns` and `tls` events.
 * **Suricata's stream memory is not capped.** With no `stream:` section it

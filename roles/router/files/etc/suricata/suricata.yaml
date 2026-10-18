@@ -67,7 +67,12 @@ outputs:
       types:
         - alert
         - dns
-        - tls
+        # extended adds sni, version, serial, fingerprint and the certificate
+        # dates. The basic log has the subject and issuer only, which TLS 1.3
+        # hides, so most tls events were empty. The "Top TLS SNI" panel of
+        # the Suricata dashboard reads tls.sni.
+        - tls:
+            extended: yes
         - http
         - ssh
   - stats:
