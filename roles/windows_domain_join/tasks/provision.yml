@@ -25,7 +25,7 @@
     fail_msg: >-
       {{ windows_domain_join_machine }} is still a domain controller in AD.
       Provisioning a join for it would reset the machine password of a live
-      DC. Demote and remove the old one first (playbooks/windows-retire-dc.yml).
+      DC. Demote and remove the old one first (playbooks/windows-retire.yml).
 
 # An account with this name that is not a domain controller is used again. If
 # windows_domain_join_ou is set, the account moves to that OU.

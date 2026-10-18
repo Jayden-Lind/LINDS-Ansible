@@ -13,11 +13,14 @@ shadow copy schedule.
 3. It removes the replication data of an earlier member from the volumes:
    `System Volume Information\DFSR` and each `DfsrPrivate` link. It does this
    only for a replication member that is not yet in a replication group.
-4. It makes each SMB share in `windows_fileserver_shares` with exactly the
+4. If `windows_fileserver_smb_require_signing` is set, it sets if the SMB
+   server requires signing. If there are shares, it turns on the firewall rule
+   `File and Printer Sharing (SMB-In)`.
+5. It makes each SMB share in `windows_fileserver_shares` with exactly the
    listed permissions.
-5. It sets the NFS server settings and makes each NFS export with exactly the
+6. It sets the NFS server settings and makes each NFS export with exactly the
    listed clients.
-6. It makes a scheduled task for the shadow copies of each volume.
+7. It makes a scheduled task for the shadow copies of each volume.
 
 File permissions are on the disk. They name domain accounts, so they do not
 change.
@@ -40,6 +43,7 @@ Set them in `inventory/host_vars/<fqdn>/`. The shares are in
 | `windows_fileserver_nfs_server` | `{}` | Settings for `Set-NfsServerConfiguration`. |
 | `windows_fileserver_shadow_copies` | `[]` | `{letter, days, times}` for each volume. |
 | `windows_fileserver_replication` | `false` | `true`: the server is a DFS Replication member. |
+| `windows_fileserver_smb_require_signing` | not set | `false`: clients can connect without SMB signing. Not set: the role does not change it. |
 
 ## How to use it
 
@@ -57,7 +61,18 @@ server that replicates.
 **NOTE:** The role does not change or remove shares and exports that are not
 in the list.
 
+**CAUTION:** A GPO wins over `windows_fileserver_smb_require_signing`. The GPO
+`Server - GPO` requires signing. A server that must not require it cannot be
+in an OU where that GPO is linked (`OU=Servers`, `OU=Domain Controllers`).
+
 ## Known problems
+
+- The SMB volumes of the cluster log on to `jd-fs-01` as its local
+  `Administrator`, with the password in the Vault secrets `smb-immich-creds`
+  and `smb-plex-secret`. A rebuilt server has the template password, so the
+  volumes fail with "Host is down" until the local `Administrator` has the
+  Vault password. Set it with `ansible.windows.win_user` and `no_log`. A
+  domain service account for the cluster would remove this step.
 
 - After a restart, Server for NFS can take 10 to 20 minutes to start.
 - An NFS client keeps a mount to the old server. Remount it after the server

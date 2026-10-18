@@ -11,7 +11,6 @@ time_zone: AUS Eastern Standard Time
 features:
   - FileAndStorage-Services
   - File-Services
-  - FS-DFS-Namespace
   - FS-DFS-Replication
   - FS-FileServer
   - NET-Framework-45-Core
@@ -33,9 +32,9 @@ features:
   - XPS-Viewer
 volumes:
   - letter: C
-    label: ''
+    label: Windows
     file_system: NTFS
-    size_gb: 79
+    size_gb: 80
   - letter: D
     label: NAS
     file_system: NTFS

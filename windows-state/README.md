@@ -1,8 +1,7 @@
 # State of the Windows domain
 
-Written by `playbooks/windows-capture.yml` and
-`playbooks/windows-ca-backup.yml`. Do not edit by hand: capture again and read
-the diff.
+Written by `ansible-playbook playbooks/windows-capture.yml` and `ansible-playbook playbooks/windows-ca-backup.yml`. Do not edit by
+hand: capture again and read the diff.
 
 | Folder | What |
 | --- | --- |

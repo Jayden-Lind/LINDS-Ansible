@@ -1,13 +1,14 @@
 ---
-# Retire a domain controller. Hand over what it carries, demote it, stop it,
-# and remove what is left of it in the directory and in DNS.
+# Retire a Windows server: a domain controller or a member, for example a file
+# server. Hand over what it carries, demote it if it is a domain controller,
+# stop it, and remove what is left of it in the directory and in DNS.
 #
-#   ansible-playbook playbooks/windows-retire-dc.yml -e target=<fqdn>
+#   ansible-playbook playbooks/windows-retire.yml -e target=<fqdn>
 #
-# If a new server with the same name comes next, also give
+# If a new domain controller with the same name comes next, also give
 # -e windows_dc_retire_keep_bridgehead=true.
 #
-# Read playbooks/windows-retire-dc.md before you use it.
+# Read playbooks/windows-retire.md before you use it.
 
 - name: Check the request
   hosts: localhost
@@ -15,13 +16,13 @@
   gather_facts: false
   tags: always
   tasks:
-    - name: Make sure that the server to retire is a domain controller in the inventory
+    - name: Make sure that the server to retire is in the inventory
       ansible.builtin.assert:
         that:
           - target is defined
-          - target in groups['windows_dc']
+          - target in groups['windows']
           - hostvars[target].windows_domain is defined
-        fail_msg: Give -e target=<fqdn>, a host in the windows_dc group of the inventory.
+        fail_msg: Give -e target=<fqdn>, a host in the windows group of the inventory.
 
     - name: Choose the domain controller that does the work (the partner)
       ansible.builtin.import_tasks: tasks/windows-partner-dc.yml
@@ -64,6 +65,8 @@
         tasks_from: remove
       when: inventory_hostname in groups['windows_ca'] | default([])
 
+# A member server does not replicate the directory, so this play is for a
+# domain controller only.
 - name: Move replication between the sites to the partner
   hosts: windows_partner_dc
   gather_facts: false
@@ -75,8 +78,9 @@
       ansible.builtin.import_role:
         name: windows_dc_retire
         tasks_from: bridgehead
+      when: target in groups['windows_dc']
 
-- name: Demote the server to retire and stop it
+- name: Demote the server to retire if it is a domain controller, and stop it
   hosts: "{{ target | default('none') }}"
   gather_facts: false
   roles:

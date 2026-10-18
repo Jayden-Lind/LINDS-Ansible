@@ -26,7 +26,7 @@ October 2026 (2 hours 17 minutes, with the CA and the NAS).
 7. For a replication member, run the file check:
 
    ```shell
-   ansible-playbook playbooks/windows-retire-dc.yml -e target=<fqdn> --tags unique-files
+   ansible-playbook playbooks/windows-retire.yml -e target=<fqdn> --tags unique-files
    ```
 
 ## Procedure
@@ -34,7 +34,7 @@ October 2026 (2 hours 17 minutes, with the CA and the NAS).
 1. Retire the old server, and keep its bridgehead for the new one:
 
    ```shell
-   ansible-playbook playbooks/windows-retire-dc.yml -e target=<fqdn> -e windows_dc_retire_keep_bridgehead=true
+   ansible-playbook playbooks/windows-retire.yml -e target=<fqdn> -e windows_dc_retire_keep_bridgehead=true
    ```
 
 2. On the Proxmox host: `qm set <old vmid> --onboot 0 --name <name>-old`.

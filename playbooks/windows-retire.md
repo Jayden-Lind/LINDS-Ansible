@@ -1,7 +1,8 @@
-# windows-retire-dc.yml
+# windows-retire.yml
 
-The playbook retires a domain controller. It hands over what the server
-carries, demotes it, stops it, and removes what is left of it in the directory
+The playbook retires a Windows server: a domain controller, or a member such
+as a file server. It hands over what the server carries, demotes it if it is a
+domain controller, stops it, and removes what is left of it in the directory
 and in DNS.
 
 ## Before you start
@@ -19,19 +20,19 @@ and in DNS.
    files that its partner does not have:
 
    ```shell
-   ansible-playbook playbooks/windows-retire-dc.yml -e target=<fqdn> --tags unique-files
+   ansible-playbook playbooks/windows-retire.yml -e target=<fqdn> --tags unique-files
    ```
 
-2. If a new server with the same name comes next, run:
+2. If a new domain controller with the same name comes next, run:
 
    ```shell
-   ansible-playbook playbooks/windows-retire-dc.yml -e target=<fqdn> -e windows_dc_retire_keep_bridgehead=true
+   ansible-playbook playbooks/windows-retire.yml -e target=<fqdn> -e windows_dc_retire_keep_bridgehead=true
    ```
 
-3. If the server goes for good, run:
+3. For a member server, or for a domain controller that goes for good, run:
 
    ```shell
-   ansible-playbook playbooks/windows-retire-dc.yml -e target=<fqdn>
+   ansible-playbook playbooks/windows-retire.yml -e target=<fqdn>
    ```
 
 4. On the Proxmox host, stop the old VM from starting:
@@ -45,9 +46,11 @@ an account that does not exist, at the address of the new server.
 1. The partner gets the FSMO roles of the server, and the server leaves its
    replication groups.
 2. For the CA: the playbook makes a last backup and removes the CA.
-3. The partner becomes the preferred bridgehead of its site. The playbook
-   waits until replication works through it in both directions.
-4. The server is demoted, restarts as a member, and stops.
+3. For a domain controller: the partner becomes the preferred bridgehead of
+   its site. The playbook waits until replication works through it in both
+   directions.
+4. A domain controller is demoted and restarts as a member. Then the server
+   stops.
 5. The partner deletes its computer account and server object, and removes
    its DNS records from every DNS server.
 6. Without `-e windows_dc_retire_keep_bridgehead=true`, the partner releases

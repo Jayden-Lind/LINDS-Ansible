@@ -53,6 +53,7 @@ with `-e bootstrap_address=<address>`.
 | Back up the CA | `ansible-playbook playbooks/windows-ca-backup.yml` | [windows-ca-backup.md](../../playbooks/windows-ca-backup.md) |
 | Build a new server | prepare, edition, join, promote | [build-a-server.md](build-a-server.md) |
 | Replace a domain controller | retire, then build | [runbooks/replace-a-domain-controller.md](runbooks/replace-a-domain-controller.md) |
+| Replace a file server that is not a domain controller | retire, then build | [runbooks/replace-a-file-server.md](runbooks/replace-a-file-server.md) |
 | Add a replicated folder | edit the inventory, then `ansible-playbook playbooks/windows.yml` | [runbooks/replication.md](runbooks/replication.md) |
 
 ## Where the settings are
@@ -118,6 +119,7 @@ with `-e bootstrap_address=<address>`.
 | Runbook | When to use it |
 | --- | --- |
 | [replace-a-domain-controller.md](runbooks/replace-a-domain-controller.md) | A domain controller must be rebuilt |
+| [replace-a-file-server.md](runbooks/replace-a-file-server.md) | A file server that is not a domain controller must be rebuilt |
 | [replication.md](runbooks/replication.md) | DFS Replication: add a folder, join a member again, faults |
 | [directory-replication.md](runbooks/directory-replication.md) | AD replication between the sites fails |
 | [thin-storage.md](runbooks/thin-storage.md) | A data disk uses more space on the host than Windows shows |
@@ -135,7 +137,8 @@ with `-e bootstrap_address=<address>`.
   [runbooks/thin-storage.md](runbooks/thin-storage.md).
 - `jd-dc-01` has 8 GB free on `C:`. It has two scheduled tasks
   `ShadowCopyVolume{...}` for volumes that do not exist.
-- `jd-dc-01` and `jd-fs-01` are not yet built from the template.
+- `jd-dc-01` is not yet built from the template. `jd-fs-01` is (VM 1113, 19
+  October 2026).
 - `linds-dc2` reports that Windows is not activated. The other servers were
   not checked.
 - On the LINDS host, VM 102 (`LINDS-DC-old`) must stay. It owns the NAS disk

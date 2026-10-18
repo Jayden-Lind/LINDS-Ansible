@@ -15,7 +15,9 @@ connections.
    membership.
 6. For a new folder in `dfsr_initial_primary`, it makes that member primary
    when it gives the folder its first content path. It stops if another member
-   already has files in the folder.
+   already has files in the folder. A folder is new while no member has a
+   content path for it. A member that joins again after a rebuild is never
+   primary.
 7. It makes each connection in `dfsr_connections` and enables it, with Remote
    Differential Compression as set.
 

@@ -58,7 +58,7 @@ and writes back all records of a name when it changes one.
 3. Look again after more than three minutes. Repeat until two scans find
    nothing.
 
-`windows-retire-dc.yml` does this (tag `cleanup`).
+`windows-retire.yml` does this (tag `cleanup`).
 
 ## A demoted server refuses logons
 

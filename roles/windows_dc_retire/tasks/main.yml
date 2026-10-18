@@ -3,11 +3,12 @@
   ansible.windows.win_powershell:
     script: |
       $ErrorActionPreference = 'Stop'
-      Import-Module ActiveDirectory
       $Ansible.Changed = $false
       $isDc = (Get-CimInstance Win32_ComputerSystem).DomainRole -ge 4
       $roles = @(); $others = 0
+      # A member server has no ActiveDirectory module, and needs none here.
       if ($isDc) {
+          Import-Module ActiveDirectory
           $me = Get-ADDomainController -Identity $env:COMPUTERNAME
           $roles = @($me.OperationMasterRoles | ForEach-Object { "$_" })
           $others = @(Get-ADDomainController -Filter * | Where-Object Name -ne $env:COMPUTERNAME).Count

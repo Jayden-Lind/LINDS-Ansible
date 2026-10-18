@@ -7,3 +7,6 @@ windows_hypervisors:
     linds-proxmox-01:
       ansible_host: 192.168.6.205
       ansible_user: root
+    jd-proxmox-02:
+      ansible_host: 10.0.50.246
+      ansible_user: root
