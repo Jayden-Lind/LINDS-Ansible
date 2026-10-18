@@ -1,89 +1,49 @@
 ---
-# Runs against a single DC - site topology is forest-wide, so applying it on
-# every DC would just race. Target with `--limit` or run_once.
+# Runs on one domain controller. The sites are forest-wide, and the domain
+# controllers replicate them.
 
 - name: Make the AD sites
-  ansible.windows.win_powershell:
-    parameters:
-      SiteNames: "{{ ad_sites }}"
-    script: |
-      param([string[]]$SiteNames)
-      Import-Module ActiveDirectory
-      $Ansible.Changed = $false
-      foreach ($name in $SiteNames) {
-        if (-not (Get-ADReplicationSite -Filter { Name -eq $name } -ErrorAction SilentlyContinue)) {
-          New-ADReplicationSite -Name $name | Out-Null
-          $Ansible.Changed = $true
-        }
-      }
+  microsoft.ad.site:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ ad_sites }}"
 
 - name: Move each domain controller to its site
   ansible.windows.win_powershell:
     parameters:
       Placement: "{{ dict(groups['windows_dc'] | map('extract', hostvars, 'ansible_host') | zip(groups['windows_dc'] | map('extract', hostvars, 'ad_site'))) }}"
     script: |
+      [CmdletBinding(SupportsShouldProcess)]
       param([hashtable]$Placement)
       Import-Module ActiveDirectory
       $Ansible.Changed = $false
       foreach ($dc in Get-ADDomainController -Filter *) {
         $want = $Placement[$dc.IPv4Address]
         if ($want -and $dc.Site -ne $want) {
-          Move-ADDirectoryServer -Identity $dc.Name -Site $want -Confirm:$false
+          if (-not $Ansible.CheckMode) { Move-ADDirectoryServer -Identity $dc.Name -Site $want -Confirm:$false }
           $Ansible.Changed = $true
+          "move $($dc.Name) to $want"
         }
       }
 
 - name: Make the subnets and give each its site
-  ansible.windows.win_powershell:
-    parameters:
-      Subnets: "{{ ad_subnets }}"
-    script: |
-      param([object[]]$Subnets)
-      Import-Module ActiveDirectory
-      $Ansible.Changed = $false
-      foreach ($s in $Subnets) {
-        # AD -Filter script blocks cannot dereference object properties.
-        $net = $s.name; $site = $s.site
-        $existing = Get-ADReplicationSubnet -Filter { Name -eq $net } `
-                      -Properties Site -ErrorAction SilentlyContinue
-        if (-not $existing) {
-          New-ADReplicationSubnet -Name $net -Site $site -Description $s.description | Out-Null
-          $Ansible.Changed = $true
-        }
-        else {
-          $current = ($existing.Site -split ',')[0] -replace '^CN='
-          if ($current -ne $site) {
-            Set-ADReplicationSubnet -Identity $existing.DistinguishedName -Site $site
-            $Ansible.Changed = $true
-          }
-        }
-      }
+  microsoft.ad.site_subnet:
+    name: "{{ item.name }}"
+    site: "{{ item.site }}"
+    description: "{{ item.description | default(omit) }}"
+    state: present
+  loop: "{{ ad_subnets }}"
+  loop_control:
+    label: "{{ item.name }} {{ item.site }}"
 
+# The site link contains exactly the sites in the list.
 - name: Set the sites, the cost and the interval of the site link
-  ansible.windows.win_powershell:
-    parameters:
-      LinkName: "{{ ad_site_link.name }}"
-      Sites: "{{ ad_site_link.sites }}"
-      Cost: "{{ ad_site_link.cost }}"
-      Freq: "{{ ad_site_link.replication_frequency_minutes }}"
-    script: |
-      param([string]$LinkName, [string[]]$Sites, [int]$Cost, [int]$Freq)
-      Import-Module ActiveDirectory
-      $Ansible.Changed = $false
-      $link = Get-ADReplicationSiteLink -Identity $LinkName `
-                -Properties SitesIncluded, Cost, ReplicationFrequencyInMinutes
-      $have = @($link.SitesIncluded | ForEach-Object { ($_ -split ',')[0] -replace '^CN=' })
-      foreach ($s in $Sites) {
-        if ($have -notcontains $s) {
-          Set-ADReplicationSiteLink -Identity $LinkName -SitesIncluded @{Add=$s}
-          $Ansible.Changed = $true
-        }
-      }
-      if ($link.Cost -ne $Cost -or $link.ReplicationFrequencyInMinutes -ne $Freq) {
-        Set-ADReplicationSiteLink -Identity $LinkName `
-          -Cost $Cost -ReplicationFrequencyInMinutes $Freq
-        $Ansible.Changed = $true
-      }
+  microsoft.ad.site_link:
+    name: "{{ ad_site_link.name }}"
+    sites_included: "{{ ad_site_link.sites }}"
+    cost: "{{ ad_site_link.cost }}"
+    replication_frequency: "{{ ad_site_link.replication_frequency_minutes }}"
+    state: present
   when: ad_site_link.name is defined
 
 # Promoting the forest's first domain controller creates this delegation and
@@ -97,6 +57,8 @@
 - name: Add every domain controller to the _msdcs delegation
   ansible.windows.win_powershell:
     script: |
+      [CmdletBinding(SupportsShouldProcess)]
+      param()
       Import-Module ActiveDirectory, DnsServer
       $Ansible.Changed = $false
       $forest = (Get-ADForest).RootDomain
@@ -107,8 +69,11 @@
                 ForEach-Object { $_.NameServer.RecordData.NameServer.TrimEnd('.') })
       foreach ($dc in Get-ADDomainController -Filter *) {
         if ($have -notcontains $dc.HostName) {
-          Add-DnsServerZoneDelegation -Name $forest -ChildZoneName '_msdcs' `
-            -NameServer $dc.HostName -IPAddress $dc.IPv4Address
+          if (-not $Ansible.CheckMode) {
+            Add-DnsServerZoneDelegation -Name $forest -ChildZoneName '_msdcs' `
+              -NameServer $dc.HostName -IPAddress $dc.IPv4Address
+          }
           $Ansible.Changed = $true
+          "add $($dc.HostName) to the _msdcs delegation"
         }
       }

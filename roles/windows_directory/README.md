@@ -12,7 +12,7 @@ group membership, GPO links and the password policy.
 4. It makes the members of each group in `windows_directory_members` exact.
 5. It makes the members of each group in `windows_directory_privileged` exact.
 6. It makes the GPO links of each container in `windows_directory_gpo_links`
-   exact, in the given order.
+   exact, in the given order. It removes a link that is not in the list.
 7. It sets the password policy and the machine account quota, if they are set.
 8. It lists the OUs, groups and users that exist but are not in the files.
 
@@ -58,12 +58,15 @@ files. It lists them under "not in the code".
 
 **NOTE:** The role does not change the password of a user that exists.
 
-**NOTE:** The role does not change the GPOs. Edit them in GPMC. `make
-windows-capture` keeps a backup of each GPO.
+**NOTE:** The role does not change the GPOs. The role `windows_gpo` makes the
+GPOs that the code owns. Edit the other GPOs in GPMC. `make windows-capture`
+keeps a backup of each GPO.
 
 ## Known problems
 
 - In check mode, the role cannot show the members of a group or user that the
   same run makes. Those show as ignored errors.
+- In check mode, the role cannot link a GPO that the same run makes. That
+  shows as an ignored error.
 - Do not run `scripts/windows_directory_export.py` again. It writes over the
   files with the state of the domain at that time.

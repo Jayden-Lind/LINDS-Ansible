@@ -8,8 +8,8 @@ delegation, agree with the inventory.
 1. It makes each site in `ad_sites`.
 2. It moves each domain controller to the site in its host variable `ad_site`.
 3. It makes each subnet in `ad_subnets` and gives it its site.
-4. It adds the sites to the site link and sets its cost and its replication
-   interval.
+4. It sets the sites, the cost and the replication interval of the site link.
+   The site link contains only the sites in the list.
 5. It adds every domain controller to the `_msdcs` delegation in the DNS zone
    of the forest.
 

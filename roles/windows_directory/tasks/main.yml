@@ -67,13 +67,42 @@
     label: "{{ item.key }}"
   ignore_errors: "{{ ansible_check_mode }}"
 
-- name: Set the GPO links in order
+# The last of the three tasks removes the links that this task finds.
+- name: Find the GPO links that are not in the code
   ansible.windows.win_powershell:
     parameters:
       Base: "{{ windows_directory_base }}"
       Links: "{{ windows_directory_gpo_links | to_json }}"
-    script: "{{ lookup('ansible.builtin.file', 'gpo-links.ps1') }}"
-  register: windows_directory_links
+    script: "{{ lookup('ansible.builtin.file', 'gpo-links-extra.ps1') }}"
+  register: windows_directory_links_extra
+  changed_when: false
+  check_mode: false
+
+# One container at a time, from the first link to the last. When a link is put
+# at its place, the links after it move down by one.
+# --check cannot link a GPO that the same run would create. That shows as an
+# error in a check run, is ignored there, and is not an error in a real one.
+- name: Link the GPOs in order
+  microsoft.ad.gpo:
+    name: "{{ item.1.gpo }}"
+    target: "{{ windows_directory_base if item.0.key == 'domain' else item.0.key ~ ',' ~ windows_directory_base }}"
+    order: "{{ item.0.value.index(item.1) + 1 }}"
+    enabled: "{{ item.1.enabled | default(true) }}"
+    enforced: "{{ item.1.enforced | default(false) }}"
+    state: present
+  loop: "{{ windows_directory_gpo_links | dict2items | subelements('value') }}"
+  loop_control:
+    label: "{{ item.0.key }}: {{ item.0.value.index(item.1) + 1 }} {{ item.1.gpo }}"
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Remove the GPO links that are not in the code
+  microsoft.ad.gpo:
+    guid: "{{ item.guid }}"
+    target: "{{ item.target }}"
+    state: absent
+  loop: "{{ windows_directory_links_extra.output }}"
+  loop_control:
+    label: "{{ item.target }}: {{ item.gpo }}"
 
 - name: Set the password policy and the machine account quota
   ansible.windows.win_powershell:
@@ -112,6 +141,5 @@
 - name: Show the result
   ansible.builtin.debug:
     msg:
-      gpo_links: "{{ windows_directory_links.output | default([]) }}"
       policy: "{{ windows_directory_policy.output | default([]) }}"
       not_in_the_code: "{{ windows_directory_unmanaged.output | default([]) }}"

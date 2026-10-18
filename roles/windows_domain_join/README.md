@@ -9,8 +9,8 @@ The role has no main task file. Use one of its task files:
 
 | Task file | Runs on | What it does |
 | --- | --- | --- |
-| `provision.yml` | a domain controller | Refuses if the name belongs to a domain controller. Makes the computer account and the offline-join data (`djoin /provision`), replicates the account, and keeps the data for the next step. |
-| `join.yml` | the new server | Uses the offline-join data (`djoin /requestodj`), restarts, and confirms that the server is a domain member. |
+| `provision.yml` | a domain controller | Refuses if the name belongs to a domain controller. Makes the computer account (`microsoft.ad.computer`) and the offline-join data (`microsoft.ad.offline_join`), replicates the account, and keeps the data for the next step. |
+| `join.yml` | the new server | Uses the offline-join data (`microsoft.ad.membership`), restarts, and confirms that the server is a domain member. |
 
 ## Requirements
 
@@ -23,7 +23,7 @@ The role has no main task file. Use one of its task files:
 | --- | --- | --- |
 | `windows_domain` | none | The domain. The inventory sets it. |
 | `windows_domain_netbios` | none | The NetBIOS name of the domain. The inventory sets it. |
-| `windows_domain_join_ou` | `""` | The OU of the computer account. Empty: the default container. |
+| `windows_domain_join_ou` | `""` | The OU of the computer account, as a full DN. If the account exists in another OU, the role moves it. Empty: a new account goes to the default container, and an existing account does not move. |
 | `windows_domain_join_machine` | none | The computer name. The playbook sets it. |
 | `windows_domain_join_blob` | none | The offline-join data. The playbook sets it. |
 
