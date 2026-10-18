@@ -27,8 +27,11 @@ router_kernel_backports: true
 # peer values are vault secrets); its .network with the policy routing is a
 # plain file: files/etc/systemd/network/30-<name>.network.
 router_wireguard_tunnels:
-  # VLAN 58 (US egress). host_name: re-resolved by the wg-reresolve timer
-  # when NordVPN rotates the server.
+  # VLAN 58 (US egress). host_name is a NordVPN city name, which points to
+  # many servers. Some of these servers use a different public key and do
+  # not answer. If the last handshake is more than 150 seconds old, the
+  # wg-reresolve timer looks up the name again each minute until a server
+  # answers.
   - name: wg10
     mtu: 1420
     table: 90
