@@ -25,7 +25,8 @@ The role does not link the GPOs. The role `windows_directory` links them, from
 
 ## Requirements
 
-- A Kerberos ticket with delegation (`make kinit`). The GPO cmdlets need it.
+- A Kerberos ticket with delegation (`kinit -f Administrator@LINDS.COM.AU`). The
+  GPO cmdlets need it.
 - The computers in `apply_to` must have accounts in the domain.
 
 ## Variables
@@ -45,17 +46,18 @@ The GPOs in the inventory:
 
 | GPO | Linked to | What it sets |
 | --- | --- | --- |
-| `Server - Baseline` | the domain | The settings of `windows_baseline`, for the servers in `apply_to`. |
+| `Server - Baseline` | the domain | The settings of `windows_baseline`, for the servers in the inventory group `windows_managed`. |
 | `PDC Emulator - Time` | `Domain Controllers`, first | The PDC emulator gets its time from `ntp_servers`. |
 | `Domain Controller - Time` | `Domain Controllers`, second | The other domain controllers get their time from the domain. |
 
 ## How to use it
 
-`make windows` applies it (tag `gpo`). Run the tag `directory` after it when
-you add a GPO, because that tag makes the links:
+`playbooks/windows.yml` applies it (tag `gpo`). Run the tag `directory` after it
+when you add a GPO, because that tag makes the links:
 
-1. Run `make windows-check TAGS=gpo,directory`.
-2. Run `make windows TAGS=gpo,directory`.
+1. Run
+   `ansible-playbook playbooks/windows.yml --check --diff --tags gpo,directory`.
+2. Run `ansible-playbook playbooks/windows.yml --tags gpo,directory`.
 3. On a server, run `gpupdate /target:computer` to apply the change now.
    Otherwise the change comes at the next refresh, in 90 to 120 minutes.
 

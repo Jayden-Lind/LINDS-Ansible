@@ -8,8 +8,7 @@ windows_dc_retire_address: ""
 
 # The new local Administrator password after the demotion. By default it is
 # random and nobody keeps it, because the next step stops the server.
-windows_dc_retire_local_password: "{{ lookup('ansible.builtin.env', 'WINDOWS_LOCAL_ADMIN_PASSWORD') | default(lookup('ansible.builtin.password', '/dev/null', length=32,
-  chars=['ascii_letters', 'digits']), true) }}"
+windows_dc_retire_local_password: "{{ lookup('ansible.builtin.password', '/dev/null', length=32, chars=['ascii_letters', 'digits']) }}"
 
 # Stop the server after it has left the domain.
 windows_dc_retire_shutdown: true
@@ -19,7 +18,8 @@ windows_dc_retire_shutdown: true
 windows_dc_retire_accept_unique_files: false
 
 # Keep the preferred bridgehead after the retirement. Set it to true when a new
-# server with the same name comes next (make windows-retire-dc REPLACING=true).
+# server with the same name comes next
+# (-e windows_dc_retire_keep_bridgehead=true).
 # windows-promote.yml then releases it.
 windows_dc_retire_keep_bridgehead: false
 

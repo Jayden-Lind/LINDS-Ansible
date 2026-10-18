@@ -2,8 +2,10 @@
 # Retire a domain controller. Hand over what it carries, demote it, stop it,
 # and remove what is left of it in the directory and in DNS.
 #
-#   make windows-retire-dc HOST=<fqdn>                  # the server goes for good
-#   make windows-retire-dc HOST=<fqdn> REPLACING=true   # a new server with the same name comes next
+#   ansible-playbook playbooks/windows-retire-dc.yml -e target=<fqdn>
+#
+# If a new server with the same name comes next, also give
+# -e windows_dc_retire_keep_bridgehead=true.
 #
 # Read playbooks/windows-retire-dc.md before you use it.
 

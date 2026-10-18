@@ -25,19 +25,30 @@
   ansible.builtin.import_tasks: replication-reset.yml
   when: windows_fileserver_replication | bool
 
+# rule_action set: the share permissions are exactly the listed ones.
 - name: Make the SMB shares and their permissions
-  ansible.windows.win_powershell:
-    parameters:
-      Shares: "{{ windows_fileserver_shares | to_json }}"
-    script: "{{ lookup('ansible.builtin.file', 'smb-shares.ps1') }}"
-  register: windows_fileserver_smb
-  when: windows_fileserver_shares | length > 0
+  ansible.windows.win_share:
+    name: "{{ item.name }}"
+    path: "{{ item.path }}"
+    description: "{{ item.description | default('') }}"
+    # list: true lets a user see the folders that the user cannot open, which
+    # is access-based enumeration off.
+    list: "{{ not (item.access_based_enumeration | default(false)) }}"
+    full: "{{ item.permissions | selectattr('rights', 'eq', 'Full') | map(attribute='who') | join(',') }}"
+    change: "{{ item.permissions | selectattr('rights', 'eq', 'Change') | map(attribute='who') | join(',') }}"
+    read: "{{ item.permissions | selectattr('rights', 'eq', 'Read') | map(attribute='who') | join(',') }}"
+    rule_action: set
+    state: present
+  loop: "{{ windows_fileserver_shares }}"
+  loop_control:
+    label: "{{ item.name }}"
 
 - name: Set the NFS server settings
   ansible.windows.win_powershell:
     parameters:
       Settings: "{{ windows_fileserver_nfs_server | to_json }}"
     script: |
+      [CmdletBinding(SupportsShouldProcess)]
       param([string]$Settings)
       $ErrorActionPreference = 'Stop'
       $Ansible.Changed = $false
@@ -45,9 +56,11 @@
       $have = Get-NfsServerConfiguration
       $set = @{}
       foreach ($p in $want.PSObject.Properties) { if ("$($have.$($p.Name))" -ne "$($p.Value)") { $set[$p.Name] = $p.Value } }
-      if ($set.Count) {
+      if ($set.Count -and -not $Ansible.CheckMode) {
           Set-NfsServerConfiguration @set
           Restart-Service NfsService -Force
+      }
+      if ($set.Count) {
           $Ansible.Changed = $true
       }
       $set.Keys | ForEach-Object { "$_ = $($set[$_])" }

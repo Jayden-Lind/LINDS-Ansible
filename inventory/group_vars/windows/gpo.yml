@@ -1,6 +1,6 @@
 ---
 # The GPOs that the code owns (role windows_gpo). Their links are in
-# directory.yml, windows_directory_gpo_links. Apply with `make windows TAGS=gpo,directory`.
+# directory.yml, windows_directory_gpo_links. Apply with `ansible-playbook playbooks/windows.yml --tags gpo,directory`.
 
 windows_gpo_wmi_filters:
   - name: PDC emulator
@@ -15,9 +15,8 @@ windows_gpo_definitions:
       Firewall, Defender, event logs, Remote Desktop, SMB1, Print Spooler and
       CPU mitigations of the servers. Made by LINDS-Ansible, role windows_gpo.
       Do not edit it in GPMC.
-    # Add a server when it is built from the template. jd-dc-01 and jd-fs-01
-    # are not yet: their firewall and Defender are off.
-    apply_to: [LINDS-DC, LINDS-DC2]
+    # The computer names of the servers in the inventory group windows_managed.
+    apply_to: "{{ groups['windows_managed'] | map('split', '.') | map('first') | map('upper') | list }}"
     policy:
       - { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile', name: EnableFirewall, type: DWord, value: 1 }
       - { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\PrivateProfile', name: EnableFirewall, type: DWord, value: 1 }

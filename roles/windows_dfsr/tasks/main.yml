@@ -17,13 +17,15 @@
     parameters:
       Group: "{{ dfsr_group }}"
     script: |
+      [CmdletBinding(SupportsShouldProcess)]
       param([string]$Group)
       $ErrorActionPreference = 'Stop'
       Import-Module DFSR
       $Ansible.Changed = $false
 
       if (-not (Get-DfsReplicationGroup -GroupName $Group -ErrorAction SilentlyContinue)) {
-          New-DfsReplicationGroup -GroupName $Group | Out-Null
+          if (-not $Ansible.CheckMode) { New-DfsReplicationGroup -GroupName $Group | Out-Null }
+          "made the replication group $Group"
           $Ansible.Changed = $true
       }
 
@@ -33,6 +35,7 @@
       Group: "{{ dfsr_group }}"
       Folders: "{{ dfsr_folders }}"
     script: |
+      [CmdletBinding(SupportsShouldProcess)]
       param([string]$Group, [string[]]$Folders)
       $ErrorActionPreference = 'Stop'
       Import-Module DFSR
@@ -42,7 +45,7 @@
                     ForEach-Object { $_.FolderName })
       foreach ($f in $Folders) {
           if ($existing -notcontains $f) {
-              New-DfsReplicatedFolder -GroupName $Group -FolderName $f | Out-Null
+              if (-not $Ansible.CheckMode) { New-DfsReplicatedFolder -GroupName $Group -FolderName $f | Out-Null }
               "created folder $f"
               $Ansible.Changed = $true
           }
@@ -54,6 +57,7 @@
       Group: "{{ dfsr_group }}"
       Members: "{{ dfsr_members.keys() | list }}"
     script: |
+      [CmdletBinding(SupportsShouldProcess)]
       param([string]$Group, [string[]]$Members)
       $ErrorActionPreference = 'Stop'
       Import-Module DFSR
@@ -63,7 +67,7 @@
                     ForEach-Object { $_.ComputerName })
       foreach ($m in $Members) {
           if ($existing -notcontains $m) {
-              Add-DfsrMember -GroupName $Group -ComputerName $m | Out-Null
+              if (-not $Ansible.CheckMode) { Add-DfsrMember -GroupName $Group -ComputerName $m | Out-Null }
               "added member $m"
               $Ansible.Changed = $true
           }

@@ -21,14 +21,14 @@ it to the full edition if you give a product key.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `windows_edition_target` | `ServerStandard` | The edition: `ServerStandard` or `ServerDatacenter`. |
-| `windows_product_key` | from the environment | The product key. `make windows-edition` asks for it. |
+| `windows_product_key` | `""` | The product key. `playbooks/windows-edition.yml` asks for it. |
 | `windows_edition_allow_evaluation` | `false` | `true`: let an Evaluation installation continue (test servers only). |
 
 ## How to use it
 
-- `make windows-edition HOST=<fqdn> ADDRESS=<DHCP address>` for a clone.
-- `make windows-edition HOST=<fqdn>` for a domain member.
-- `make windows-promote` runs the check first.
+- `playbooks/windows-edition.yml` converts a clone or a domain member. See
+  `playbooks/windows-edition.md`.
+- `playbooks/windows-promote.yml` runs the check first.
 
 ## Safety
 

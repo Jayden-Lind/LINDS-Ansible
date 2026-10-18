@@ -30,8 +30,7 @@
     that: windows_dsrm_password | length >= 12
     fail_msg: >-
       Promotion needs a Directory Services Restore Mode password of at least
-      12 characters. vault_windows_dsrm_password is missing from the vault and
-      none was typed at `make windows-promote HOST=...`.
+      12 characters. Put it in the vault as vault_windows_dsrm_password.
   when: not windows_dc_state.output[0]
 
 - name: Promote to an additional domain controller
@@ -83,34 +82,8 @@
   register: windows_dc_ready
   changed_when: false
 
-- name: Set the DNS server's forwarders
-  ansible.windows.win_powershell:
-    parameters:
-      Forwarders: "{{ windows_dc_dns_forwarders }}"
-    script: |
-      param([string[]]$Forwarders)
-      $ErrorActionPreference = 'Stop'
-      $Ansible.Changed = $false
-      $have = @((Get-DnsServerForwarder).IPAddress | ForEach-Object { $_.IPAddressToString })
-      if (Compare-Object $have $Forwarders -SyncWindow 0) {
-          Set-DnsServerForwarder -IPAddress $Forwarders
-          $Ansible.Changed = $true
-      }
-
-- name: Set the resolvers of the server, a partner first and then itself
-  ansible.windows.win_powershell:
-    parameters:
-      Servers: "{{ windows_dc_dns_client_servers }}"
-    script: |
-      param([string[]]$Servers)
-      $ErrorActionPreference = 'Stop'
-      $Ansible.Changed = $false
-      $nic = Get-NetAdapter -Physical | Where-Object Status -eq 'Up' | Select-Object -First 1
-      $have = @((Get-DnsClientServerAddress -InterfaceIndex $nic.ifIndex -AddressFamily IPv4).ServerAddresses)
-      if (Compare-Object $have $Servers -SyncWindow 0) {
-          Set-DnsClientServerAddress -InterfaceIndex $nic.ifIndex -ServerAddresses $Servers
-          $Ansible.Changed = $true
-      }
+- name: Set the DNS forwarders and the resolvers
+  ansible.builtin.import_tasks: settings.yml
 
 # The other site's domain controller, which holds the RID master role, does
 # not know this one exists until the next scheduled replication. Until it

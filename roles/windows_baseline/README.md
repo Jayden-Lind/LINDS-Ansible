@@ -44,10 +44,9 @@ place (role `windows_gpo`). If you change a setting here, change it in
 
 ## How to use it
 
-- `make windows-baseline HOST=<fqdn>` applies it to one server.
-- `make windows-baseline HOST=<fqdn> TAGS=cpu-mitigations` applies one setting.
-- `make windows-baseline HOST=<fqdn> TAGS=nic-offloads` applies the network
-  adapter offloads only.
+- `playbooks/windows.yml` applies it to each server in `windows_managed`
+  (tag `baseline`). Add `--limit <fqdn>` for one server, and
+  `--tags cpu-mitigations` or `--tags nic-offloads` for one setting.
 - The build playbooks apply it to each new server.
 
 ## Safety

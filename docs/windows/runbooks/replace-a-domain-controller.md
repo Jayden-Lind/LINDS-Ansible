@@ -1,8 +1,8 @@
 # Replace a domain controller
 
 Use this runbook to rebuild a domain controller with the same name and
-address. Nothing that refers to the server changes: DNS forwarders, LDAP URLs,
-`krb5.conf` and the inventory stay the same.
+address. Nothing that refers to the server changes: DNS forwarders, LDAP URLs
+and the inventory stay the same.
 
 Done for `linds-dc2` on 11 October 2026 (31 minutes) and for `linds-dc` on 12
 October 2026 (2 hours 17 minutes, with the CA and the NAS).
@@ -18,24 +18,48 @@ October 2026 (2 hours 17 minutes, with the CA and the NAS).
 4. Make a list of what is on the server and not in code: shares other than
    SYSVOL and NETLOGON, scheduled tasks, software, certificates with private
    keys. The rebuild does not keep them.
-5. Run `make windows-capture` and commit, so that you can compare after.
-6. Make the new VM, then run `windows-prepare` and `windows-edition` for it
-   (see [build-a-server.md](../build-a-server.md), steps 1 to 4). The old
-   server stays in service.
+5. Run `ansible-playbook playbooks/windows-capture.yml` and commit, so that
+   you can compare after.
+6. Make the new VM, then run `windows-prepare.yml` and `windows-edition.yml`
+   for it (see [build-a-server.md](../build-a-server.md), steps 1 to 4). The
+   old server stays in service.
 7. For a replication member, run the file check:
-   `ansible-playbook playbooks/windows-retire-dc.yml -e target=<fqdn> --tags unique-files`.
+
+   ```shell
+   ansible-playbook playbooks/windows-retire-dc.yml -e target=<fqdn> --tags unique-files
+   ```
 
 ## Procedure
 
-1. Run `make windows-retire-dc HOST=<fqdn> REPLACING=true`.
+1. Retire the old server, and keep its bridgehead for the new one:
+
+   ```shell
+   ansible-playbook playbooks/windows-retire-dc.yml -e target=<fqdn> -e windows_dc_retire_keep_bridgehead=true
+   ```
+
 2. On the Proxmox host: `qm set <old vmid> --onboot 0 --name <name>-old`.
-3. For a file server with a data disk: `make windows-data-disk HOST=<fqdn>`.
-4. Run `make windows-join HOST=<fqdn> ADDRESS=<DHCP address>`.
-5. Run `make windows-promote HOST=<fqdn>`.
-6. Run `make windows`. For a replication member, this adds it to the
-   replication group again.
-7. Run `make windows-ca-backup` (for the CA) and `make windows-capture`, and
-   commit `windows-state/`.
+3. For a file server with a data disk, attach the disk:
+
+   ```shell
+   ansible-playbook playbooks/windows-data-disk.yml -e target=<fqdn>
+   ```
+
+4. Join the new server to the domain:
+
+   ```shell
+   ansible-playbook playbooks/windows-join.yml -e target=<fqdn> -e bootstrap_address=<DHCP address>
+   ```
+
+5. Promote it:
+   `ansible-playbook playbooks/windows-promote.yml -e target=<fqdn>`.
+6. Run `ansible-playbook playbooks/windows.yml`. For a replication member, this
+   adds it to the replication group again.
+7. Record the state, and commit `windows-state/`. For the CA, also back it up:
+
+   ```shell
+   ansible-playbook playbooks/windows-ca-backup.yml
+   ansible-playbook playbooks/windows-capture.yml
+   ```
 
 **WARNING:** Do not start the old VM again. It would come up at the address of
 the new server.
@@ -46,8 +70,8 @@ the new server.
 
 - `dcdiag` shows no failures. `repadmin /replsummary` shows no errors.
 - `repadmin /showrepl` on each domain controller shows no failing link.
-- `netdom query fsmo` shows the roles at the correct servers. `make windows`
-  puts them back.
+- `netdom query fsmo` shows the roles at the correct servers.
+  `ansible-playbook playbooks/windows.yml` puts them back.
 - For the CA: `certutil -ping` answers, and the CA certificate has the same
   thumbprint as before.
 - For a file server: the volume, the shares and the NFS exports are there.

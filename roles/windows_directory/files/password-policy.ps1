@@ -1,5 +1,5 @@
 [CmdletBinding(SupportsShouldProcess)]
-param([string]$Policy, [int]$Quota)
+param([string]$Policy)
 $ErrorActionPreference = 'Stop'
 Import-Module ActiveDirectory
 $Ansible.Changed = $false
@@ -25,15 +25,6 @@ if ($want.PSObject.Properties.Count) {
                 -LockoutThreshold $merged.lockout_threshold -LockoutDuration (New-TimeSpan -Minutes $merged.lockout_minutes) `
                 -LockoutObservationWindow (New-TimeSpan -Minutes $merged.lockout_window_minutes) `
                 -ReversibleEncryptionEnabled ([bool]$merged.reversible_encryption)
-        }
-    }
-}
-if ($Quota -ge 0) {
-    $current = (Get-ADObject $domain.DistinguishedName -Properties 'ms-DS-MachineAccountQuota').'ms-DS-MachineAccountQuota'
-    if ($current -ne $Quota) {
-        $changes += "machine account quota: $current -> $Quota"
-        if ($PSCmdlet.ShouldProcess($domain.DNSRoot, 'set the machine account quota')) {
-            Set-ADDomain -Identity $domain.DistinguishedName -Replace @{ 'ms-DS-MachineAccountQuota' = $Quota }
         }
     }
 }

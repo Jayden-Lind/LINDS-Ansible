@@ -3,7 +3,7 @@
 # its DHCP address. Nothing in the domain changes. Use it while the old server
 # with the same name is still in service.
 #
-#   make windows-prepare HOST=<fqdn> ADDRESS=<DHCP address of the clone>
+#   ansible-playbook playbooks/windows-prepare.yml -e target=<fqdn> -e bootstrap_address=<DHCP address of the clone>
 #
 # Read playbooks/windows-prepare.md before you use it.
 

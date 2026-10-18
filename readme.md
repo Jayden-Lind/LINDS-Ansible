@@ -16,8 +16,8 @@ All text in this repository uses Simplified Technical English. See
    Git ignores it.
 3. Run playbooks from the repository root. `ansible.cfg` reads the inventory
    in `inventory/` and the vault password from there.
-4. For the Windows playbooks, run `make venv` one time and `make kinit` in each
-   session. See [docs/windows/README.md](docs/windows/README.md).
+4. For the Windows playbooks, make the Python environment and get a Kerberos
+   ticket first. See [docs/windows/README.md](docs/windows/README.md).
 
 **WARNING:** The repository is public. Put secrets only in vault files.
 
@@ -45,15 +45,13 @@ All text in this repository uses Simplified Technical English. See
 | [truenas](playbooks/truenas.md) | The TrueNAS hosts |
 | [vyos](playbooks/vyos.md) | The VyOS router at LINDS (`linds-vyos-01`) |
 | [wsl](playbooks/wsl.md) | A WSL workstation |
-| [windows](playbooks/windows.md) | The settings of the Windows domain |
-| [windows-baseline](playbooks/windows-baseline.md) | The baseline of one Windows server |
+| [windows](playbooks/windows.md) | The Windows servers and the domain: everything, any time |
 | [windows-prepare](playbooks/windows-prepare.md) | Build step 1: baseline and updates on a new clone |
 | [windows-edition](playbooks/windows-edition.md) | Build step 2: convert the Evaluation edition |
 | [windows-join](playbooks/windows-join.md) | Build step 3: name, address and domain join |
 | [windows-promote](playbooks/windows-promote.md) | Build step 4: domain controller, CA, file server |
 | [windows-retire-dc](playbooks/windows-retire-dc.md) | Retire a domain controller |
 | [windows-data-disk](playbooks/windows-data-disk.md) | Attach the data disks of a file server to its VM |
-| [windows-ca](playbooks/windows-ca.md) | Install or restore the CA |
 | [windows-ca-backup](playbooks/windows-ca-backup.md) | Back up the CA |
 | [windows-capture](playbooks/windows-capture.md) | Record the state of the domain |
 | [windows-forest](playbooks/windows-forest.md) | Make a new forest |

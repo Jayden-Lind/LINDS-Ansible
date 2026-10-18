@@ -24,7 +24,7 @@ The other task files run from the playbook:
 
 ## Requirements
 
-- A Kerberos ticket with delegation (`make kinit`).
+- A Kerberos ticket with delegation (`kinit -f Administrator@LINDS.COM.AU`).
 - The domain must have another domain controller.
 
 ## Variables
@@ -36,22 +36,22 @@ The other task files run from the playbook:
 | `windows_dc_retire_local_password` | random | The local Administrator password after the demotion. Nobody keeps it. |
 | `windows_dc_retire_shutdown` | `true` | Stop the server after the demotion. |
 | `windows_dc_retire_accept_unique_files` | `false` | Continue although the server has files that its partner does not have. |
-| `windows_dc_retire_keep_bridgehead` | `false` | Keep the preferred bridgehead. `REPLACING=true` sets it. |
+| `windows_dc_retire_keep_bridgehead` | `false` | Keep the preferred bridgehead. Set it to `true` when a new server with the same name comes next. |
 | `windows_dc_retire_bridgehead_timeout` | `900` | Seconds to wait for replication through the bridgehead. |
 | `windows_dc_retire_dns_settle` | `200` | Seconds between two DNS scans. |
 | `windows_dc_retire_dns_timeout` | `1800` | Maximum seconds for the DNS clean-up. |
 
 ## How to use it
 
-`make windows-retire-dc HOST=<fqdn>`. See `playbooks/windows-retire-dc.md`.
+`playbooks/windows-retire-dc.yml`. See `playbooks/windows-retire-dc.md`.
 
 ## Known problems
 
 - Replication between the sites goes through one domain controller at each
   site. If the server to retire is that one, the other site loses its partner.
   `bridgehead.yml` prevents this.
-- If a new server with the same name comes next, keep the bridgehead
-  (`REPLACING=true`). If you release it, the other site can choose the new
-  server before it can authenticate to it (error 1396).
+- If a new server with the same name comes next, keep the bridgehead (`-e
+  windows_dc_retire_keep_bridgehead=true`). If you release it, the other site
+  can choose the new server before it can authenticate to it (error 1396).
 - A DNS server can write back records of the retired server for up to three
   minutes. `cleanup.yml` stops only after two clean scans 200 seconds apart.

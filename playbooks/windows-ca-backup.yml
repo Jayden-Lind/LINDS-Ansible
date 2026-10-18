@@ -2,7 +2,7 @@
 # Back up the key, the database and the settings of the certification
 # authority to windows-state/ca/backup, encrypted with the Ansible vault.
 #
-#   make windows-ca-backup
+#   ansible-playbook playbooks/windows-ca-backup.yml
 #
 # Read playbooks/windows-ca-backup.md before you use it.
 

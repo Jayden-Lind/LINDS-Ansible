@@ -14,7 +14,8 @@ The role has no main task file. Use one of its task files:
 
 ## Requirements
 
-- A Kerberos ticket (`make kinit`) for the domain controller.
+- A Kerberos ticket (`kinit -f Administrator@LINDS.COM.AU`) for the domain
+  controller.
 - A connection to the new server as its local Administrator.
 
 ## Variables
@@ -29,4 +30,4 @@ The role has no main task file. Use one of its task files:
 
 ## How to use it
 
-`make windows-join HOST=<fqdn> ADDRESS=<DHCP address>` applies it.
+`playbooks/windows-join.yml` applies it. See `playbooks/windows-join.md`.

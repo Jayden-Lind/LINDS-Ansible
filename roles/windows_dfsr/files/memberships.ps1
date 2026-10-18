@@ -1,3 +1,6 @@
+# SupportsShouldProcess: without it, win_powershell does not run the script in
+# check mode. The script reads $Ansible.CheckMode itself.
+[CmdletBinding(SupportsShouldProcess)]
 param([string]$Group, [string[]]$Folders, [hashtable]$MemberRoots,
       [int]$StagingQuota, [hashtable]$StagingOverrides, [int]$ConflictQuota,
       [hashtable]$InitialPrimary)
@@ -38,8 +41,10 @@ foreach ($member in $MemberRoots.Keys) {
         if (-not $have.Enabled)                                   { $set.DisableMembership = $false }
 
         if ($set.Count) {
-            Set-DfsrMembership -GroupName $Group -FolderName $f -ComputerName $member `
-                @set -Force | Out-Null
+            if (-not $Ansible.CheckMode) {
+                Set-DfsrMembership -GroupName $Group -FolderName $f -ComputerName $member `
+                    @set -Force | Out-Null
+            }
             "$member/$f -> $($set.Keys -join ',')"
             $Ansible.Changed = $true
         }

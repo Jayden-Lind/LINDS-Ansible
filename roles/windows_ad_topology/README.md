@@ -15,7 +15,7 @@ delegation, agree with the inventory.
 
 ## Requirements
 
-- A Kerberos ticket (`make kinit`).
+- A Kerberos ticket (`kinit -f Administrator@LINDS.COM.AU`).
 
 ## Variables
 
@@ -30,7 +30,7 @@ Set them in `inventory/group_vars/windows/topology.yml`.
 
 ## How to use it
 
-`make windows` applies it (tag `topology`).
+`playbooks/windows.yml` applies it (tag `topology`).
 
 ## Known problems
 

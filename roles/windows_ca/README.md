@@ -16,8 +16,8 @@ The role has no main task file. Use one of its task files:
 
 ## Requirements
 
-- A Kerberos ticket (`make kinit`). The install writes to the configuration
-  of the forest, so it runs as the operator.
+- A Kerberos ticket (`kinit -f Administrator@LINDS.COM.AU`). The install writes
+  to the configuration of the forest, so it runs as the operator.
 - The backup and the restore run as `SYSTEM` (`become` with `runas`). The CA
   refuses its database to a network logon.
 
@@ -34,11 +34,13 @@ The role has no main task file. Use one of its task files:
 
 ## How to use it
 
-- `make windows-ca HOST=<fqdn>` installs or restores the CA.
-- `make windows-ca-backup` makes a backup.
-- `make windows-promote` installs it on a host in the group `windows_ca`.
-- `make windows-retire-dc` makes a backup and removes it from the server to
-  retire.
+- `playbooks/windows.yml` installs or restores the CA, and sets the
+  published templates (tag `ca`).
+- `playbooks/windows-ca-backup.yml` makes a backup.
+- `playbooks/windows-promote.yml` installs it on a host in the group
+  `windows_ca`.
+- `playbooks/windows-retire-dc.yml` makes a backup and removes it from the
+  server to retire.
 
 ## Safety
 

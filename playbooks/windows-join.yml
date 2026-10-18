@@ -3,7 +3,7 @@
 # to the domain. The join is offline: a domain controller makes the computer
 # account, and no domain password goes to the new server.
 #
-#   make windows-join HOST=<fqdn> ADDRESS=<DHCP address of the clone>
+#   ansible-playbook playbooks/windows-join.yml -e target=<fqdn> -e bootstrap_address=<DHCP address of the clone>
 #
 # Read playbooks/windows-join.md before you use it.
 
@@ -155,5 +155,6 @@
         msg: >-
           The Kerberos ticket did not renew
           ({{ windows_join_renew.stderr | default('') | trim }}). If the next
-          step fails with "credentials were rejected", run `make kinit`.
+          step fails with "credentials were rejected", run
+          `kinit -f Administrator@LINDS.COM.AU`.
       when: windows_join_renew.rc != 0

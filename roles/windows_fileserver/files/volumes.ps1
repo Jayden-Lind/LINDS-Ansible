@@ -1,3 +1,6 @@
+# SupportsShouldProcess: without it, win_powershell does not run the script in
+# check mode. The script reads $Ansible.CheckMode itself.
+[CmdletBinding(SupportsShouldProcess)]
 param([string]$Volumes)
 $ErrorActionPreference = 'Stop'
 $Ansible.Changed = $false
@@ -5,6 +8,7 @@ $done = @()
 foreach ($want in ($Volumes | ConvertFrom-Json)) {
     # A moved disk is offline, so its volume cannot be seen yet.
     foreach ($disk in Get-Disk | Where-Object { $_.IsOffline -or $_.IsReadOnly }) {
+        if ($Ansible.CheckMode) { $Ansible.Changed = $true; $done += "bring disk $($disk.Number) online"; continue }
         if ($disk.IsOffline)  { Set-Disk -Number $disk.Number -IsOffline $false;  $Ansible.Changed = $true }
         if ((Get-Disk -Number $disk.Number).IsReadOnly) { Set-Disk -Number $disk.Number -IsReadOnly $false; $Ansible.Changed = $true }
     }
@@ -13,8 +17,12 @@ foreach ($want in ($Volumes | ConvertFrom-Json)) {
         $volume = Get-Volume | Where-Object { $_.FileSystemLabel -eq $want.label -and $_.DriveType -eq 'Fixed' }
         if ($volume) { break }; Start-Sleep -Seconds 2
     }
+    if (-not $volume -and $Ansible.CheckMode) { $done += "$($want.label) is not online yet"; continue }
     if (-not $volume) { throw "No volume labelled '$($want.label)' on this server. Is the data disk attached to the VM?" }
     if (@($volume).Count -gt 1) { throw "More than one volume is labelled '$($want.label)'." }
+    if ("$($volume.DriveLetter)" -ne $want.letter -and $Ansible.CheckMode) {
+        $Ansible.Changed = $true; $done += "give $($want.label) the letter $($want.letter):"; continue
+    }
     if ("$($volume.DriveLetter)" -ne $want.letter) {
         # Whatever holds the letter now (usually the CD drive) moves aside.
         $holder = Get-CimInstance Win32_Volume -Filter "DriveLetter='$($want.letter):'"

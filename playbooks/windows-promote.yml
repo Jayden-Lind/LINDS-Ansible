@@ -3,7 +3,7 @@
 # (windows_dc), the CA (windows_ca), a file server (windows_fileserver), or a
 # combination.
 #
-#   make windows-promote HOST=<fqdn>
+#   ansible-playbook playbooks/windows-promote.yml -e target=<fqdn>
 #
 # Read playbooks/windows-promote.md before you use it.
 
@@ -108,7 +108,8 @@
       when: inventory_hostname in groups['windows_fileserver'] | default([])
 
 # A retirement before this server can have left a preferred bridgehead on the
-# partner (REPLACING=true). The new server is now known at both sites, so the
+# partner (-e windows_dc_retire_keep_bridgehead=true). The new server is now
+# known at both sites, so the
 # topology generator can choose again.
 - name: Let the topology generator choose the bridgehead again
   hosts: windows_partner_dc

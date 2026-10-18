@@ -2,7 +2,7 @@
 # Attach the data disks of a server to its VM, on the hypervisor. The playbook
 # refuses while another VM that has a disk is running.
 #
-#   make windows-data-disk HOST=<fqdn>
+#   ansible-playbook playbooks/windows-data-disk.yml -e target=<fqdn>
 #
 # Read playbooks/windows-data-disk.md before you use it.
 

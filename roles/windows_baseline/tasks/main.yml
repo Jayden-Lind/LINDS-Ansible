@@ -7,15 +7,14 @@
     state: enabled
     profiles: "{{ windows_baseline_firewall_profiles }}"
 
+# The policy value, the same as the GPO "Server - Baseline" sets. It wins over
+# a setting made with Set-MpPreference.
 - name: Turn Microsoft Defender real-time protection on
-  ansible.windows.win_powershell:
-    script: |
-      $ErrorActionPreference = 'Stop'
-      $Ansible.Changed = $false
-      if ((Get-MpPreference).DisableRealtimeMonitoring) {
-          Set-MpPreference -DisableRealtimeMonitoring $false
-          $Ansible.Changed = $true
-      }
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection
+    name: DisableRealtimeMonitoring
+    data: 0
+    type: dword
   when: windows_baseline_defender_realtime | bool
 
 - name: Remove the SMB1 feature
@@ -25,14 +24,11 @@
   register: windows_baseline_smb1
 
 - name: Refuse SMB1 on the server side
-  ansible.windows.win_powershell:
-    script: |
-      $ErrorActionPreference = 'Stop'
-      $Ansible.Changed = $false
-      if ((Get-SmbServerConfiguration).EnableSMB1Protocol) {
-          Set-SmbServerConfiguration -EnableSMB1Protocol $false -Force
-          $Ansible.Changed = $true
-      }
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters
+    name: SMB1
+    data: 0
+    type: dword
 
 - name: Stop and disable the Print Spooler
   ansible.windows.win_service:
@@ -67,16 +63,13 @@
     type: dword
   when: windows_baseline_rdp | bool
 
+# The rule group "Remote Desktop". The firewall stores the group by this
+# resource name, not by its display name.
 - name: Open the Remote Desktop firewall rules
-  ansible.windows.win_powershell:
-    script: |
-      $ErrorActionPreference = 'Stop'
-      $Ansible.Changed = $false
-      $closed = @(Get-NetFirewallRule -DisplayGroup 'Remote Desktop' | Where-Object Enabled -ne 'True')
-      if ($closed.Count) {
-          Enable-NetFirewallRule -DisplayGroup 'Remote Desktop'
-          $Ansible.Changed = $true
-      }
+  community.windows.win_firewall_rule:
+    group: "@FirewallAPI.dll,-28752"
+    enabled: true
+    state: present
   when: windows_baseline_rdp | bool
 
 - name: Set Windows' CPU side-channel mitigations

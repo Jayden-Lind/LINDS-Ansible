@@ -9,8 +9,8 @@ Groups: @dc   the three domain controllers
         @all  everything
 
 Reads the caller's existing Kerberos ticket cache; no passwords anywhere.
-Get a ticket first:
-    KRB5_CONFIG=$PWD/krb5.conf kinit Administrator@LINDS.COM.AU
+Get a forwardable ticket first:
+    kinit -f Administrator@LINDS.COM.AU
 """
 import base64
 import sys

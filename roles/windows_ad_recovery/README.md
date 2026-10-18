@@ -12,7 +12,7 @@ controllers that the inventory names.
 
 ## Requirements
 
-- A Kerberos ticket (`make kinit`).
+- A Kerberos ticket (`kinit -f Administrator@LINDS.COM.AU`).
 
 ## Variables
 
@@ -23,7 +23,7 @@ controllers that the inventory names.
 
 ## How to use it
 
-`make windows` applies it (tag `recovery`).
+`playbooks/windows.yml` applies it (tag `recovery`).
 
 ## Safety
 

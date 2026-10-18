@@ -18,7 +18,7 @@ The scripts are in `files/`. `scripts/windows_state.py` writes the files.
 
 ## Requirements
 
-- A Kerberos ticket (`make kinit`).
+- A Kerberos ticket (`kinit -f Administrator@LINDS.COM.AU`).
 
 ## Variables
 
@@ -28,7 +28,8 @@ The scripts are in `files/`. `scripts/windows_state.py` writes the files.
 
 ## How to use it
 
-`make windows-capture`, then `git diff -- windows-state`.
+`ansible-playbook playbooks/windows-capture.yml`, then
+`git diff -- windows-state`.
 
 ## Safety
 

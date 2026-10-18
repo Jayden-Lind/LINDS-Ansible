@@ -6,15 +6,20 @@ baseline, and joins it to the domain.
 ## Before you start
 
 - `windows-prepare.yml` and `windows-edition.yml` are complete.
-- Run `make kinit`.
+- Run `kinit -f Administrator@LINDS.COM.AU`.
 - If a server with the same name exists, retire it first
   (`playbooks/windows-retire-dc.md`).
 
 ## Procedure
 
-1. Run `make windows-join HOST=<fqdn> ADDRESS=<DHCP address>`.
+1. Run the playbook:
+
+   ```shell
+   ansible-playbook playbooks/windows-join.yml -e target=<fqdn> -e bootstrap_address=<DHCP address>
+   ```
+
 2. If you run it again after a failure and the server already has its static
-   address, leave out `ADDRESS`.
+   address, leave out `-e bootstrap_address`.
 
 ## What it changes
 
@@ -30,7 +35,8 @@ baseline, and joins it to the domain.
 
 - "Server not found in Kerberos database": the account is not at your domain
   controller yet. Run the playbook again.
-- "The Kerberos ticket did not renew": run `make kinit`.
+- "The Kerberos ticket did not renew": run
+  `kinit -f Administrator@LINDS.COM.AU`.
 
 ## Next step
 

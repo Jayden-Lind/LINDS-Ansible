@@ -13,25 +13,47 @@ build a server from a clone of the template.
 
 ## Start here
 
-1. Run `make venv` one time.
-2. Run `make kinit` at the start of each session. It asks for the password of
-   the domain administrator. The ticket is in `/tmp/krb5cc_<uid>`, so a
-   restart of the control node removes it.
-3. Run `make windows-check` to see if the domain agrees with the code.
+Run every command from the top directory of the repository.
+
+1. Make the Python environment one time:
+
+   ```shell
+   /usr/bin/python3 -m venv .venv
+   .venv/bin/pip install -r requirements-windows.txt
+   ansible-galaxy collection install -r requirements.yml
+   ```
+
+2. At the start of each session, use the environment and get a Kerberos
+   ticket. `kinit` asks for the password of the domain administrator:
+
+   ```shell
+   source .venv/bin/activate
+   kinit -f Administrator@LINDS.COM.AU
+   ```
+
+3. Run `ansible-playbook playbooks/windows.yml --check --diff` to see if the
+   domain agrees with the code.
+
+**NOTE:** `-f` makes the ticket forwardable. The GPO cmdlets need it. DNS
+finds the domain controllers, so Kerberos needs no configuration file. The
+ticket is in `/tmp/krb5cc_<uid>`, so a restart of the control node removes it.
+
+**NOTE:** A playbook for one server takes the server with
+`-e target=<fqdn>`. A playbook for a new clone also takes its DHCP address
+with `-e bootstrap_address=<address>`.
 
 ## What to use for each job
 
 | Job | Command | Page |
 | --- | --- | --- |
-| Apply the settings of the domain | `make windows` | [windows.md](../../playbooks/windows.md) |
-| Change OUs, groups, users or GPO links | `make windows-directory` | [windows_directory](../../roles/windows_directory/README.md) |
-| Change a GPO that the code owns | `make windows TAGS=gpo,directory` | [windows_gpo](../../roles/windows_gpo/README.md) |
-| Apply the baseline to one server | `make windows-baseline HOST=` | [windows-baseline.md](../../playbooks/windows-baseline.md) |
-| Record the state of the domain | `make windows-capture` | [windows-capture.md](../../playbooks/windows-capture.md) |
-| Back up the CA | `make windows-ca-backup` | [windows-ca-backup.md](../../playbooks/windows-ca-backup.md) |
+| Make the servers and the domain agree with the code | `ansible-playbook playbooks/windows.yml` | [windows.md](../../playbooks/windows.md) |
+| Do one server only | `ansible-playbook playbooks/windows.yml --limit <fqdn>` | [windows.md](../../playbooks/windows.md) |
+| Do one part only, for example the directory | `ansible-playbook playbooks/windows.yml --tags directory` | [windows.md](../../playbooks/windows.md) |
+| Record the state of the domain | `ansible-playbook playbooks/windows-capture.yml` | [windows-capture.md](../../playbooks/windows-capture.md) |
+| Back up the CA | `ansible-playbook playbooks/windows-ca-backup.yml` | [windows-ca-backup.md](../../playbooks/windows-ca-backup.md) |
 | Build a new server | prepare, edition, join, promote | [build-a-server.md](build-a-server.md) |
 | Replace a domain controller | retire, then build | [runbooks/replace-a-domain-controller.md](runbooks/replace-a-domain-controller.md) |
-| Add a replicated folder | edit the inventory, `make windows TAGS=dfsr` | [runbooks/replication.md](runbooks/replication.md) |
+| Add a replicated folder | edit the inventory, then `ansible-playbook playbooks/windows.yml` | [runbooks/replication.md](runbooks/replication.md) |
 
 ## Where the settings are
 
@@ -54,8 +76,8 @@ build a server from a clone of the template.
   content of a vault file into a pull request or a page.
 - Do not use CredSSP. The GPO cmdlets need Kerberos delegation; the inventory
   turns it on.
-- Build the Python environment with `/usr/bin/python3` (`make venv`).
-  `pykerberos` does not load under the nix Python.
+- Build the Python environment with `/usr/bin/python3`. `pykerberos` does not
+  load under the nix Python.
 - Group variables must be in `inventory/group_vars/`. A `group_vars/` at the
   top of the repository is not read.
 - There are no system-state backups, by decision. If a domain controller is
@@ -63,13 +85,20 @@ build a server from a clone of the template.
   `windows-forest.yml` (see [windows-forest.md](../../playbooks/windows-forest.md)).
 - The code owns the GPOs in `inventory/group_vars/windows/gpo.yml` (role
   `windows_gpo`). Change them there, not in GPMC. Edit the other GPOs in GPMC.
-  `make windows-capture` keeps a backup of each GPO.
-- Use a module of `microsoft.ad` or `ansible.windows` where one exists. Write
-  PowerShell only for what no module does, and put a long script in the
-  `files/` directory of the role.
+  `ansible-playbook playbooks/windows-capture.yml` keeps a backup of each GPO.
+- Use a module of `microsoft.ad`, `ansible.windows` or `community.windows`
+  where one exists. Write PowerShell only for what no module does, and put a
+  long script in the `files/` directory of the role.
 
 ## Notes for a person who changes the code
 
+- `playbooks/windows.yml` must change nothing on a second run, and
+  `--check` must show the true changes. Test both before a merge.
+- A PowerShell task that changes something must start with
+  `[CmdletBinding(SupportsShouldProcess)]`. Without it, `win_powershell` does
+  not run the script in check mode and reports a change. The script must not
+  make the change if `$Ansible.CheckMode` is true.
+- A PowerShell task that only reads must have `check_mode: false`.
 - In a playbook, use `import_role` and `import_tasks`. A tag on
   `include_role` does not reach the tasks of the role.
 - Do not use `delegate_to` from one Windows host to another. The task keeps

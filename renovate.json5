@@ -14,9 +14,10 @@
   // is used once `make update-requirements` has installed it on the box the
   // playbooks run from.
   //
-  // Not tracked: requirements.txt and the venv in the Makefile, which name
-  // their packages without a version (Renovate skips those), and anything
-  // installed with apt on the hosts themselves.
+  // It also tracks requirements-windows.txt, the pinned Python environment of
+  // the Windows playbooks; rebuild .venv after a merge. Not tracked:
+  // requirements.txt, which names its packages without a version (Renovate
+  // skips those), and anything installed with apt on the hosts themselves.
   labels: ["renovate"],
 
   // A homelab doesn't need 25 PRs in the first hour.

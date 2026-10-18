@@ -300,7 +300,7 @@ def ca_backup(work, state):
 README = """\
 # State of the Windows domain
 
-Written by `make windows-capture` and `make windows-ca-backup`. Do not edit by
+Written by `ansible-playbook playbooks/windows-capture.yml` and `ansible-playbook playbooks/windows-ca-backup.yml`. Do not edit by
 hand: capture again and read the diff.
 
 | Folder | What |
@@ -328,7 +328,7 @@ once per clone:
 To get a readable copy of everything, for example to restore a GPO with
 `Import-GPO -Path <copy>/gpo/<name>/backup`:
 
-    make windows-state-plain DEST=/dev/shm/windows-state
+    .venv/bin/python scripts/windows_state.py decrypt-tree /dev/shm/windows-state windows-state vault_password
 
 An encrypted file is only rewritten when its content changes, so a capture of
 an unchanged domain still leaves `git status` clean.
