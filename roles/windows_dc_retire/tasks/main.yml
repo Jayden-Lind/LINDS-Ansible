@@ -13,7 +13,10 @@
           $roles = @($me.OperationMasterRoles | ForEach-Object { "$_" })
           $others = @(Get-ADDomainController -Filter * | Where-Object Name -ne $env:COMPUTERNAME).Count
       }
-      [pscustomobject]@{ is_domain_controller = $isDc; fsmo_roles = $roles; other_domain_controllers = $others }
+      $caRole = [bool](Get-WindowsFeature ADCS-Cert-Authority).Installed
+      $caConfigured = [bool](Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\CertSvc\Configuration' -ErrorAction SilentlyContinue).Active
+      [pscustomobject]@{ is_domain_controller = $isDc; fsmo_roles = $roles; other_domain_controllers = $others
+                         ca_role_installed = $caRole; ca_configured = $caConfigured }
   register: windows_dc_retire_state
   changed_when: false
 
@@ -27,6 +30,33 @@
       ({{ windows_dc_retire_state.output[0].fsmo_roles | join(', ') }}) or is the
       only domain controller. Move the roles first (windows_ad_recovery).
   when: windows_dc_retire_state.output[0].is_domain_controller
+
+# An installed Certification Authority role blocks a demotion ("Certificate
+# Server is installed"), also when no CA was ever set up. A CA in windows_ca
+# was removed by the playbook before this, with its backup. A configured CA
+# that the inventory does not know is not removed here.
+- name: Stop if the server has a CA that the inventory does not know
+  ansible.builtin.assert:
+    that: not windows_dc_retire_state.output[0].ca_configured or inventory_hostname in groups['windows_ca'] | default([])
+    fail_msg: >-
+      {{ inventory_hostname }} has a configured certification authority, and it
+      is not in windows_ca. Back it up and remove it by hand first.
+  when: windows_dc_retire_state.output[0].is_domain_controller
+
+- name: Remove a Certification Authority role that has no CA
+  ansible.windows.win_feature:
+    name: [ADCS-Web-Enrollment, ADCS-Enroll-Web-Svc, ADCS-Cert-Authority]
+    state: absent
+  register: windows_dc_retire_ca_role
+  when:
+    - windows_dc_retire_state.output[0].is_domain_controller
+    - windows_dc_retire_state.output[0].ca_role_installed
+    - not windows_dc_retire_state.output[0].ca_configured
+
+- name: Restart if the removal needs it
+  ansible.windows.win_reboot:
+    reboot_timeout: 1200
+  when: windows_dc_retire_ca_role.reboot_required | default(false)
 
 # Between the demotion and its restart the server belongs to nothing: the
 # directory is gone and it is not yet a member, so it refuses every new logon
