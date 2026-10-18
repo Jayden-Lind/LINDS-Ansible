@@ -38,6 +38,7 @@ dfsr_staging_quota_overrides_mb:
   immich: 49152    # the 32 largest files are 45 GiB together
   Jayden: 200000
   Photos: 200000
+  server: 262144   # three Veeam backups of 33-66 GiB; the whole folder is 248 GiB
 
 dfsr_conflict_quota_mb: 204800
 dfsr_rdc_enabled: true
