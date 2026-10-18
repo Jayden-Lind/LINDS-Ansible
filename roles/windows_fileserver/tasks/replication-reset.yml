@@ -17,6 +17,7 @@
       $mine.Count
   register: windows_fileserver_memberships
   changed_when: false
+  check_mode: false
 
 - name: Clear the old member's replication state from the data volumes
   ansible.windows.win_powershell:

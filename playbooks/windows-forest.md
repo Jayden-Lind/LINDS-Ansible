@@ -28,10 +28,11 @@ the name of the real domain.
 ## To make the real domain again from nothing
 
 1. Make the forest with this playbook.
-2. Run `make windows-directory` to make the OUs, groups, users and GPO links.
-3. Import the GPOs from `windows-state/gpo/*/backup` with `Import-GPO`.
-4. Restore the CA with `make windows-ca`.
-5. Make the file servers with `make windows-promote`.
+2. Run `ansible-playbook playbooks/windows.yml --tags gpo,directory` to make
+   the OUs, groups, users, the GPOs that the code owns, and the GPO links.
+3. Import the other GPOs from `windows-state/gpo/*/backup` with `Import-GPO`.
+4. Restore the CA with `windows-ca.yml`.
+5. Make the file servers with `windows-promote.yml`.
 
 **NOTE:** Every account gets a new identity (SID). The permissions on the NAS
 and the membership of every computer must be done again.

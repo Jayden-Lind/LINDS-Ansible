@@ -33,9 +33,9 @@ because of this.
    `repadmin /kcc`.
 4. Run `repadmin /showrepl` again. The link must work.
 
-`windows_ad_converge` does steps 1 and 2 after each promotion, and
-`REPLACING=true` keeps the bridgehead on the old partner until the promotion is
-complete.
+`windows_ad_converge` does steps 1 and 2 after each promotion. The retirement
+with `-e windows_dc_retire_keep_bridgehead=true` keeps the bridgehead on the
+old partner until the promotion is complete.
 
 ## DNS records of a removed domain controller come back
 

@@ -1,4 +1,4 @@
 ---
 - name: Stop, because this role has only task files
   ansible.builtin.fail:
-    msg: Use playbooks/windows-ca-backup.yml (make windows-ca-backup), which includes backup.yml.
+    msg: Use playbooks/windows-ca-backup.yml , which includes backup.yml.

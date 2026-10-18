@@ -12,6 +12,7 @@
       [bool](Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\CertSvc\Configuration' -ErrorAction SilentlyContinue).Active
   register: windows_ca_configured
   changed_when: false
+  check_mode: false
 
 - name: Find a backup to restore
   ansible.builtin.find:
@@ -46,18 +47,16 @@
     - not windows_ca_configured.output[0]
     - windows_ca_backups.files | length == 0
 
+# A CA issues the templates in the attribute certificateTemplates of its
+# enrollment service object. This is what Add-CATemplate changes.
 - name: Publish only the listed certificate templates
-  ansible.windows.win_powershell:
-    parameters:
-      Templates: "{{ windows_ca_templates }}"
-    script: |
-      param([string[]]$Templates)
-      $ErrorActionPreference = 'Stop'
-      Import-Module ADCSAdministration
-      $Ansible.Changed = $false
-      $have = @(Get-CATemplate | ForEach-Object Name)
-      foreach ($t in $Templates | Where-Object { $_ -notin $have }) { Add-CATemplate -Name $t -Force; $Ansible.Changed = $true }
-      foreach ($t in $have | Where-Object { $_ -notin $Templates }) { Remove-CATemplate -Name $t -Force; $Ansible.Changed = $true }
+  microsoft.ad.object:
+    identity: "{{ windows_ca_enrollment_service }}"
+    type: pKIEnrollmentService
+    attributes:
+      set:
+        certificateTemplates: "{{ windows_ca_templates }}"
+    state: present
   when: windows_ca_templates | length > 0
 
 - name: Make sure that the CA answers
@@ -71,9 +70,10 @@
       $cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Subject -match "CN=$name" -and $_.HasPrivateKey } | Sort-Object NotAfter -Descending | Select-Object -First 1
       $issued = @(& certutil.exe -view -restrict 'Disposition=20' -out RequestID csv 2>$null).Count - 1
       "{0} on {1}: certificate {2}, valid to {3:yyyy-MM-dd}; {4} certificates issued on record; templates: {5}" -f $name, $env:COMPUTERNAME,
-          $cert.Thumbprint, $cert.NotAfter, [Math]::Max($issued, 0), ((Get-CATemplate | ForEach-Object Name | Sort-Object) -join ', ')
+          $cert.Thumbprint, $cert.NotAfter, [Math]::Max($issued, 0), ((Get-CATemplate | ForEach-Object { $_.Name } | Sort-Object) -join ', ')
   register: windows_ca_report
   changed_when: false
+  check_mode: false
 
 - name: Show the result
   ansible.builtin.debug:

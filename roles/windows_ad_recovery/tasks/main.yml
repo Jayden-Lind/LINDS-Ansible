@@ -2,12 +2,17 @@
 - name: Turn on the AD Recycle Bin
   ansible.windows.win_powershell:
     script: |
+      [CmdletBinding(SupportsShouldProcess)]
+      param()
       Import-Module ActiveDirectory
       $Ansible.Changed = $false
       $rb = Get-ADOptionalFeature -Filter { Name -like 'Recycle Bin Feature' }
       if (@($rb.EnabledScopes).Count -eq 0) {
-        Enable-ADOptionalFeature -Identity 'Recycle Bin Feature' `
-          -Scope ForestOrConfigurationSet -Target (Get-ADForest).RootDomain -Confirm:$false
+        if (-not $Ansible.CheckMode) {
+          Enable-ADOptionalFeature -Identity 'Recycle Bin Feature' `
+            -Scope ForestOrConfigurationSet -Target (Get-ADForest).RootDomain -Confirm:$false
+        }
+        'turn on the AD Recycle Bin'
         $Ansible.Changed = $true
       }
   when: enable_ad_recycle_bin | bool
@@ -17,6 +22,7 @@
     parameters:
       Placement: "{{ fsmo_placement }}"
     script: |
+      [CmdletBinding(SupportsShouldProcess)]
       param([hashtable]$Placement)
       Import-Module ActiveDirectory
       $Ansible.Changed = $false
@@ -35,9 +41,11 @@
       foreach ($role in $Placement.Keys) {
         $want = $Placement[$role]
         if ($current[$role].ToLower() -ne $want.ToLower()) {
+          "move $role to $want"
+          $Ansible.Changed = $true
+          if ($Ansible.CheckMode) { continue }
           Move-ADDirectoryServerOperationMasterRole -Identity ($want -split '\.')[0] `
             -OperationMasterRole $role -Confirm:$false
-          $Ansible.Changed = $true
           Start-Sleep -Seconds 5
         }
       }

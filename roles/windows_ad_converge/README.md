@@ -19,7 +19,7 @@ all domain controllers agree about one computer account.
 
 ## Requirements
 
-- A Kerberos ticket with delegation (`make kinit`).
+- A Kerberos ticket with delegation (`kinit -f Administrator@LINDS.COM.AU`).
 - The role runs on one domain controller. The playbooks use the partner
   (`playbooks/tasks/windows-partner-dc.yml`).
 

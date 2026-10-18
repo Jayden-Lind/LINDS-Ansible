@@ -12,11 +12,11 @@ The playbook backs up the certification authority to
 
 ## Before you start
 
-- Run `make kinit`.
+- Run `kinit -f Administrator@LINDS.COM.AU`.
 
 ## Procedure
 
-1. Run `make windows-ca-backup`.
+1. Run `ansible-playbook playbooks/windows-ca-backup.yml`.
 2. Make sure that the last line says that the key matches the certificate.
 3. Commit `windows-state/ca/backup`.
 
@@ -37,4 +37,4 @@ certificates that the whole domain trusts.
    `Restore-CARoleService -Path <folder> -Password <password> -Force`.
 4. Import the registry settings with `reg import`.
 
-`make windows-ca` does these steps for you.
+`windows-ca.yml` does these steps for you.

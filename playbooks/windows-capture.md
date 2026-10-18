@@ -13,11 +13,12 @@ you can compare. It changes nothing on the servers.
 
 ## Before you start
 
-- Run `make kinit`.
+- Run `kinit -f Administrator@LINDS.COM.AU`.
 
 ## Procedure
 
-1. Run `make windows-capture`. It takes about five minutes.
+1. Run `ansible-playbook playbooks/windows-capture.yml`. It takes about five
+   minutes.
 2. Run `git diff -- windows-state`. The diff shows what changed in the domain
    since the last capture.
 3. Commit the result.

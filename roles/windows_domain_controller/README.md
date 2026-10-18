@@ -29,9 +29,8 @@ answers with a certificate from the domain CA.
 ## Requirements
 
 - The server is a domain member with the full edition (not Evaluation).
-- A Kerberos ticket with delegation (`make kinit`).
-- The restore-mode password: typed at `make windows-promote`, or
-  `vault_windows_dsrm_password` in the vault.
+- A Kerberos ticket with delegation (`kinit -f Administrator@LINDS.COM.AU`).
+- The restore-mode password in the vault (`vault_windows_dsrm_password`).
 
 ## Variables
 
@@ -48,7 +47,10 @@ answers with a certificate from the domain CA.
 
 ## How to use it
 
-`make windows-promote HOST=<fqdn>`, for a host in the group `windows_dc`.
+- `playbooks/windows-promote.yml` promotes a new server in `windows_dc`
+  (`tasks/main.yml` and `tasks/finish.yml`).
+- `playbooks/windows.yml` sets the DNS forwarders and the resolvers of each
+  domain controller in `windows_managed` (`tasks/settings.yml`, tag `dc`).
 
 ## Known problems
 

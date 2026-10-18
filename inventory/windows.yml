@@ -2,7 +2,8 @@
 # Windows domain: linds.com.au
 #
 # Hosts are FQDNs so Kerberos SPNs match. Authentication is Kerberos against
-# the operator's ticket cache - run `make kinit` first. No credentials here.
+# the operator's ticket cache - run `kinit -f Administrator@LINDS.COM.AU`
+# first. No credentials here.
 windows:
   children:
     windows_dc:
@@ -61,3 +62,13 @@ windows:
     windows_ca:
       hosts:
         linds-dc.linds.com.au:
+
+    # The servers whose settings the code owns. playbooks/windows.yml applies
+    # the baseline and the settings of their other groups to them, and the GPO
+    # "Server - Baseline" applies to them. jd-dc-01 and jd-fs-01 are not in it
+    # until they are built from the template: their firewall and Defender are
+    # off, and the code does not describe them yet.
+    windows_managed:
+      hosts:
+        linds-dc.linds.com.au:
+        linds-dc2.linds.com.au:

@@ -12,7 +12,12 @@ the template, at its DHCP address. It is the first step to build a server.
 
 ## Procedure
 
-1. Run `make windows-prepare HOST=<fqdn> ADDRESS=<DHCP address>`.
+1. Run the playbook:
+
+   ```shell
+   ansible-playbook playbooks/windows-prepare.yml -e target=<fqdn> -e bootstrap_address=<DHCP address>
+   ```
+
 2. Wait. The updates take about one hour.
 
 **NOTE:** The playbook connects as the local Administrator with NTLM. It does

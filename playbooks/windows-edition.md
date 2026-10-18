@@ -11,14 +11,23 @@ product key that you type.
 
 ## Procedure
 
-1. For a clone that is not in the domain, run
-   `make windows-edition HOST=<fqdn> ADDRESS=<DHCP address>`.
-2. For a domain member, run `make kinit`, then
-   `make windows-edition HOST=<fqdn>`.
+1. For a clone that is not in the domain, run:
+
+   ```shell
+   ansible-playbook playbooks/windows-edition.yml -e target=<fqdn> -e bootstrap_address=<DHCP address>
+   ```
+
+2. For a domain member, run `kinit -f Administrator@LINDS.COM.AU`, then:
+
+   ```shell
+   ansible-playbook playbooks/windows-edition.yml -e target=<fqdn>
+   ```
+
 3. Type the product key at the prompt.
 
-**NOTE:** The key goes to Ansible in the environment of this run only. It is
-not in a file, a log or the shell history.
+**NOTE:** Ansible keeps the key in memory for this run only. It is not in a
+file, a log or the shell history. Do not give it with `-e`: the shell history
+and the process list then show it.
 
 ## What it changes
 

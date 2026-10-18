@@ -13,17 +13,23 @@ A server can be in more than one group.
 ## Before you start
 
 - `windows-join.yml` is complete.
-- Run `make kinit`.
-- For a file server with a data disk: `make windows-data-disk HOST=<fqdn>`.
+- Run `kinit -f Administrator@LINDS.COM.AU`.
+- For a file server with a data disk: `windows-data-disk.yml` is complete.
 - For the CA: `windows-state/ca/backup` has a current backup.
 
 ## Procedure
 
-1. Run `make windows-promote HOST=<fqdn>`.
-2. At the prompt, type a restore-mode password, or press Enter to use the one
-   in the vault.
-3. After it is complete, run `make windows` to apply the domain settings (for
-   example, replication).
+1. Run the playbook:
+
+   ```shell
+   ansible-playbook playbooks/windows-promote.yml -e target=<fqdn>
+   ```
+
+2. After it is complete, run `ansible-playbook playbooks/windows.yml` to apply
+   the domain settings (for example, replication).
+
+**NOTE:** The promotion uses the restore-mode password in the vault
+(`vault_windows_dsrm_password`).
 
 ## What it changes
 
@@ -40,7 +46,7 @@ A server can be in more than one group.
 5. For `windows_fileserver`: it brings the data volumes online and makes the
    shares and NFS exports.
 6. It releases the preferred bridgehead that a retirement with
-   `REPLACING=true` left.
+   `-e windows_dc_retire_keep_bridgehead=true` kept.
 
 A promotion takes 11 to 17 minutes. With the CA and a file server, about one
 hour.
@@ -48,10 +54,10 @@ hour.
 ## If it fails
 
 - Run the same command again. Each step does nothing if it is complete.
-- "credentials were rejected" after the restart: run `make kinit`, then run
-  the command again.
+- "credentials were rejected" after the restart: run
+  `kinit -f Administrator@LINDS.COM.AU`, then run the command again.
 
 ## Next step
 
-Run `make windows`. Then `make windows-ca-backup` and `make windows-capture`,
-and commit `windows-state/`.
+Run `ansible-playbook playbooks/windows.yml`. Then run `windows-ca-backup.yml`
+and `windows-capture.yml`, and commit `windows-state/`.

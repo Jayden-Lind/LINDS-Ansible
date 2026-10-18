@@ -24,8 +24,8 @@ change.
 
 ## Requirements
 
-- The data disk is attached to the VM (`make windows-data-disk`).
-- A Kerberos ticket (`make kinit`).
+- The data disk is attached to the VM (`playbooks/windows-data-disk.yml`).
+- A Kerberos ticket (`kinit -f Administrator@LINDS.COM.AU`).
 
 ## Variables
 
@@ -43,8 +43,10 @@ Set them in `inventory/host_vars/<fqdn>/`. The shares are in
 
 ## How to use it
 
-`make windows-promote HOST=<fqdn>` applies it to a host in the group
-`windows_fileserver`.
+- `playbooks/windows.yml` applies it to a host in `windows_fileserver` and
+  `windows_managed` (tag `fileserver`).
+- `playbooks/windows-promote.yml` applies it to a new server in
+  `windows_fileserver`.
 
 ## Safety
 

@@ -21,7 +21,7 @@ connections.
 
 ## Requirements
 
-- A Kerberos ticket with delegation (`make kinit`).
+- A Kerberos ticket with delegation (`kinit -f Administrator@LINDS.COM.AU`).
 - The file servers have the role `windows_fileserver` with
   `windows_fileserver_replication: true`.
 
@@ -43,8 +43,8 @@ Set them in `inventory/group_vars/windows/replication.yml`.
 
 ## How to use it
 
-`make windows TAGS=dfsr`. To add a folder, see "Add a replicated folder" in
-`docs/windows/runbooks/replication.md`.
+`ansible-playbook playbooks/windows.yml --tags dfsr`. To add a folder, see "Add
+a replicated folder" in `docs/windows/runbooks/replication.md`.
 
 ## Safety
 
