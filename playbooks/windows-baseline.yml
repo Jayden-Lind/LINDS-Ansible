@@ -4,6 +4,7 @@
 #   make windows-baseline HOST=<fqdn>
 #   make windows-baseline HOST=<fqdn> UPDATES=true            # also install updates
 #   make windows-baseline HOST=<fqdn> TAGS=cpu-mitigations    # one setting only
+#   make windows-baseline HOST=<fqdn> TAGS=nic-offloads       # network adapter offloads only
 #
 # Read playbooks/windows-baseline.md before you use it.
 
