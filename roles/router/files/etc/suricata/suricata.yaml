@@ -110,11 +110,12 @@ af-packet:
     tpacket-v3: yes
     block-size: 131072
     # Frames, each of default-packet-size (below). One 64 KB frame fits in
-    # a 128 KB block, so the ring is 1025 blocks: 128 MB. With 1514-byte
-    # frames it was 65536 frames (~100 MB). Do not raise it without
-    # lowering the packet size: 65536 frames of 64 KB is 8 GB, and the ring
-    # mmap fails. Watch capture.kernel_drops.
-    ring-size: 1024
+    # a 128 KB block, so the ring is 8193 blocks: 1 GB, about 8 seconds of
+    # a 1 Gbit/s line if the worker stops. The ring is kernel memory and
+    # is not counted in MemoryMax. With 1514-byte frames it was 65536 frames
+    # (~100 MB). Do not set 65536 with 64 KB frames: that is 8 GB, and the
+    # ring mmap fails. Watch capture.kernel_drops.
+    ring-size: 8192
     # WAN traffic and DNS only. The filter keeps a packet if one end is
     # outside the private ranges, or if it is DNS (port 53). The router
     # answers DNS for the LAN, so only here does a lookup show the device
@@ -211,8 +212,12 @@ classification-file: /etc/suricata/classification.config
 reference-config-file: /etc/suricata/reference.config
 threshold-file: /etc/suricata/threshold.config
 
+# high puts the rules into about twice as many port groups as medium (TCP
+# to server 65 against 40, to client 58 against 21), so each packet is
+# checked against fewer rules. Measured with suricata -T: the same memory
+# (about 520 MB) and one second more to load.
 detect:
-  profile: medium
+  profile: high
 
 app-layer:
   protocols:

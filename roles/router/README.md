@@ -366,10 +366,11 @@ layout above), and the notes are JD's.
   (`decoder.ipv4.trunc_pkt` climbing, stream gaps). v3 with
   `block-size: 131072` captures them whole. The `bpf-filter` (below) cuts
   each packet to `default-packet-size`, so that is 65600, not the MTU
-  default of 1514. `ring-size` counts frames of that size: 1024 frames are
-  1025 blocks of 128 KB (128 MB). Do not raise one without the other:
-  65536 frames of 64 KB is 8 GB, and the ring mmap fails. Suricata raises
-  `ring-size` to at least `max-pending-packets` (1024). Check with
+  default of 1514. `ring-size` counts frames of that size: 8192 frames are
+  8193 blocks of 128 KB (1 GB). Do not use the old 65536 with 64 KB frames:
+  that is 8 GB, and the ring mmap fails. Suricata raises `ring-size` to at
+  least `max-pending-packets` (1024). `detect.profile: high` uses about the
+  same memory as `medium` with this ruleset. Check with
   `suricatasc -c dump-counters` → `trunc_pkt` flat, `max_pkt_size` well
   above 1514.
 * **Suricata: one worker thread.** The tap is on the trunk parent, so every
