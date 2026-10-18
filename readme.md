@@ -50,7 +50,7 @@ All text in this repository uses Simplified Technical English. See
 | [windows-edition](playbooks/windows-edition.md) | Build step 2: convert the Evaluation edition |
 | [windows-join](playbooks/windows-join.md) | Build step 3: name, address and domain join |
 | [windows-promote](playbooks/windows-promote.md) | Build step 4: domain controller, CA, file server |
-| [windows-retire-dc](playbooks/windows-retire-dc.md) | Retire a domain controller |
+| [windows-retire](playbooks/windows-retire.md) | Retire a Windows server (domain controller or member) |
 | [windows-data-disk](playbooks/windows-data-disk.md) | Attach the data disks of a file server to its VM |
 | [windows-ca-backup](playbooks/windows-ca-backup.md) | Back up the CA |
 | [windows-capture](playbooks/windows-capture.md) | Record the state of the domain |

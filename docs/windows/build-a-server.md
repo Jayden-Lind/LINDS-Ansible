@@ -74,7 +74,7 @@ with the same name, do them while the old server is in service. Then follow
 To test a change to the build, use a test identity: a second inventory file
 with another name and address for the same VM. Give it with
 `-i inventory/ -i <file>`. Remove it after the test with
-`playbooks/windows-retire-dc.yml`.
+`playbooks/windows-retire.yml`.
 
 To test the CA or a new forest, use a separate test forest. See
 [windows-forest.md](../../playbooks/windows-forest.md).

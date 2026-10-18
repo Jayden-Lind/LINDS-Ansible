@@ -31,6 +31,11 @@ windows_fileserver_nfs_server: {}
 #   - {letter: E, days: [monday, friday], times: ["07:00", "12:00"]}
 windows_fileserver_shadow_copies: []
 
+# true or false: require SMB signing on the server side. Not set: the role does
+# not change it, and a GPO or the Windows default (required on Server 2025)
+# applies.
+# windows_fileserver_smb_require_signing:
+
 # true: the server is a DFS Replication member. The role then installs DFS-R and
 # clears the replication data of an earlier member from the volumes. The role
 # windows_dfsr manages the membership.

@@ -1,0 +1,21 @@
+---
+# The file server settings of jd-fs-01 (role windows_fileserver). The share and
+# its permissions are in fileserver.vault.yml.
+
+windows_fileserver_volumes:
+  - { label: NAS, letter: D }
+
+# jd-fs-01 replicates the NAS folders with linds-dc (role windows_dfsr).
+windows_fileserver_replication: true
+
+# SMB signing is not required on this server: with signing, the Linux clients
+# of the cluster lose most of their throughput, and this server exists for that
+# reason (LINDS-Terraform, proxmox/vms-jd.tf). The GPO "Server - GPO" requires
+# signing, so do not move the computer account to OU=Servers. It stays in
+# OU=PC's, which has no signing setting.
+windows_fileserver_smb_require_signing: false
+
+# Shadow copies of D: for Previous Versions: the Windows default schedule, as
+# on linds-dc.
+windows_fileserver_shadow_copies:
+  - { letter: D, days: [monday, tuesday, wednesday, thursday, friday], times: ["07:00", "12:00"] }

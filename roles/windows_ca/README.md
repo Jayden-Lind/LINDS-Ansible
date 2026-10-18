@@ -39,7 +39,7 @@ The role has no main task file. Use one of its task files:
 - `playbooks/windows-ca-backup.yml` makes a backup.
 - `playbooks/windows-promote.yml` installs it on a host in the group
   `windows_ca`.
-- `playbooks/windows-retire-dc.yml` makes a backup and removes it from the
+- `playbooks/windows-retire.yml` makes a backup and removes it from the
   server to retire.
 
 ## Safety

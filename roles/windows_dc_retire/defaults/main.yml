@@ -1,5 +1,5 @@
 ---
-# The playbook playbooks/windows-retire-dc.yml sets the name and the address of
+# The playbook playbooks/windows-retire.yml sets the name and the address of
 # the server to retire. The other values are safe defaults.
 
 # The computer name and the IPv4 address of the server to retire.

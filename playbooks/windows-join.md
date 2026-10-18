@@ -8,7 +8,7 @@ baseline, and joins it to the domain.
 - `windows-prepare.yml` and `windows-edition.yml` are complete.
 - Run `kinit -f Administrator@LINDS.COM.AU`.
 - If a server with the same name exists, retire it first
-  (`playbooks/windows-retire-dc.md`).
+  (`playbooks/windows-retire.md`).
 
 ## Procedure
 

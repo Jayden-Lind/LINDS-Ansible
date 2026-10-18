@@ -24,7 +24,7 @@
       {{ item.item.volume }} is also attached to VM {{ item.stdout_lines | join(', ') }}, which is
       running. Two machines writing one volume destroy it. Shut that VM
       down for good first (for a server being replaced:
-      playbooks/windows-retire-dc.yml).
+      playbooks/windows-retire.yml).
   loop: "{{ windows_data_disk_running.results }}"
   loop_control:
     label: "{{ item.item.volume }}"

@@ -33,7 +33,7 @@ all domain controllers agree about one computer account.
 
 ## How to use it
 
-`windows-join.yml`, `windows-promote.yml` and `windows-retire-dc.yml` use it.
+`windows-join.yml`, `windows-promote.yml` and `windows-retire.yml` use it.
 You do not run it alone.
 
 ## Known problems
