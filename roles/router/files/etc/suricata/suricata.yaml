@@ -2,11 +2,13 @@
 ---
 # Managed by LINDS-Ansible: roles/router/files/etc/suricata/suricata.yaml.
 # Detection-only IDS on lan0 (AF_PACKET copy mode,
-# never in the forwarding path). Capture is the PARENT interface only: it
+# never in the forwarding path). It inspects WAN traffic and DNS only: the
+# bpf-filter in the af-packet section drops traffic between two private
+# addresses. Capture is the PARENT interface only: it
 # already sees every VLAN tagged; adding subinterfaces captures each packet
 # twice and splits flows across threads.
 #
-# Capture runs as one ordered capture thread + autofp detect threads: on a
+# Capture runs as one worker thread: on a
 # virtio NIC every VLAN-tagged frame the router transmits is tagged in
 # software before the AF_PACKET tap and the kernel fanout hash mis-dissects
 # it, so cluster_flow workers see flows split across threads
@@ -54,7 +56,8 @@ outputs:
       enabled: no
   # EVE to a file, relayed by rsyslog imfile (60-suricata-eve.conf). Not
   # syslog: that routes every event through journald. flow/netflow are
-  # deliberately absent (volume).
+  # deliberately absent (volume). dhcp is absent because DHCP stays on the
+  # LAN, and the capture filter drops it.
   - eve-log:
       enabled: yes
       filetype: regular
@@ -64,9 +67,17 @@ outputs:
       types:
         - alert
         - dns
-        - tls
+        # extended adds sni, version, serial, fingerprint and the certificate
+        # dates. The basic log has the subject and issuer only, which TLS 1.3
+        # hides, so most tls events were empty. The "Top TLS SNI" panel of
+        # the Suricata dashboard reads tls.sni.
+        - tls:
+            extended: yes
+        # HTTP/3 and other QUIC connections: Suricata decrypts the Initial
+        # packets and logs the client hello (sni, version, ja3). About a
+        # quarter of the WAN flows are QUIC (Google, YouTube, Cloudflare).
+        - quic
         - http
-        - dhcp
         - ssh
   - stats:
       enabled: yes
@@ -107,9 +118,35 @@ af-packet:
     # up to block-size; 128k covers the largest GRO/TSO skb.
     tpacket-v3: yes
     block-size: 131072
-    # 64k frames (~100 MB): a single worker dropped ~4% during a burst at
-    # 32k on 2026-09-06. Watch capture.kernel_drops after the offload fix.
-    ring-size: 65536
+    # Frames, each of default-packet-size (below). One 64 KB frame fits in
+    # a 128 KB block, so the ring is 8193 blocks: 1 GB, about 8 seconds of
+    # a 1 Gbit/s line if the worker stops. The ring is kernel memory and
+    # is not counted in MemoryMax. With 1514-byte frames it was 65536 frames
+    # (~100 MB). Do not set 65536 with 64 KB frames: that is 8 GB, and the
+    # ring mmap fails. Watch capture.kernel_drops.
+    ring-size: 8192
+    # WAN traffic and DNS only. The filter keeps a packet if one end is
+    # outside the private ranges, or if it is DNS (port 53). The router
+    # answers DNS for the LAN, so only here does a lookup show the device
+    # that made it. Nothing between two private addresses is inspected:
+    # VLAN to VLAN, SMB to the file server, the tunnel to the other site.
+    # The capture stays on lan0, not wan0: after NAT, every IPv4 packet on
+    # wan0 has the router's address, and an alert could not name the device.
+    # The test is written twice. A frame that the router sends on a VLAN has
+    # its tag inside the frame, and "vlan" moves the offsets for it. A
+    # received frame has its tag outside the frame and uses the first form.
+    # Limits: IPv6 between two VLANs passes (global addresses look like WAN
+    # traffic), and WAN traffic during a failover to the cellular modem is
+    # seen twice (before and after NAT).
+    bpf-filter: >-
+      (port 53
+      or (ip and not (src net 10.0.0.0/8 or src net 172.16.0.0/12 or src net 192.168.0.0/16 or src net 169.254.0.0/16 or src net 0.0.0.0/8))
+      or (ip and not (dst net 10.0.0.0/8 or dst net 172.16.0.0/12 or dst net 192.168.0.0/16 or dst net 169.254.0.0/16 or dst net 224.0.0.0/4 or dst host 255.255.255.255))
+      or (ip6 and not (src net fe80::/10 or dst net fe80::/10 or dst net ff00::/8 or (src net fc00::/7 and dst net fc00::/7))))
+      or (vlan and (port 53
+      or (ip and not (src net 10.0.0.0/8 or src net 172.16.0.0/12 or src net 192.168.0.0/16 or src net 169.254.0.0/16 or src net 0.0.0.0/8))
+      or (ip and not (dst net 10.0.0.0/8 or dst net 172.16.0.0/12 or dst net 192.168.0.0/16 or dst net 169.254.0.0/16 or dst net 224.0.0.0/4 or dst host 255.255.255.255))
+      or (ip6 and not (src net fe80::/10 or dst net fe80::/10 or dst net ff00::/8 or (src net fc00::/7 and dst net fc00::/7)))))
 
 # IDS (copy) mode: leave sg/TSO/GSO/GRO on lan0 alone. By default Suricata
 # switches all four off on the capture interface once the rules are loaded
@@ -125,7 +162,17 @@ capture:
 
 # workers, not autofp: see the af-packet comment (tpacket v3).
 runmode: workers
-max-pending-packets: 4096
+# The Suricata default. Each packet in the pool is default-packet-size, and
+# Suricata raises ring-size to at least this number.
+max-pending-packets: 1024
+
+# The bpf-filter returns this length, and the kernel cuts every captured
+# packet to it. GRO packets reach about 65550 bytes (64 KB of IP, plus the
+# Ethernet and VLAN headers). With the default (the MTU plus headers, 1514),
+# the filter cut every large packet: "AF-PACKET truncated packet" alerts,
+# and TLS client hellos without their SNI. It also sets the ring frame size
+# (see ring-size) and the size of each packet in the pool.
+default-packet-size: 65600
 host-mode: router
 
 # Stream memory: no cap. Without a `stream:` section Suricata ran on its
@@ -134,16 +181,27 @@ host-mode: router
 # tcp.segment_memcap_drop and tcp.insert_data_normal_fail climbing (32M failed
 # inserts and 4.7M tcp.reassembly_gap in one day), so the detection engine
 # never saw that payload. 0 means unlimited for these two keys. What bounds
-# the buffers instead is the reassembly depth (the default, 1 MiB per
-# direction per session), and behind that MemoryMax= on the unit
+# the buffers instead is the reassembly depth (set below), and behind that
+# MemoryMax= on the unit
 # (suricata.service.d/memory.conf): a runaway costs a Suricata restart, not
 # the router. Check with
 #   suricatasc -c dump-counters /var/run/suricata-command.socket \
 #     | grep -E 'reassembly_memuse|segment_memcap_drop|memcap_pressure'
 stream:
   memcap: 0
+  # Stop all work on a TCP flow when it can no longer be inspected: when TLS
+  # encryption starts (tls encryption-handling: bypass), or when the flow
+  # passes the reassembly depth. Without this key, the TLS bypass does
+  # nothing in Suricata 7. Check: flow_bypassed.local_pkts in dump-counters.
+  bypass: yes
   reassembly:
     memcap: 0
+    # Inspect the first 1 MiB of each direction of a TCP session, then
+    # bypass it. Keep this key: without it Suricata 7 has no limit (the 1 MiB
+    # default is only in the example suricata.yaml), so a 1 GB plain HTTP
+    # download kept the worker at 100%. SMB sets its own depth (unlimited).
+    # Check: tcp.stream_depth_reached in dump-counters.
+    depth: 1mb
 
 # The flow table cannot be unlimited (0 would mean no flows at all), and with
 # no `flow:` section it ran on the compiled-in 32 MiB. A normal day uses about
@@ -169,13 +227,21 @@ classification-file: /etc/suricata/classification.config
 reference-config-file: /etc/suricata/reference.config
 threshold-file: /etc/suricata/threshold.config
 
+# high puts the rules into about twice as many port groups as medium (TCP
+# to server 65 against 40, to client 58 against 21), so each packet is
+# checked against fewer rules. Measured with suricata -T: the same memory
+# (about 520 MB) and one second more to load.
 detect:
-  profile: medium
+  profile: high
 
 app-layer:
   protocols:
     tls:
       enabled: yes
+      # Stop processing a TLS flow after the handshake (a local bypass). The
+      # rest is encrypted, so no rule can inspect it. The EVE tls event (SNI,
+      # certificate, JA3/JA4) comes from the handshake and is still written.
+      encryption-handling: bypass
     http:
       enabled: yes
     dns:
