@@ -11,6 +11,21 @@ windows:
         jd-dc-01.linds.com.au:
           ansible_host: 10.0.50.200
           ad_site: JD
+          # Being rebuilt from the template as VM 1114 on jd-proxmox-02. VM 1102,
+          # installed by hand, serves until the swap.
+          windows_hostname: JD-DC-01
+          windows_ipv4_address: 10.0.50.200
+          windows_ipv4_prefix: 24
+          windows_ipv4_gateway: 10.0.50.1
+          # The other two domain controllers; a member must resolve through
+          # the domain or it cannot find it to join. The role adds itself.
+          windows_dns_servers:
+            - 10.3.1.200
+            - 10.3.1.201
+          windows_vm:
+            hypervisor: jd-proxmox-02
+            id: 1114
+            data_disks: []
         linds-dc.linds.com.au:
           ansible_host: 10.3.1.200
           ad_site: LINDS

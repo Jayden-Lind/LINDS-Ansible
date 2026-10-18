@@ -21,6 +21,18 @@
       "moved to $($env:COMPUTERNAME): $($roles -join ', ')"
   register: windows_dc_retire_fsmo
 
+# As in windows_ad_recovery: the time GPO of the PDC emulator reaches this
+# domain controller only at the next Group Policy refresh. Apply it now.
+- name: Apply Group Policy and resync the time if this is now the PDC emulator
+  ansible.windows.win_command: "{{ item }}"
+  loop:
+    - gpupdate /target:computer /force
+    - w32tm /resync /rediscover
+  changed_when: false
+  when:
+    - windows_dc_retire_fsmo is changed
+    - "'PDCEmulator' in windows_dc_retire_fsmo.output | default([]) | join(' ')"
+
 - name: Show the FSMO roles
   ansible.builtin.debug:
     msg: "{{ windows_dc_retire_fsmo.output }}"
