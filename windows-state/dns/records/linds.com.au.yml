@@ -40,10 +40,6 @@
   type: A
   data: 10.0.50.200
   ttl: 3600
-- name: jd-fs-01
-  type: A
-  data: 10.0.50.201
-  ttl: 1200
 - name: jd-opnsense-01
   type: A
   data: 10.0.50.1
