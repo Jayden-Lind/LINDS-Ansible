@@ -14,7 +14,8 @@ shadow copy schedule.
    `System Volume Information\DFSR` and each `DfsrPrivate` link. It does this
    only for a replication member that is not yet in a replication group.
 4. If `windows_fileserver_smb_require_signing` is set, it sets if the SMB
-   server requires signing.
+   server requires signing. If there are shares, it turns on the firewall rule
+   `File and Printer Sharing (SMB-In)`.
 5. It makes each SMB share in `windows_fileserver_shares` with exactly the
    listed permissions.
 6. It sets the NFS server settings and makes each NFS export with exactly the
@@ -65,6 +66,13 @@ in the list.
 in an OU where that GPO is linked (`OU=Servers`, `OU=Domain Controllers`).
 
 ## Known problems
+
+- The SMB volumes of the cluster log on to `jd-fs-01` as its local
+  `Administrator`, with the password in the Vault secrets `smb-immich-creds`
+  and `smb-plex-secret`. A rebuilt server has the template password, so the
+  volumes fail with "Host is down" until the local `Administrator` has the
+  Vault password. Set it with `ansible.windows.win_user` and `no_log`. A
+  domain service account for the cluster would remove this step.
 
 - After a restart, Server for NFS can take 10 to 20 minutes to start.
 - An NFS client keeps a mount to the old server. Remount it after the server

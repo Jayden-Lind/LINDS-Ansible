@@ -8,6 +8,16 @@ $ErrorActionPreference = 'Stop'
 Import-Module DFSR
 $Ansible.Changed = $false
 
+# A folder is new while no member has a content path for it. Only then does
+# dfsr_initial_primary apply. A member that joins again after a rebuild is
+# never primary: the members that hold the folder are the reference.
+$allMembers = @(Get-DfsrMember -GroupName $Group -ErrorAction Stop | ForEach-Object { $_.ComputerName })
+$started = @{}
+foreach ($f in $Folders) {
+    $started[$f] = [bool](@(Get-DfsrMembership -GroupName $Group -ComputerName $allMembers -ErrorAction Stop |
+        Where-Object { $_.FolderName -eq $f -and $_.ContentPath }).Count)
+}
+
 foreach ($member in $MemberRoots.Keys) {
     $root = $MemberRoots[$member]
     foreach ($f in $Folders) {
@@ -22,11 +32,10 @@ foreach ($member in $MemberRoots.Keys) {
         # would not refer to this hashtable.
         $set = @{}
         if ($have.ContentPath -ne $want)                          { $set.ContentPath = $want }
-        # A membership without a content path is new. If this folder's
-        # data is on one member only, that member becomes primary now,
-        # and the others must not hold the folder yet: whatever they
-        # held would be set aside in PreExisting.
-        if (-not $have.ContentPath -and $InitialPrimary.ContainsKey($f)) {
+        # A new folder: if its data is on one member only, that member
+        # becomes primary now, and the others must not hold the folder
+        # yet: whatever they held would be set aside in PreExisting.
+        if (-not $have.ContentPath -and $InitialPrimary.ContainsKey($f) -and -not $started[$f]) {
             if ($InitialPrimary[$f] -ieq $member) {
                 $set.PrimaryMember = $true
             } else {

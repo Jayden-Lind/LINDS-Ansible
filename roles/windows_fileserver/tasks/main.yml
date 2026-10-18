@@ -33,6 +33,16 @@
     type: dword
   when: windows_fileserver_smb_require_signing is defined
 
+# A share made with PowerShell does not open the firewall, and the baseline
+# turns the firewall on. Without this rule only the server's own subnet can
+# reach the shares (found at the jd-fs-01 swap, 19 October 2026).
+- name: Let clients reach the SMB shares through the firewall
+  community.windows.win_firewall_rule:
+    name: File and Printer Sharing (SMB-In)
+    enabled: true
+    state: present
+  when: windows_fileserver_shares | length > 0
+
 # rule_action set: the share permissions are exactly the listed ones.
 - name: Make the SMB shares and their permissions
   ansible.windows.win_share:

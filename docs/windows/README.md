@@ -137,7 +137,8 @@ with `-e bootstrap_address=<address>`.
   [runbooks/thin-storage.md](runbooks/thin-storage.md).
 - `jd-dc-01` has 8 GB free on `C:`. It has two scheduled tasks
   `ShadowCopyVolume{...}` for volumes that do not exist.
-- `jd-dc-01` and `jd-fs-01` are not yet built from the template.
+- `jd-dc-01` is not yet built from the template. `jd-fs-01` is (VM 1113, 19
+  October 2026).
 - `linds-dc2` reports that Windows is not activated. The other servers were
   not checked.
 - On the LINDS host, VM 102 (`LINDS-DC-old`) must stay. It owns the NAS disk
