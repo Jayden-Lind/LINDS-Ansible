@@ -1,4 +1,4 @@
 # The Python environment for the Windows playbooks: Ansible, and WinRM with
 # Kerberos. Build it with /usr/bin/python3 (see docs/windows/README.md).
-ansible-core==2.21.3
+ansible-core==2.21.5
 pywinrm[kerberos]==0.5.0
