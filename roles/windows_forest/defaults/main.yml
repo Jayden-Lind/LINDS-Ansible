@@ -3,7 +3,7 @@
 windows_forest_domain: ""
 windows_forest_netbios: "{{ windows_forest_domain.split('.')[0] | upper }}"
 
-# The Directory Services Restore Mode password, from the environment or the vault.
-windows_dsrm_password: "{{ lookup('ansible.builtin.env', 'WINDOWS_DSRM_PASSWORD') | default(vault_windows_dsrm_password | default(''), true) }}"
+# The Directory Services Restore Mode password, from the vault.
+windows_dsrm_password: "{{ vault_windows_dsrm_password | default('') }}"
 
 windows_forest_dns_forwarders: "{{ windows_dc_dns_forwarders | default([]) }}"

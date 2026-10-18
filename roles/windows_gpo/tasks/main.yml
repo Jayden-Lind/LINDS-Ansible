@@ -1,0 +1,40 @@
+---
+# Runs on one domain controller. Group Policy is domain-wide, and the domain
+# controllers replicate it.
+
+- name: Make the WMI filters
+  ansible.windows.win_powershell:
+    parameters:
+      Name: "{{ item.name }}"
+      Description: "{{ item.description | default('') }}"
+      Query: "{{ item.query }}"
+    script: "{{ lookup('ansible.builtin.file', 'wmi-filter.ps1') }}"
+  loop: "{{ windows_gpo_wmi_filters }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Make the GPOs and set their contents
+  ansible.windows.win_powershell:
+    parameters:
+      Definition: "{{ item | to_json }}"
+    script: "{{ lookup('ansible.builtin.file', 'gpo.ps1') }}"
+  loop: "{{ windows_gpo_definitions }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: windows_gpo_result
+
+- name: Remove values from GPOs that the code does not own
+  ansible.windows.win_powershell:
+    parameters:
+      Values: "{{ windows_gpo_remove_values | to_json }}"
+    script: "{{ lookup('ansible.builtin.file', 'gpo-remove-values.ps1') }}"
+  register: windows_gpo_removed
+  when: windows_gpo_remove_values | length > 0
+
+- name: Show the result
+  ansible.builtin.debug:
+    msg:
+      gpos: >-
+        {{ dict(windows_gpo_result.results | default([]) | map(attribute='item.name')
+           | zip(windows_gpo_result.results | default([]) | map(attribute='output'))) }}
+      removed: "{{ windows_gpo_removed.output | default([]) }}"

@@ -67,51 +67,86 @@
     label: "{{ item.key }}"
   ignore_errors: "{{ ansible_check_mode }}"
 
-- name: Set the GPO links in order
+# The last of the three tasks removes the links that this task finds.
+- name: Find the GPO links that are not in the code
   ansible.windows.win_powershell:
     parameters:
       Base: "{{ windows_directory_base }}"
       Links: "{{ windows_directory_gpo_links | to_json }}"
-    script: "{{ lookup('ansible.builtin.file', 'gpo-links.ps1') }}"
-  register: windows_directory_links
-
-- name: Set the password policy and the machine account quota
-  ansible.windows.win_powershell:
-    parameters:
-      Policy: "{{ windows_directory_password_policy | default({}) | to_json }}"
-      Quota: "{{ windows_directory_machine_account_quota | default(-1) | int }}"
-    script: "{{ lookup('ansible.builtin.file', 'password-policy.ps1') }}"
-  register: windows_directory_policy
-
-- name: List what is in the domain but not in the code
-  ansible.windows.win_powershell:
-    parameters:
-      Users: "{{ windows_directory_users | map(attribute='name') | list }}"
-      Groups: "{{ windows_directory_groups | map(attribute='name') | list }}"
-      Ous: "{{ windows_directory_ous | map(attribute='ou') | list }}"
-      Base: "{{ windows_directory_base }}"
-    script: |
-      param([string[]]$Users, [string[]]$Groups, [string[]]$Ous, [string]$Base)
-      $Ansible.Changed = $false
-      Import-Module ActiveDirectory
-      # Whatever Windows itself created is marked critical, and is not ours.
-      $found = @()
-      $found += Get-ADUser -Filter * -Properties isCriticalSystemObject | Where-Object { -not $_.isCriticalSystemObject -and $_.SamAccountName -notin $Users } |
-                ForEach-Object { "user $($_.SamAccountName)" }
-      $found += Get-ADGroup -Filter * -Properties isCriticalSystemObject | Where-Object {
-                    -not $_.isCriticalSystemObject -and $_.SamAccountName -notin $Groups -and $_.DistinguishedName -notlike '*,CN=Builtin,*' } |
-                ForEach-Object { "group $($_.SamAccountName)" }
-      $found += Get-ADOrganizationalUnit -Filter * | Where-Object {
-                    $_.DistinguishedName -ne "OU=Domain Controllers,$Base" -and ($_.DistinguishedName -replace [regex]::Escape(",$Base") + '$') -notin $Ous } |
-                ForEach-Object { "OU $($_.DistinguishedName)" }
-      $found | Sort-Object
-  register: windows_directory_unmanaged
+    script: "{{ lookup('ansible.builtin.file', 'gpo-links-extra.ps1') }}"
+  register: windows_directory_links_extra
   changed_when: false
   check_mode: false
+
+# One container at a time, from the first link to the last. When a link is put
+# at its place, the links after it move down by one.
+# --check cannot link a GPO that the same run would create. That shows as an
+# error in a check run, is ignored there, and is not an error in a real one.
+- name: Link the GPOs in order
+  microsoft.ad.gpo:
+    name: "{{ item.1.gpo }}"
+    target: "{{ windows_directory_base if item.0.key == 'domain' else item.0.key ~ ',' ~ windows_directory_base }}"
+    order: "{{ item.0.value.index(item.1) + 1 }}"
+    enabled: "{{ item.1.enabled | default(true) }}"
+    enforced: "{{ item.1.enforced | default(false) }}"
+    state: present
+  loop: "{{ windows_directory_gpo_links | dict2items | subelements('value') }}"
+  loop_control:
+    label: "{{ item.0.key }}: {{ item.0.value.index(item.1) + 1 }} {{ item.1.gpo }}"
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Remove the GPO links that are not in the code
+  microsoft.ad.gpo:
+    guid: "{{ item.guid }}"
+    target: "{{ item.target }}"
+    state: absent
+  loop: "{{ windows_directory_links_extra.output }}"
+  loop_control:
+    label: "{{ item.target }}: {{ item.gpo }}"
+
+# No module sets the default password policy of a domain.
+- name: Set the password policy
+  ansible.windows.win_powershell:
+    parameters:
+      Policy: "{{ windows_directory_password_policy | to_json }}"
+    script: "{{ lookup('ansible.builtin.file', 'password-policy.ps1') }}"
+  register: windows_directory_policy
+  when: windows_directory_password_policy is defined
+
+- name: Set the machine account quota
+  microsoft.ad.object:
+    identity: "{{ windows_directory_base }}"
+    type: domainDNS
+    attributes:
+      set:
+        ms-DS-MachineAccountQuota: "{{ windows_directory_machine_account_quota | int }}"
+    state: present
+  when: windows_directory_machine_account_quota is defined
+
+# Whatever Windows itself made is marked critical, and is not in the code.
+- name: Read the users, groups and OUs of the domain
+  microsoft.ad.object_info:
+    ldap_filter: (|(&(objectCategory=person)(objectClass=user))(objectClass=group)(objectClass=organizationalUnit))
+    properties: [sAMAccountName, isCriticalSystemObject]
+  register: windows_directory_objects
 
 - name: Show the result
   ansible.builtin.debug:
     msg:
-      gpo_links: "{{ windows_directory_links.output | default([]) }}"
       policy: "{{ windows_directory_policy.output | default([]) }}"
-      not_in_the_code: "{{ windows_directory_unmanaged.output | default([]) }}"
+      not_in_the_code: "{{ (unmanaged_users + unmanaged_groups + unmanaged_ous) | sort }}"
+  vars:
+    found: "{{ windows_directory_objects.objects | rejectattr('isCriticalSystemObject') | list }}"
+    unmanaged_users: >-
+      {{ found | selectattr('ObjectClass', 'eq', 'user') | map(attribute='sAMAccountName')
+         | reject('in', windows_directory_users | map(attribute='name') | list)
+         | map('regex_replace', '^', 'user ') | list }}
+    unmanaged_groups: >-
+      {{ found | selectattr('ObjectClass', 'eq', 'group') | rejectattr('DistinguishedName', 'search', ',CN=Builtin,')
+         | map(attribute='sAMAccountName') | reject('in', windows_directory_groups | map(attribute='name') | list)
+         | map('regex_replace', '^', 'group ') | list }}
+    unmanaged_ous: >-
+      {{ found | selectattr('ObjectClass', 'eq', 'organizationalUnit') | map(attribute='DistinguishedName')
+         | map('regex_replace', ',' ~ windows_directory_base ~ '$', '')
+         | reject('in', windows_directory_ous | map(attribute='ou') | list)
+         | map('regex_replace', '^', 'OU ') | list }}

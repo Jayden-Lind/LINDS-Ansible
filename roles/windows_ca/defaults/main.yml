@@ -1,6 +1,10 @@
 ---
 # The name of a new CA. A restored CA keeps the name in its certificate.
 windows_ca_name: "{{ windows_domain.split('.')[0] }}-CA"
+
+# The enrollment service object of the CA in the directory.
+windows_ca_enrollment_service: >-
+  CN={{ windows_ca_name }},CN=Enrollment Services,CN=Public Key Services,CN=Services,CN=Configuration,DC={{ windows_domain.split('.') | join(',DC=') }}
 windows_ca_key_length: 2048
 windows_ca_hash: SHA256
 windows_ca_validity_years: 10

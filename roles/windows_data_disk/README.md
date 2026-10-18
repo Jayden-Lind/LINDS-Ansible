@@ -39,7 +39,7 @@ windows_vm:
 
 ## How to use it
 
-`make windows-data-disk HOST=<fqdn>`.
+`playbooks/windows-data-disk.yml`. See `playbooks/windows-data-disk.md`.
 
 ## Safety
 

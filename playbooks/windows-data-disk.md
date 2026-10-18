@@ -11,7 +11,7 @@ host. Use it when a file server gets a new VM.
 
 ## Procedure
 
-1. Run `make windows-data-disk HOST=<fqdn>`.
+1. Run `ansible-playbook playbooks/windows-data-disk.yml -e target=<fqdn>`.
 
 **WARNING:** Two machines that write to one NTFS volume destroy it. The
 playbook refuses if a VM in `never_running_with` runs. Do not start such a VM
@@ -25,4 +25,4 @@ by hand while the server runs.
 
 ## Next step
 
-`make windows-promote HOST=<fqdn>` brings the volume online in Windows.
+`windows-promote.yml` brings the volume online in Windows.

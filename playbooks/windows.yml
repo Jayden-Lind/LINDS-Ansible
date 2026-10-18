@@ -1,29 +1,75 @@
 ---
-# Apply the settings of the whole domain: sites, recovery, NAS replication,
-# the directory (OUs, groups, users, GPO links) and the time hierarchy.
+# Make the Windows servers and the domain agree with the code. Each step does
+# nothing if the setting is already correct, so you can run it at any time.
 #
-#   make windows-check      # show what would change
-#   make windows            # apply
-#   make windows TAGS=dfsr  # one part only: topology, recovery, dfsr, directory or time
+#   ansible-playbook playbooks/windows.yml --check --diff   # show what would change
+#   ansible-playbook playbooks/windows.yml                  # apply
 #
+#   --limit <fqdn>   one server only (the domain settings are then skipped)
+#   --tags <tag>     one part only: baseline, dc, ca, fileserver, topology,
+#                    recovery, dfsr, gpo or directory
+#
+# To build or to remove a server, see docs/windows/README.md.
 # Read playbooks/windows.md before you use it.
 
-- name: Apply the settings of the forest and the domain
+# One server at a time. If a server fails, the next one stays as it was.
+- name: Each server
+  hosts: windows_managed
+  serial: 1
+  gather_facts: false
+  tasks:
+    - name: Apply the baseline
+      ansible.builtin.import_role:
+        name: windows_baseline
+      tags: baseline
+
+    - name: Set the DNS forwarders and the resolvers of a domain controller
+      ansible.builtin.import_role:
+        name: windows_domain_controller
+        tasks_from: settings
+      when: inventory_hostname in groups['windows_dc']
+      tags: dc
+
+    - name: Install or restore the certification authority
+      ansible.builtin.import_role:
+        name: windows_ca
+        tasks_from: install
+      when: inventory_hostname in groups['windows_ca']
+      tags: ca
+
+    - name: Make the data volumes, shares and NFS exports of a file server
+      ansible.builtin.import_role:
+        name: windows_fileserver
+      when: inventory_hostname in groups['windows_fileserver']
+      tags: fileserver
+
+# On one domain controller. The others get the changes through replication.
+- name: The domain
   hosts: windows_dc[0]
   gather_facts: false
-  roles:
-    - role: windows_ad_topology
+  tasks:
+    - name: Sites, subnets and the site link
+      ansible.builtin.import_role:
+        name: windows_ad_topology
       tags: topology
-    - role: windows_ad_recovery
-      tags: recovery
-    - role: windows_dfsr
-      tags: dfsr
-    - role: windows_directory
-      tags: directory
 
-- name: Put every domain controller in the time hierarchy
-  hosts: windows_dc
-  gather_facts: false
-  roles:
-    - role: windows_dc_time
-      tags: time
+    - name: AD Recycle Bin and the FSMO roles
+      ansible.builtin.import_role:
+        name: windows_ad_recovery
+      tags: recovery
+
+    - name: The replication of the NAS folders
+      ansible.builtin.import_role:
+        name: windows_dfsr
+      tags: dfsr
+
+    # Before the directory, which links the GPOs.
+    - name: The GPOs that the code owns
+      ansible.builtin.import_role:
+        name: windows_gpo
+      tags: gpo
+
+    - name: OUs, groups, users and GPO links
+      ansible.builtin.import_role:
+        name: windows_directory
+      tags: directory

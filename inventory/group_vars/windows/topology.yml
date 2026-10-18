@@ -1,6 +1,6 @@
 ---
 # The AD sites, subnets and site link (role windows_ad_topology), and the FSMO
-# role holders (role windows_ad_recovery). Apply with `make windows`.
+# role holders (role windows_ad_recovery). Apply with `ansible-playbook playbooks/windows.yml`.
 
 ad_sites:
   - JD

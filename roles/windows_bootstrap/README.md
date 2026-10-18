@@ -30,7 +30,7 @@ The role has no defaults. It uses these host variables from
 
 ## How to use it
 
-`make windows-join HOST=<fqdn> ADDRESS=<DHCP address>` applies it.
+`playbooks/windows-join.yml` applies it. See `playbooks/windows-join.md`.
 
 ## Known problems
 

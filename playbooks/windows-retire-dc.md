@@ -6,7 +6,7 @@ and in DNS.
 
 ## Before you start
 
-- Run `make kinit`.
+- Run `kinit -f Administrator@LINDS.COM.AU`.
 - Run `repadmin /replsummary` on a domain controller. It must show no errors.
 - Make sure that the server has nothing that is not in code: DNS zones that
   are not AD-integrated, shares other than SYSVOL and NETLOGON, software,
@@ -15,13 +15,25 @@ and in DNS.
 
 ## Procedure
 
-1. Optional: run
-   `ansible-playbook playbooks/windows-retire-dc.yml -e target=<fqdn> --tags unique-files`.
-   It only reads. It stops if the server has files that its partner does not
-   have.
-2. If a new server with the same name comes next, run
-   `make windows-retire-dc HOST=<fqdn> REPLACING=true`.
-3. If the server goes for good, run `make windows-retire-dc HOST=<fqdn>`.
+1. Optional: run the file check. It only reads. It stops if the server has
+   files that its partner does not have:
+
+   ```shell
+   ansible-playbook playbooks/windows-retire-dc.yml -e target=<fqdn> --tags unique-files
+   ```
+
+2. If a new server with the same name comes next, run:
+
+   ```shell
+   ansible-playbook playbooks/windows-retire-dc.yml -e target=<fqdn> -e windows_dc_retire_keep_bridgehead=true
+   ```
+
+3. If the server goes for good, run:
+
+   ```shell
+   ansible-playbook playbooks/windows-retire-dc.yml -e target=<fqdn>
+   ```
+
 4. On the Proxmox host, stop the old VM from starting:
    `qm set <vmid> --onboot 0 --name <name>-old`.
 
@@ -38,7 +50,8 @@ an account that does not exist, at the address of the new server.
 4. The server is demoted, restarts as a member, and stops.
 5. The partner deletes its computer account and server object, and removes
    its DNS records from every DNS server.
-6. Without `REPLACING=true`, the preferred bridgehead is released.
+6. Without `-e windows_dc_retire_keep_bridgehead=true`, the partner releases
+   the preferred bridgehead.
 
 It takes 15 to 55 minutes. The DNS step alone takes about 7 minutes.
 

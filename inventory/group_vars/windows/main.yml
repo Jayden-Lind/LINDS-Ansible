@@ -1,6 +1,7 @@
 ---
 # WinRM over Kerberos. Nothing secret lives here - authentication comes from
-# the operator's ticket cache (`make kinit`).
+# the operator's ticket cache (`kinit -f Administrator@LINDS.COM.AU`). DNS
+# finds the KDCs (_kerberos._tcp.linds.com.au), so no krb5.conf is needed.
 #
 # Two constraints, both learned the hard way:
 #

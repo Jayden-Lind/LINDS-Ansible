@@ -17,6 +17,11 @@ The role applies the security baseline to a Windows server.
 9. If `windows_baseline_updates` is true, it installs Windows updates and
    restarts the server.
 
+The role applies the settings one time, when the server is built. After the
+server joins the domain, the GPO `Server - Baseline` keeps steps 1 to 7 in
+place (role `windows_gpo`). If you change a setting here, change it in
+`inventory/group_vars/windows/gpo.yml` too.
+
 ## Requirements
 
 - A connection to the server: Kerberos for a domain member, or the local
@@ -39,10 +44,9 @@ The role applies the security baseline to a Windows server.
 
 ## How to use it
 
-- `make windows-baseline HOST=<fqdn>` applies it to one server.
-- `make windows-baseline HOST=<fqdn> TAGS=cpu-mitigations` applies one setting.
-- `make windows-baseline HOST=<fqdn> TAGS=nic-offloads` applies the network
-  adapter offloads only.
+- `playbooks/windows.yml` applies it to each server in `windows_managed`
+  (tag `baseline`). Add `--limit <fqdn>` for one server, and
+  `--tags cpu-mitigations` or `--tags nic-offloads` for one setting.
 - The build playbooks apply it to each new server.
 
 ## Safety

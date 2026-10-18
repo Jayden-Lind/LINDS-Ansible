@@ -30,7 +30,10 @@ windows_directory_gpo_links:
   domain:
     - gpo: Default Domain Policy
       enforced: true
+    - gpo: Server - Baseline
   OU=Domain Controllers:
+    - gpo: PDC Emulator - Time
+    - gpo: Domain Controller - Time
     - gpo: Server - GPO
     - gpo: Default Domain Controllers Policy
     - gpo: Updates

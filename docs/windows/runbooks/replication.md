@@ -16,7 +16,7 @@ Use this procedure for a folder that is on one member only.
    `dfsr_initial_primary`.
 3. Set a staging quota in `dfsr_staging_quota_overrides_mb` that is at least
    the total size of the 32 largest files in the folder.
-4. Run `make windows TAGS=dfsr`.
+4. Run `ansible-playbook playbooks/windows.yml --tags dfsr`.
 5. Wait for the change to reach the other site (up to 15 minutes), or run
    `dfsrdiag pollad` on both members.
 6. Look for event 4112 on the primary member, then 4102 and 4104 on the other.
@@ -30,7 +30,8 @@ first content path. This is the only correct use of the primary flag.
 
 1. The retirement removes the member from the group.
 2. `windows_fileserver` removes the old replication data from the volume.
-3. `make windows` adds the member again. It is not primary.
+3. `ansible-playbook playbooks/windows.yml` adds the member again. It is not
+   primary.
 4. The member stages and hashes every file, and compares it with the partner.
    It copies only files that are different.
 

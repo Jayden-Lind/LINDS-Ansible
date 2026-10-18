@@ -3,8 +3,9 @@
 # ServerDatacenter.
 windows_edition_target: ServerStandard
 
-# The product key, from the environment only. make windows-edition asks for it.
-windows_product_key: "{{ lookup('ansible.builtin.env', 'WINDOWS_PRODUCT_KEY') }}"
+# The product key. playbooks/windows-edition.yml asks for it. Do not put it in
+# a file.
+windows_product_key: ""
 
 # true: let an Evaluation installation continue (for a test server only).
 windows_edition_allow_evaluation: false

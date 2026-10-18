@@ -1,5 +1,0 @@
----
-# The external NTP servers of the domain controller that is the PDC emulator.
-# The other domain controllers follow the domain hierarchy.
-ntp_servers:
-  - pool.ntp.org

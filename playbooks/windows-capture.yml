@@ -2,7 +2,7 @@
 # Read the domain, Group Policy, DNS, the CA and each server, and write the
 # result to windows-state/. It changes nothing on the servers.
 #
-#   make windows-capture
+#   ansible-playbook playbooks/windows-capture.yml
 #   git diff -- windows-state
 #
 # Read playbooks/windows-capture.md before you use it.

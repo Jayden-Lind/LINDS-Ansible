@@ -1,16 +1,23 @@
 ---
-# Convert an Evaluation installation to the full edition. You type the product
-# key at the prompt of the make target. Ansible does not keep it.
+# Convert an Evaluation installation to the full edition. The playbook asks for
+# the product key. Ansible does not keep it.
 #
-#   make windows-edition HOST=<fqdn> ADDRESS=<DHCP address>   # a clone that is not in the domain
-#   make windows-edition HOST=<fqdn>                          # a server that is in the domain
+#   # A clone that is not in the domain:
+#   ansible-playbook playbooks/windows-edition.yml -e target=<fqdn> -e bootstrap_address=<DHCP address>
+#   # A server that is in the domain:
+#   ansible-playbook playbooks/windows-edition.yml -e target=<fqdn>
 #
 # Read playbooks/windows-edition.md before you use it.
 
-- name: Check the request
+- name: Check the request and ask for the product key
   hosts: localhost
   connection: local
   gather_facts: false
+  vars_prompt:
+    - name: windows_product_key
+      prompt: Product key for the edition to convert to
+      private: true
+      unsafe: true
   tasks:
     - name: Make sure that the server is in the inventory
       ansible.builtin.assert:
@@ -18,6 +25,12 @@
           - target is defined
           - target in groups['windows']
         fail_msg: Give -e target=<fqdn>, a host in the windows group of the inventory.
+
+    # A prompt gives a variable to its own play only.
+    - name: Keep the product key for the next plays
+      ansible.builtin.set_fact:
+        windows_edition_key: "{{ windows_product_key }}"
+      no_log: true
 
 # Only one of the next two plays runs: the first if bootstrap_address is given.
 - name: Convert the edition of a clone that is not in the domain
@@ -27,11 +40,14 @@
     - vars/windows-local-admin.yml
   vars:
     ansible_host: "{{ bootstrap_address }}"
+    windows_product_key: "{{ hostvars['localhost'].windows_edition_key }}"
   roles:
     - windows_edition
 
 - name: Convert the edition of a domain member
   hosts: "{{ target | default('none') if bootstrap_address is not defined else 'none' }}"
   gather_facts: false
+  vars:
+    windows_product_key: "{{ hostvars['localhost'].windows_edition_key }}"
   roles:
     - windows_edition

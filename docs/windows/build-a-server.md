@@ -26,15 +26,44 @@ Three tools build a server:
    **WARNING:** Never run `terraform apply` without `-target` there.
 
 2. Find the DHCP address of the clone: `terraform output windows_bootstrap_addresses`.
-3. Run `make windows-prepare HOST=<fqdn> ADDRESS=<address>`. About one hour.
-4. Run `make windows-edition HOST=<fqdn> ADDRESS=<address>`, and type the key.
-5. Run `make kinit`.
-6. Run `make windows-join HOST=<fqdn> ADDRESS=<address>`.
-7. For a file server with a data disk, run `make windows-data-disk HOST=<fqdn>`.
-8. Run `make windows-promote HOST=<fqdn>`.
-9. Run `make windows`.
-10. Run `make windows-capture` (and `make windows-ca-backup` for the CA), and
-    commit `windows-state/`.
+3. In LINDS-Ansible, prepare the clone. It takes about one hour:
+
+   ```shell
+   ansible-playbook playbooks/windows-prepare.yml -e target=<fqdn> -e bootstrap_address=<address>
+   ```
+
+4. Convert the edition. The playbook asks for the product key:
+
+   ```shell
+   ansible-playbook playbooks/windows-edition.yml -e target=<fqdn> -e bootstrap_address=<address>
+   ```
+
+5. Get a Kerberos ticket: `kinit -f Administrator@LINDS.COM.AU`.
+6. Join the clone to the domain:
+
+   ```shell
+   ansible-playbook playbooks/windows-join.yml -e target=<fqdn> -e bootstrap_address=<address>
+   ```
+
+7. For a file server with a data disk, attach the disk:
+
+   ```shell
+   ansible-playbook playbooks/windows-data-disk.yml -e target=<fqdn>
+   ```
+
+8. Promote the server:
+
+   ```shell
+   ansible-playbook playbooks/windows-promote.yml -e target=<fqdn>
+   ```
+
+9. Apply the settings of the domain: `ansible-playbook playbooks/windows.yml`.
+10. Record the state, and commit `windows-state/`. For the CA, also back it up:
+
+    ```shell
+    ansible-playbook playbooks/windows-capture.yml
+    ansible-playbook playbooks/windows-ca-backup.yml
+    ```
 
 Steps 3 and 4 do not change the domain. If the new server replaces an old one
 with the same name, do them while the old server is in service. Then follow
@@ -45,7 +74,7 @@ with the same name, do them while the old server is in service. Then follow
 To test a change to the build, use a test identity: a second inventory file
 with another name and address for the same VM. Give it with
 `-i inventory/ -i <file>`. Remove it after the test with
-`make windows-retire-dc`.
+`playbooks/windows-retire-dc.yml`.
 
 To test the CA or a new forest, use a separate test forest. See
 [windows-forest.md](../../playbooks/windows-forest.md).
@@ -53,7 +82,7 @@ To test the CA or a new forest, use a separate test forest. See
 ## Known problems
 
 - After the promotion, the local Administrator does not exist. You cannot run
-  `windows-prepare.yml`, `windows-edition.yml` with `ADDRESS`, or
+  `windows-prepare.yml`, `windows-edition.yml` with `bootstrap_address`, or
   `windows-join.yml` against a domain controller.
 - Setup adds a recovery partition after `C:` unless the template moves it.
   The template does this (`os-partition-last.ps1`).

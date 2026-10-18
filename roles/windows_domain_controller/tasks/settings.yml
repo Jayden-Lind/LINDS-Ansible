@@ -1,0 +1,23 @@
+---
+# The settings of a domain controller that exists. playbooks/windows.yml
+# applies them to each domain controller in windows_managed.
+
+- name: Set the DNS server's forwarders
+  ansible.windows.win_powershell:
+    parameters:
+      Forwarders: "{{ windows_dc_dns_forwarders }}"
+    script: |
+      [CmdletBinding(SupportsShouldProcess)]
+      param([string[]]$Forwarders)
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      $have = @((Get-DnsServerForwarder).IPAddress | ForEach-Object { $_.IPAddressToString })
+      if (Compare-Object $have $Forwarders -SyncWindow 0) {
+          if (-not $Ansible.CheckMode) { Set-DnsServerForwarder -IPAddress $Forwarders }
+          $Ansible.Changed = $true
+      }
+
+- name: Set the resolvers of the server, a partner first and then itself
+  ansible.windows.win_dns_client:
+    adapter_names: "*"
+    dns_servers: "{{ windows_dc_dns_client_servers }}"

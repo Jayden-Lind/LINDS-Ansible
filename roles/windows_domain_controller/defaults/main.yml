@@ -2,16 +2,16 @@
 # The AD site of the new domain controller: the host variable ad_site.
 windows_dc_site: "{{ ad_site }}"
 
-# The Directory Services Restore Mode password. make windows-promote asks for
-# it; if you type nothing, the password in the vault is used.
-windows_dsrm_password: "{{ lookup('ansible.builtin.env', 'WINDOWS_DSRM_PASSWORD') | default(vault_windows_dsrm_password | default(''), true) }}"
+# The Directory Services Restore Mode password, from the vault.
+windows_dsrm_password: "{{ vault_windows_dsrm_password | default('') }}"
 
 # The DNS forwarders of the server. Set them in the inventory.
 windows_dc_dns_forwarders: []
 
 # The resolvers of the server itself: another domain controller first, then
-# itself. A domain controller that only asks itself can stop at boot.
-windows_dc_dns_client_servers: "{{ windows_dns_servers + ['127.0.0.1'] }}"
+# itself. A domain controller that only asks itself can stop at boot. The
+# promotion adds ::1, the IPv6 address of the server itself.
+windows_dc_dns_client_servers: "{{ windows_dns_servers + ['127.0.0.1', '::1'] }}"
 
 # Maximum times to wait, in seconds: for the directory and SYSVOL after the
 # restart, and for the RID pool.

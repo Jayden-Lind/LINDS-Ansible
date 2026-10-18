@@ -1,6 +1,6 @@
 ---
-# Runs on an existing domain controller. Produces the blob for
-# windows_domain_join_machine and leaves it in the fact
+# Runs on an existing domain controller. Makes the offline-join data for
+# windows_domain_join_machine and keeps it in the fact
 # windows_domain_join_blob.
 
 - name: Refuse to take over the account of a live domain controller
@@ -27,30 +27,22 @@
       Provisioning a join for it would reset the machine password of a live
       DC. Demote and remove the old one first (playbooks/windows-retire-dc.yml).
 
-- name: Make the computer account and the offline-join data
-  ansible.windows.win_powershell:
-    parameters:
-      Machine: "{{ windows_domain_join_machine }}"
-      Domain: "{{ windows_domain }}"
-      Ou: "{{ windows_domain_join_ou }}"
-    script: |
-      param([string]$Machine, [string]$Domain, [string]$Ou)
-      $ErrorActionPreference = 'Stop'
-      $file = Join-Path $env:TEMP ("odj-" + [guid]::NewGuid().ToString('N') + '.txt')
-      # /reuse: a leftover, non-DC account with this name is reset rather than
-      # refused. The assert above has already ruled out a live DC.
-      $djoinArgs = @('/provision', '/domain', $Domain, '/machine', $Machine, '/savefile', $file, '/reuse')
-      if ($Ou) { $djoinArgs += @('/machineou', $Ou) }
-      $out = & djoin.exe @djoinArgs 2>&1
-      if ($LASTEXITCODE -ne 0) { throw "djoin /provision failed ($LASTEXITCODE): $($out -join ' ')" }
-      try {
-          # djoin writes UTF-16; the blob itself is base64 text.
-          $blob = [IO.File]::ReadAllText($file, [Text.Encoding]::Unicode).Trim([char]0, "`r", "`n", ' ')
-      } finally {
-          Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
-      }
-      $Ansible.Changed = $true
-      $blob
+# An account with this name that is not a domain controller is used again. If
+# windows_domain_join_ou is set, the account moves to that OU.
+- name: Make the computer account
+  microsoft.ad.computer:
+    identity: "{{ windows_domain_join_machine }}$"
+    name: "{{ windows_domain_join_machine }}"
+    sam_account_name: "{{ windows_domain_join_machine }}$"
+    path: "{{ windows_domain_join_ou | default(omit, true) }}"
+    enabled: true
+    state: present
+  register: windows_domain_join_computer
+
+# This resets the password of the account.
+- name: Make the offline-join data
+  microsoft.ad.offline_join:
+    identity: "{{ windows_domain_join_computer.object_guid }}"
   register: windows_domain_join_provision
   no_log: true
 
@@ -66,5 +58,5 @@
 
 - name: Keep the offline-join data for the new server
   ansible.builtin.set_fact:
-    windows_domain_join_blob: "{{ windows_domain_join_provision.output[0] }}"
+    windows_domain_join_blob: "{{ windows_domain_join_provision.blob }}"
   no_log: true

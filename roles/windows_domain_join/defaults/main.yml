@@ -1,6 +1,8 @@
 ---
 # The domain (windows_domain, windows_domain_netbios) comes from the inventory.
 
-# The OU of the new computer account. Empty: the default Computers container.
-# The promotion moves a domain controller to "Domain Controllers".
+# The OU of the computer account, as a full DN. Empty: a new
+# account goes to the default computers container, and an existing account
+# stays where it is. The promotion moves a domain controller to
+# "Domain Controllers".
 windows_domain_join_ou: ""
