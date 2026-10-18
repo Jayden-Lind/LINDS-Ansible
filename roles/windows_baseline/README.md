@@ -17,6 +17,11 @@ The role applies the security baseline to a Windows server.
 9. If `windows_baseline_updates` is true, it installs Windows updates and
    restarts the server.
 
+The role applies the settings one time, when the server is built. After the
+server joins the domain, the GPO `Server - Baseline` keeps steps 1 to 7 in
+place (role `windows_gpo`). If you change a setting here, change it in
+`inventory/group_vars/windows/gpo.yml` too.
+
 ## Requirements
 
 - A connection to the server: Kerberos for a domain member, or the local

@@ -70,9 +70,11 @@
         tasks_from: finish
       when: inventory_hostname in groups['windows_dc'] | default([])
 
-    - name: Put the server in the domain time hierarchy
-      ansible.builtin.import_role:
-        name: windows_dc_time
+    # The GPOs on "Domain Controllers" set the time source. Apply them now,
+    # not at the next refresh.
+    - name: Apply Group Policy
+      ansible.windows.win_command: gpupdate /target:computer /force
+      changed_when: false
       when: inventory_hostname in groups['windows_dc'] | default([])
 
 - name: Install or restore the certification authority

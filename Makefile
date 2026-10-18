@@ -26,7 +26,7 @@ kinit:
 WINDOWS_PLAY = KRB5_CONFIG=$(CURDIR)/krb5.conf ./.venv/bin/ansible-playbook
 WINDOWS_STATE ?= $(CURDIR)/windows-state
 
-# The settings of the domain. TAGS: topology, recovery, dfsr, directory or time.
+# The settings of the domain. TAGS: topology, recovery, dfsr, gpo or directory.
 windows:
 	$(WINDOWS_PLAY) playbooks/windows.yml $(if $(TAGS),--tags $(TAGS))
 

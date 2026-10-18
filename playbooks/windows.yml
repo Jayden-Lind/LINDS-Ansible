@@ -1,10 +1,10 @@
 ---
 # Apply the settings of the whole domain: sites, recovery, NAS replication,
-# the directory (OUs, groups, users, GPO links) and the time hierarchy.
+# the GPOs that the code owns, and the directory (OUs, groups, users, GPO links).
 #
 #   make windows-check      # show what would change
 #   make windows            # apply
-#   make windows TAGS=dfsr  # one part only: topology, recovery, dfsr, directory or time
+#   make windows TAGS=dfsr  # one part only: topology, recovery, dfsr, gpo or directory
 #
 # Read playbooks/windows.md before you use it.
 
@@ -18,12 +18,8 @@
       tags: recovery
     - role: windows_dfsr
       tags: dfsr
+    # Before the directory, which links the GPOs.
+    - role: windows_gpo
+      tags: gpo
     - role: windows_directory
       tags: directory
-
-- name: Put every domain controller in the time hierarchy
-  hosts: windows_dc
-  gather_facts: false
-  roles:
-    - role: windows_dc_time
-      tags: time

@@ -25,6 +25,7 @@ build a server from a clone of the template.
 | --- | --- | --- |
 | Apply the settings of the domain | `make windows` | [windows.md](../../playbooks/windows.md) |
 | Change OUs, groups, users or GPO links | `make windows-directory` | [windows_directory](../../roles/windows_directory/README.md) |
+| Change a GPO that the code owns | `make windows TAGS=gpo,directory` | [windows_gpo](../../roles/windows_gpo/README.md) |
 | Apply the baseline to one server | `make windows-baseline HOST=` | [windows-baseline.md](../../playbooks/windows-baseline.md) |
 | Record the state of the domain | `make windows-capture` | [windows-capture.md](../../playbooks/windows-capture.md) |
 | Back up the CA | `make windows-ca-backup` | [windows-ca-backup.md](../../playbooks/windows-ca-backup.md) |
@@ -40,6 +41,7 @@ build a server from a clone of the template.
 | `inventory/group_vars/windows/main.yml` | The domain, the WinRM connection, DNS forwarders, NTP, CPU mitigations |
 | `inventory/group_vars/windows/topology.yml` | Sites, subnets, site link, FSMO role holders |
 | `inventory/group_vars/windows/replication.yml` | The NAS replication group |
+| `inventory/group_vars/windows/gpo.yml` | The GPOs that the code owns: the server baseline and the time hierarchy |
 | `inventory/group_vars/windows/directory.yml` | OUs, GPO links, owned groups |
 | `inventory/group_vars/windows/directory.vault.yml` | Users, members, privileged groups, password policy (vault) |
 | `inventory/group_vars/windows/vault.yml` | The template Administrator password and the restore-mode password (vault) |
@@ -59,8 +61,12 @@ build a server from a clone of the template.
 - There are no system-state backups, by decision. If a domain controller is
   lost, build a new one. If the directory is lost, make the domain again with
   `windows-forest.yml` (see [windows-forest.md](../../playbooks/windows-forest.md)).
-- Ansible does not manage GPO settings. Edit GPOs in GPMC.
+- The code owns the GPOs in `inventory/group_vars/windows/gpo.yml` (role
+  `windows_gpo`). Change them there, not in GPMC. Edit the other GPOs in GPMC.
   `make windows-capture` keeps a backup of each GPO.
+- Use a module of `microsoft.ad` or `ansible.windows` where one exists. Write
+  PowerShell only for what no module does, and put a long script in the
+  `files/` directory of the role.
 
 ## Notes for a person who changes the code
 
@@ -94,8 +100,6 @@ build a server from a clone of the template.
 ## Known problems
 
 - Nothing syncs to Entra. See [runbooks/entra-connect.md](runbooks/entra-connect.md).
-- The Default Domain Policy sets every server to NTP with `0.au.pool.ntp.org`.
-  This overrides `windows_dc_time`. Move it to a policy for the PDC emulator.
 - The DNS zone `linds.com.au` accepts non-secure dynamic updates, and
   scavenging is off.
 - `Optimize-Volume -ReTrim` fails on all servers with `0x80070001`. See

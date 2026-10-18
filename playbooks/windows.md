@@ -8,11 +8,11 @@ a file in `inventory/group_vars/windows/`.
 | `topology` | `windows_ad_topology` | Sites, subnets, site link, `_msdcs` delegation |
 | `recovery` | `windows_ad_recovery` | AD Recycle Bin, FSMO roles |
 | `dfsr` | `windows_dfsr` | The NAS replication group |
+| `gpo` | `windows_gpo` | The GPOs that the code owns: the server baseline and the time hierarchy |
 | `directory` | `windows_directory` | OUs, groups, users, membership, GPO links, password policy |
-| `time` | `windows_dc_time` | The time hierarchy of the domain controllers |
 
-The first four run on the first domain controller in the group `windows_dc`.
-The last runs on each domain controller.
+All of them run on the first domain controller in the group `windows_dc`. The
+other domain controllers get the changes through replication.
 
 ## Before you start
 
@@ -29,9 +29,10 @@ The last runs on each domain controller.
 
 ## What it changes
 
-- Objects in the directory and DNS. Replication sends them to the other
-  domain controllers.
-- The time settings of each domain controller.
+- Objects in the directory, DNS and Group Policy. Replication sends them to
+  the other domain controllers.
+- The servers apply a GPO change at the next Group Policy refresh, in 90 to
+  120 minutes. `gpupdate /target:computer` applies it now.
 
 ## If it fails
 
@@ -39,3 +40,5 @@ The last runs on each domain controller.
   run `make kinit` again.
 - Check mode shows "ignored" errors for members of a new group: this is
   correct. The group does not exist until the real run.
+- Check mode shows "ignored" errors for a link to a new GPO: this is correct.
+  The GPO does not exist until the real run.

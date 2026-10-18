@@ -34,7 +34,8 @@ A server can be in more than one group.
    - It makes the server known to every domain controller.
    - It waits for the RID pool and runs `dcdiag`.
    - It gets the LDAPS certificate.
-   - It puts the server in the time hierarchy.
+   - It applies Group Policy. The GPOs on `Domain Controllers` set its time
+     source.
 4. For `windows_ca`: it installs or restores the CA.
 5. For `windows_fileserver`: it brings the data volumes online and makes the
    shares and NFS exports.
