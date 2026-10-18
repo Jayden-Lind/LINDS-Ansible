@@ -400,6 +400,11 @@ layout above), and the notes are JD's.
     `stream.bypass: yes`, which also bypasses a TCP flow that passes the
     reassembly depth. `flow_bypassed.local_pkts` counts the bypassed
     packets.
+  * The reassembly depth is 1 MiB for each direction of a session
+    (`stream.reassembly.depth`). Keep the key in the file: without it,
+    Suricata 7 has no limit, and a plain HTTP download at line rate keeps
+    the worker at 100%. `tcp.stream_depth_reached` counts the sessions
+    that reached it.
   * Check: `capture.kernel_packets` does not move during an SMB copy from
     the cluster, and `eve.json` still has `dns` and `tls` events.
 * **Suricata's stream memory is not capped.** With no `stream:` section it

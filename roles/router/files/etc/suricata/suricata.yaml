@@ -172,8 +172,8 @@ host-mode: router
 # tcp.segment_memcap_drop and tcp.insert_data_normal_fail climbing (32M failed
 # inserts and 4.7M tcp.reassembly_gap in one day), so the detection engine
 # never saw that payload. 0 means unlimited for these two keys. What bounds
-# the buffers instead is the reassembly depth (the default, 1 MiB per
-# direction per session), and behind that MemoryMax= on the unit
+# the buffers instead is the reassembly depth (set below), and behind that
+# MemoryMax= on the unit
 # (suricata.service.d/memory.conf): a runaway costs a Suricata restart, not
 # the router. Check with
 #   suricatasc -c dump-counters /var/run/suricata-command.socket \
@@ -187,6 +187,12 @@ stream:
   bypass: yes
   reassembly:
     memcap: 0
+    # Inspect the first 1 MiB of each direction of a TCP session, then
+    # bypass it. Keep this key: without it Suricata 7 has no limit (the 1 MiB
+    # default is only in the example suricata.yaml), so a 1 GB plain HTTP
+    # download kept the worker at 100%. SMB sets its own depth (unlimited).
+    # Check: tcp.stream_depth_reached in dump-counters.
+    depth: 1mb
 
 # The flow table cannot be unlimited (0 would mean no flows at all), and with
 # no `flow:` section it ran on the compiled-in 32 MiB. A normal day uses about
