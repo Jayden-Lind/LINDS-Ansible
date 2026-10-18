@@ -123,7 +123,7 @@ layout above), and the notes are JD's.
 | DNS forwarder | pdns-recursor | `etc/powerdns/recursor.yml` | Upstream Quad9, 15-minute cache floor: see below |
 | NTP / SNMP / LLDP / DDNS | chrony, snmpd, lldpd, ddclient | `etc/chrony/`, `etc/snmp/`, `etc/default/` | |
 | mDNS reflector | avahi-daemon | `etc/avahi/avahi-daemon.conf` | Repeats mDNS between `lan0`, `lan0.52` and `lan0.58` so devices on one can be found from the others; publishes nothing itself |
-| IDS | Suricata 7 + suricata-update | `etc/suricata/` | One capture thread + autofp; EVE → rsyslog imfile → Alloy → Loki; weekly rule refresh reloads in place |
+| IDS | Suricata 7 + suricata-update | `etc/suricata/` | One worker thread on `lan0`; WAN traffic and DNS only (BPF filter); TLS flows bypassed after the handshake; EVE → rsyslog imfile → Alloy → Loki; weekly rule refresh reloads in place |
 | Kernel | linux-image-cloud-amd64 from trixie-backports (7.x, `router_kernel_backports`), sysctl, modules, grub, tuned | `etc/sysctl.d/`, `etc/modules-load.d/`, `etc/default/grub.d/` | `ignore_routes_with_linkdown` keeps a link-down build reachable; `ip_nonlocal_bind` lets daemons bind `.1` addresses before the LAN link is up |
 
 ## Conventions and sharp edges
@@ -364,10 +364,14 @@ layout above), and the notes are JD's.
   workers runmode; under autofp it silently fell back to v2, whose fixed
   frame size truncated every GRO super-packet at 1514 bytes
   (`decoder.ipv4.trunc_pkt` climbing, stream gaps). v3 with
-  `block-size: 131072` captures them whole. Do not "fix" truncation with
-  `default-packet-size: 65535`: under v2 that makes the ring mmap fail and
-  Suricata crash-loops. Check with `suricatasc -c dump-counters` →
-  `trunc_pkt` flat, `max_pkt_size` well above 1514.
+  `block-size: 131072` captures them whole. The `bpf-filter` (below) cuts
+  each packet to `default-packet-size`, so that is 65600, not the MTU
+  default of 1514. `ring-size` counts frames of that size: 1024 frames are
+  1025 blocks of 128 KB (128 MB). Do not raise one without the other:
+  65536 frames of 64 KB is 8 GB, and the ring mmap fails. Suricata raises
+  `ring-size` to at least `max-pending-packets` (1024). Check with
+  `suricatasc -c dump-counters` → `trunc_pkt` flat, `max_pkt_size` well
+  above 1514.
 * **Suricata: one worker thread.** The tap is on the trunk parent, so every
   inter-VLAN packet appears twice (untagged and tagged). With two workers
   the fanout hash split the copies across threads (`pkt_on_wrong_thread`
@@ -375,6 +379,28 @@ layout above), and the notes are JD's.
   Data" and "3way handshake wrong seq" alerts. One worker sees everything
   in order; it idles at a few percent CPU today. If `capture.kernel_drops`
   ever climbs, the fix is not more workers on this capture layout.
+* **Suricata inspects WAN traffic and DNS only.** The `bpf-filter` on
+  `lan0` keeps a packet if one end is outside the private ranges, or if it
+  is DNS. Traffic between two private addresses is not inspected: VLAN to
+  VLAN, SMB from the cluster to `jd-fs-01`, and the tunnel to the other
+  site. At JD that traffic was most of Suricata's load (2.9 of 3.1 TB in
+  one day), and it caused all of the capture drops.
+  * The capture stays on `lan0`. On `wan0`, NAT puts the router's address
+    on every IPv4 packet, so an alert could not name the device.
+  * DNS stays in because the router resolves names for the LAN. Only here
+    does a lookup show the device that made it.
+  * Each test is written twice in the filter. A frame that the router sends
+    on a VLAN has its tag inside the frame, and `vlan` moves the offsets.
+  * Limits: IPv6 between two VLANs passes the filter (global addresses look
+    like WAN traffic). During a failover to the cellular modem, Suricata
+    sees WAN traffic twice: before NAT and after NAT.
+  * TLS flows are bypassed after the handshake
+    (`encryption-handling: bypass`). In Suricata 7 this needs
+    `stream.bypass: yes`, which also bypasses a TCP flow that passes the
+    reassembly depth. `flow_bypassed.local_pkts` counts the bypassed
+    packets.
+  * Check: `capture.kernel_packets` does not move during an SMB copy from
+    the cluster, and `eve.json` still has `dns` and `tls` events.
 * **Suricata's stream memory is not capped.** With no `stream:` section it
   ran on the compiled-in 256 MiB reassembly cap, which was full within hours
   of every start (`memcap_pressure` 99-100, `tcp.segment_memcap_drop` and
