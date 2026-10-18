@@ -405,8 +405,9 @@ layout above), and the notes are JD's.
     Suricata 7 has no limit, and a plain HTTP download at line rate keeps
     the worker at 100%. `tcp.stream_depth_reached` counts the sessions
     that reached it.
-  * The EVE `tls` log is extended: each event has the SNI, the TLS
-    version and the JA3/JA3S hashes. The "Top TLS SNI" panel of the
+  * The EVE `tls` log is extended, and `quic` is logged too. Each `tls`
+    event, and the `quic` event of each client hello, has the SNI. The
+    `tls` events also have the TLS version and the JA3/JA3S hashes. The "Top TLS SNI" panel of the
     Suricata dashboard reads `tls_sni`. Rules that match on the SNI work
     with or without it, because the client hello is inspected before the
     bypass.

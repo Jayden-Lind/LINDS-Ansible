@@ -73,6 +73,10 @@ outputs:
         # the Suricata dashboard reads tls.sni.
         - tls:
             extended: yes
+        # HTTP/3 and other QUIC connections: Suricata decrypts the Initial
+        # packets and logs the client hello (sni, version, ja3). About a
+        # quarter of the WAN flows are QUIC (Google, YouTube, Cloudflare).
+        - quic
         - http
         - ssh
   - stats:
