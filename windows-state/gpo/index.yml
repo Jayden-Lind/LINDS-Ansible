@@ -17,8 +17,14 @@ gpos:
     folder: Default-Domain-Policy
     id: 31b2f340-016d-11d2-945f-00c04fb984f9
     status: AllSettingsEnabled
-    computer_version: 207
+    computer_version: 215
     user_version: 44
+  - name: Domain Controller - Time
+    folder: Domain-Controller---Time
+    id: 0f4302c7-1f1a-4858-b027-3b3a91e20fca
+    status: UserSettingsDisabled
+    computer_version: 2
+    user_version: 0
   - name: Drive Mapping - Everyone
     folder: Drive-Mapping---Everyone
     id: c3b5482a-f8f7-4d81-99e6-98f94aad2d54
@@ -49,6 +55,18 @@ gpos:
     status: AllSettingsEnabled
     computer_version: 33
     user_version: 6
+  - name: PDC Emulator - Time
+    folder: PDC-Emulator---Time
+    id: 7fdddd84-a51c-4fb0-813e-8678fa7e3513
+    status: UserSettingsDisabled
+    computer_version: 3
+    user_version: 0
+  - name: Server - Baseline
+    folder: Server---Baseline
+    id: 4ffde8da-9bcc-4835-ad31-cedc2107dbf2
+    status: UserSettingsDisabled
+    computer_version: 13
+    user_version: 0
   - name: Server - GPO
     folder: Server---GPO
     id: 09c961b8-d419-4056-9d42-e5c404006938
@@ -73,4 +91,7 @@ gpos:
     status: AllSettingsEnabled
     computer_version: 0
     user_version: 30
-wmi_filters: []
+wmi_filters:
+  - name: PDC emulator
+    description: The domain controller that holds the PDC emulator role.
+    query: 1;3;10;55;WQL;root\CIMv2;SELECT * FROM Win32_ComputerSystem WHERE DomainRole = 5;

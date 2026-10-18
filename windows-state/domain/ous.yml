@@ -8,20 +8,32 @@
       gpo: Default Domain Policy
       enabled: true
       enforced: true
+    - order: 2
+      gpo: Server - Baseline
+      enabled: true
+      enforced: false
 - dn: OU=Domain Controllers,DC=linds,DC=com,DC=au
   description: Default container for domain controllers
   protected_from_deletion: false
   gp_inheritance_blocked: false
   gpo_links:
     - order: 1
-      gpo: Server - GPO
+      gpo: PDC Emulator - Time
       enabled: true
       enforced: false
     - order: 2
-      gpo: Default Domain Controllers Policy
+      gpo: Domain Controller - Time
       enabled: true
       enforced: false
     - order: 3
+      gpo: Server - GPO
+      enabled: true
+      enforced: false
+    - order: 4
+      gpo: Default Domain Controllers Policy
+      enabled: true
+      enforced: false
+    - order: 5
       gpo: Updates
       enabled: true
       enforced: false
