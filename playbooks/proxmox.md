@@ -11,6 +11,10 @@ The playbook applies the role `proxmox` to `jd-proxmox-02`.
 
 ## Procedure
 
+**NOTE:** Merging to `main` applies this playbook to `jd-proxmox-02`. See
+[deploy/README.md](../deploy/README.md). Use the commands below to see a
+change before you merge it, or to apply a change by hand.
+
 1. Run `ansible-playbook playbooks/proxmox.yml --check --diff` to see the
    changes.
 2. Apply all parts: `ansible-playbook playbooks/proxmox.yml`.

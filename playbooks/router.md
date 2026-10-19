@@ -15,6 +15,10 @@ The `router.yml` playbook applies the role `router` to the Debian routers,
 
 ## Procedure
 
+**NOTE:** Merging to `main` applies this playbook to `jd-router-01`. See
+[deploy/README.md](../deploy/README.md). Use the commands below to see a
+change before you merge it, or to apply a change by hand.
+
 **WARNING:** Always name one router with `--limit`. Without it, the play
 changes both routers, one after the other.
 

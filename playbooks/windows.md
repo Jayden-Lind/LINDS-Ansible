@@ -32,6 +32,10 @@ from the template.
 
 ## Procedure
 
+**NOTE:** Merging to `main` applies this playbook to the Windows servers and the domain. See
+[deploy/README.md](../deploy/README.md). Use the commands below to see a
+change before you merge it, or to apply a change by hand.
+
 1. See what would change:
 
    ```shell

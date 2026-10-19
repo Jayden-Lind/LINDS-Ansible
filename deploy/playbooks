@@ -1,0 +1,19 @@
+# The playbooks that a merge to main applies, in this order. See README.md.
+#
+# Each line has a name, a playbook and the arguments for ansible-playbook.
+# The name is the commit status on GitHub (deploy/<name>) and the key of the
+# state of the deploy. If the playbook or the arguments of an entry change,
+# the deploy starts that entry again from the beginning.
+#
+# Do not add a playbook that makes or removes a server, or that needs input.
+
+storage_health  playbooks/storage_health.yml
+proxmox         playbooks/proxmox.yml
+truenas         playbooks/truenas.yml
+plex            playbooks/plex.yml
+torrent         playbooks/torrent.yml
+windows         playbooks/windows.yml
+
+# The router is last. A change to strongSwan restarts it, and the tunnel to
+# LINDS stops for a short time.
+jd-router-01    playbooks/router.yml  --limit jd-router-01

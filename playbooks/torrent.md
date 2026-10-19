@@ -15,6 +15,10 @@ applies the roles `common` and `torrent`.
 
 ## Procedure
 
+**NOTE:** Merging to `main` applies this playbook to the torrent hosts. See
+[deploy/README.md](../deploy/README.md). Use the commands below to see a
+change before you merge it, or to apply a change by hand.
+
 1. Run `ansible-playbook playbooks/torrent.yml --check --diff`.
 2. Run `ansible-playbook playbooks/torrent.yml`. Add `--limit jd_torrent` or
    `--limit linds_torrent` for one site.

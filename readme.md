@@ -21,6 +21,16 @@ All text in this repository uses Simplified Technical English. See
 
 **WARNING:** The repository is public. Put secrets only in vault files.
 
+## Deploy on merge
+
+Merging to `main` applies the playbooks in `deploy/playbooks` to their
+hosts: `jd-router-01`, the Proxmox hosts, the TrueNAS, the Plex and torrent
+hosts, and the Windows servers. The deploy runs on `jd-jump-01`. See
+[deploy/README.md](deploy/README.md).
+
+**NOTE:** If you change a host by hand, the deploy does not undo the change.
+It stops for that playbook until the change is merged.
+
 ## Layout
 
 | Folder | Contents |
