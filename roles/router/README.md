@@ -120,7 +120,7 @@ layout above), and the notes are JD's.
 | Dual-WAN failover | `wan-failover` | `etc/wan-failover.json` | Per-WAN default in tables 1001/1002 for the health check (90/100 are the WireGuard tunnels'); hysteresis; carrier check; SNAT conntrack flush on switch |
 | IPsec | strongSwan (swanctl) | `etc/swanctl/swanctl.conf` | `LINDS` site-to-site over `ipsec0`, `LINDS_MOBILE` road-warrior over `ipsec10`; `encap = yes` is a line here, not a template patch |
 | DHCP | kea | `etc/kea/` | DDNS into AD DNS |
-| DNS forwarder | pdns-recursor | `etc/powerdns/recursor.yml` | Upstream Quad9, 15-minute cache floor: see below |
+| DNS forwarder | pdns-recursor | `etc/powerdns/recursor.yml` | Upstream Quad9 (over DNS over TLS at JD), 15-minute cache floor: see below |
 | NTP / SNMP / LLDP / DDNS | chrony, snmpd, lldpd, ddclient | `etc/chrony/`, `etc/snmp/`, `etc/default/` | |
 | mDNS reflector | avahi-daemon | `etc/avahi/avahi-daemon.conf` | Repeats mDNS between `lan0`, `lan0.52` and `lan0.58` so devices on one can be found from the others; publishes nothing itself |
 | IDS | Suricata 7 + suricata-update | `etc/suricata/` | One worker thread on `lan0`; WAN traffic and DNS only (BPF filter); TLS flows bypassed after the handshake; EVE → rsyslog imfile → Alloy → Loki; weekly rule refresh reloads in place |
@@ -283,6 +283,24 @@ layout above), and the notes are JD's.
   * To re-check after changing upstream, resolve the busiest names in the
     DNS log through each candidate and time a TCP handshake to each answer.
     The measurements are in the comments of `recursor.yml`.
+* **JD sends its upstream queries to Quad9 over DNS over TLS (DoT).** The
+  forwarders in `jd/etc/powerdns/recursor.yml` use port 853, and the
+  recursor uses TLS for port 853 (`dot_to_port_853`, on by default). The
+  ISP cannot read the names that the router looks up. Clients do not
+  change: they send plain DNS to the router on port 53. The LINDS file
+  still uses plain DNS.
+  * Recursor 5.2 does not check the certificate of the server. DoT stops a
+    passive observer, but not an attacker who intercepts the connection on
+    purpose.
+  * On an open connection, a lookup takes the same time as on UDP. A new
+    connection adds about 25-30 ms. The recursor and Quad9 both close an
+    idle connection after about 10 s.
+  * The internal forwarders (`linds.com.au`, `k8s.linds.com.au`) stay on
+    plain DNS, port 53.
+  * DoT does not apply to VLAN 51 and VLAN 52. DHCP gives them Quad9
+    directly, so they do not use the router for DNS.
+  * To check: `rec_control get dot-outqueries` increases, and
+    `ss -tn '( dport = :853 )'` shows connections to Quad9.
 * **Names are cached for at least 15 minutes** (`minimum_ttl_override: 900`)
   and refreshed in the background once half that is used up
   (`refresh_on_ttl_perc: 50`). A lookup that misses the cache costs a client

@@ -96,8 +96,18 @@ recursor:
   # To re-check: resolve the busiest names in the DNS log through each
   # candidate and time a TCP handshake to every answer.
   forward_zones_recurse:
+    # DNS over TLS (DoT) to Quad9. Port 853 makes the recursor use TLS
+    # (outgoing.dot_to_port_853 is on by default), and outgoing.edns_padding
+    # hides the size of each query. The ISP cannot read the names that the
+    # router looks up. Clients do not change: they send plain DNS to the
+    # router. Recursor 5.2 does not check the server certificate, so DoT
+    # stops a passive observer but not an attacker who intercepts on purpose.
+    # Measured 2026-10-18: on an open connection a lookup takes 9-11 ms, the
+    # same as UDP. A new connection adds about 25-30 ms. Quad9 closes an
+    # idle connection after about 10 s, the same as tcp_max_idle_ms, so a
+    # longer idle time gives nothing.
     - zone: '.'
-      forwarders: ['9.9.9.9', '149.112.112.112', '2620:fe::fe', '2620:fe::9']
+      forwarders: ['9.9.9.9:853', '149.112.112.112:853', '[2620:fe::fe]:853', '[2620:fe::9]:853']
     # The local DC plus one LINDS DC over the IPsec tunnel as backup; pdns
     # orders forwarders by measured speed.
     - zone: linds.com.au
