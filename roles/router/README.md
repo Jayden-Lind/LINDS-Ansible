@@ -295,6 +295,13 @@ layout above), and the notes are JD's.
   * On an open connection, a lookup takes the same time as on UDP. A new
     connection adds about 25-30 ms. The recursor and Quad9 both close an
     idle connection after about 10 s.
+  * At this query rate, the recursor almost never reuses a connection.
+    Each connection is idle for more than 10 s before the next query
+    comes. Thus a lookup that misses the cache takes about 17 ms more:
+    the median goes from 15 ms to 32 ms. The slow tail and the median
+    wait of all lookups do not change.
+  * One recursor thread and two forwarders would give more reuse. The
+    role does not do this, because the cost above is acceptable.
   * The internal forwarders (`linds.com.au`, `k8s.linds.com.au`) stay on
     plain DNS, port 53.
   * DoT does not apply to VLAN 51 and VLAN 52. DHCP gives them Quad9
