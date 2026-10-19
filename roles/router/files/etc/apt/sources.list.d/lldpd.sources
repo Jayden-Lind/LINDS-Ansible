@@ -1,0 +1,8 @@
+# Managed by LINDS-Ansible (roles/router). lldpd from its author's
+# openSUSE Build Service repository. Debian 13 has 1.0.18. The key is
+# files/etc/apt/keyrings/lldpd-obs.asc. It expires on 2027-01-05: before
+# then, get the extended key from the Release.key URL and commit it.
+Types: deb
+URIs: https://download.opensuse.org/repositories/home:/vbernat/Debian_13/
+Suites: ./
+Signed-By: /etc/apt/keyrings/lldpd-obs.asc

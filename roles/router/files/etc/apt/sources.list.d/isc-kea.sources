@@ -1,0 +1,9 @@
+# Managed by LINDS-Ansible (roles/router). Kea from ISC's own repository:
+# the newest stable branch (3.2). Debian 13 has 2.6. ISC makes one
+# repository for each branch: change kea-3-2 when the next stable branch
+# (3.4) comes out. The key is files/etc/apt/keyrings/isc-kea.asc.
+Types: deb
+URIs: https://dl.cloudsmith.io/public/isc/kea-3-2/deb/debian
+Suites: trixie
+Components: main
+Signed-By: /etc/apt/keyrings/isc-kea.asc

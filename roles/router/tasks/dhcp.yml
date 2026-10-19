@@ -25,6 +25,22 @@
     label: "{{ item.name }}"
   changed_when: false
 
+# ISC's packages give /etc/kea/*.conf to _kea:_kea with dpkg-statoverride,
+# and dpkg applies the override again on each upgrade. The role keeps the
+# files root:_kea 0640 (Kea reads its config but cannot change it), so the
+# override must say the same. Otherwise each upgrade and the next run swap
+# the owner, and Kea restarts.
+- name: kea config ownership (dpkg-statoverride)
+  ansible.builtin.shell: |
+    f=/etc/kea/{{ item }}
+    [ "$(dpkg-statoverride --list "$f")" = "root _kea 640 $f" ] && exit 0
+    dpkg-statoverride --remove "$f" > /dev/null 2>&1 || true
+    dpkg-statoverride --update --add root _kea 0640 "$f"
+    echo changed
+  loop: [kea-dhcp4.conf, kea-dhcp-ddns.conf]
+  register: router_kea_statoverride
+  changed_when: "'changed' in router_kea_statoverride.stdout"
+
 - name: kea-dhcp4 config
   ansible.builtin.copy:
     src: /etc/kea/.kea-dhcp4.conf.candidate
@@ -51,5 +67,5 @@
     enabled: true
     state: started
   loop:
-    - kea-dhcp-ddns-server
-    - kea-dhcp4-server
+    - isc-kea-dhcp-ddns-server
+    - isc-kea-dhcp4-server
