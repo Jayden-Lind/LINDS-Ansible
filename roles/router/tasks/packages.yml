@@ -1,9 +1,10 @@
 ---
 # apt on a router. Everything non-interactive. Security updates apply on
 # their own (unattended-upgrades, security origins only, 04:00 local, never
-# a reboot); everything else, the backports kernel included, moves only
-# inside this role and only when asked for (router_apt_upgrade, off by
-# default: a config push must not turn into an upgrade and a reboot).
+# a reboot); everything else, the backports packages and FRR
+# (deb.frrouting.org) included, moves only inside this role and only when
+# asked for (router_apt_upgrade, off by default: a config push must not turn
+# into an upgrade and a reboot).
 # needrestart restarts daemons under apt rather than prompt, in the
 # unattended run as well.
 
@@ -77,25 +78,52 @@
     - apt-daily.timer
     - apt-daily-upgrade.timer
 
-- name: trixie-backports (kernel only, see router_kernel_backports)
+- name: trixie-backports (pinned packages only)
   ansible.builtin.copy:
     dest: /etc/apt/sources.list.d/backports.sources
     content: |
-      # Managed by LINDS-Ansible (roles/router). Only linux-image-amd64 is
-      # taken from here (router_kernel_backports).
+      # Managed by LINDS-Ansible (roles/router). Only some packages come
+      # from here: the kernel (router_kernel_backports) and the packages in
+      # preferences.d/router-backports.pref.
       Types: deb
       URIs: http://deb.debian.org/debian
       Suites: trixie-backports
       Components: main
       Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
     mode: '0644'
-  when: router_kernel_backports
+  register: router_apt_backports_source
 
-- name: trixie-backports (absent)
-  ansible.builtin.file:
-    path: /etc/apt/sources.list.d/backports.sources
-    state: absent
-  when: not router_kernel_backports
+# Suricata 8 and a newer wireguard-tools from trixie-backports. The pin
+# gives these packages the same priority as stable, so apt takes the newer
+# version. All other packages stay on trixie.
+- name: Packages from trixie-backports (pin)
+  ansible.builtin.copy:
+    src: etc/apt/preferences.d/router-backports.pref
+    dest: /etc/apt/preferences.d/router-backports.pref
+    mode: '0644'
+
+# FRR from the FRR project's repository (frr-stable). Debian 13 has 10.3.
+# The signing key is a file in the role, so the trust does not change
+# without a commit. Its version is higher than Debian's, so apt takes it.
+- name: FRR repository key
+  ansible.builtin.copy:
+    src: etc/apt/keyrings/frrouting.gpg
+    dest: /etc/apt/keyrings/frrouting.gpg
+    mode: '0644'
+
+- name: FRR repository
+  ansible.builtin.copy:
+    src: etc/apt/sources.list.d/frrouting.sources
+    dest: /etc/apt/sources.list.d/frrouting.sources
+    mode: '0644'
+  register: router_apt_frr_source
+
+# The apt tasks below skip the refresh while the cache is less than an hour
+# old. A new source must be read before them.
+- name: apt cache refresh (sources changed)
+  ansible.builtin.apt:
+    update_cache: true
+  when: (router_apt_backports_source is changed) or (router_apt_frr_source is changed)
 
 - name: apt full-upgrade
   ansible.builtin.apt:

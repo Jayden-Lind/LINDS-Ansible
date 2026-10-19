@@ -116,14 +116,14 @@ layout above), and the notes are JD's.
 |---|---|---|---|
 | Interfaces, VLANs, WAN DHCP/PD, RA, WireGuard, XFRM | systemd-networkd | `etc/systemd/network/` | `.link` names NICs by MAC (`mgmt0`/`lan0`/`wan0`); the WAN keeps its lease through renews (`KeepConfiguration=dhcp`); PD `/56` → `lan0` (sla 0) and `lan0.52` (sla 1) |
 | Firewall + NAT | nftables | `etc/nftables.conf` | One `inet` table, rule comments carry the VyOS rule numbers; the `output` chain has the build-time mgmt guard |
-| Static + BGP | FRR (`bgpd`, `staticd`) | `etc/frr/frr.conf` | Same dialect as VyOS's `protocols`; `systemctl reload frr` diffs |
+| Static + BGP | FRR (`bgpd`, `staticd`), from deb.frrouting.org | `etc/frr/frr.conf` | Same dialect as VyOS's `protocols`; `systemctl reload frr` diffs |
 | Dual-WAN failover | `wan-failover` | `etc/wan-failover.json` | Per-WAN default in tables 1001/1002 for the health check (90/100 are the WireGuard tunnels'); hysteresis; carrier check; SNAT conntrack flush on switch |
 | IPsec | strongSwan (swanctl) | `etc/swanctl/swanctl.conf` | `LINDS` site-to-site over `ipsec0`, `LINDS_MOBILE` road-warrior over `ipsec10`; `encap = yes` is a line here, not a template patch |
 | DHCP | kea | `etc/kea/` | DDNS into AD DNS |
 | DNS forwarder | pdns-recursor | `etc/powerdns/recursor.yml` | Upstream Quad9 (over DNS over TLS at JD), 15-minute cache floor: see below |
 | NTP / SNMP / LLDP / DDNS | chrony, snmpd, lldpd, ddclient | `etc/chrony/`, `etc/snmp/`, `etc/default/` | |
 | mDNS reflector | avahi-daemon | `etc/avahi/avahi-daemon.conf` | Repeats mDNS between `lan0`, `lan0.52` and `lan0.58` so devices on one can be found from the others; publishes nothing itself |
-| IDS | Suricata 7 + suricata-update | `etc/suricata/` | One worker thread on `lan0`; WAN traffic and DNS only (BPF filter); TLS flows bypassed after the handshake; EVE → rsyslog imfile → Alloy → Loki; weekly rule refresh reloads in place |
+| IDS | Suricata 8 + suricata-update, from trixie-backports | `etc/suricata/` | One worker thread on `lan0`; WAN traffic and DNS only (BPF filter); TLS flows bypassed after the handshake; EVE → rsyslog imfile → Alloy → Loki; weekly rule refresh reloads in place |
 | Kernel | linux-image-cloud-amd64 from trixie-backports (7.x, `router_kernel_backports`), sysctl, modules, grub, tuned | `etc/sysctl.d/`, `etc/modules-load.d/`, `etc/default/grub.d/` | `ignore_routes_with_linkdown` keeps a link-down build reachable; `ip_nonlocal_bind` lets daemons bind `.1` addresses before the LAN link is up |
 
 ## Conventions and sharp edges
@@ -142,6 +142,21 @@ layout above), and the notes are JD's.
   that task before reaching any config. An upgrade run still fails in that
   window; wait and run it again. Anything else
   reloads in place; a changed `.netdev` is deleted and recreated.
+* **Some packages are newer than Debian 13's.** The role takes them from
+  two more sources, and it uses Debian 13 for all other packages:
+
+  | Package | Source | Why |
+  | --- | --- | --- |
+  | `linux-image-cloud-amd64` | trixie-backports (`router_kernel_backports`) | Kernel 7.x, not 6.12 |
+  | `suricata`, `suricata-update` | trixie-backports, pinned in `etc/apt/preferences.d/router-backports.pref` | Suricata 8, not 7.0 |
+  | `wireguard-tools` | trixie-backports, same pin | Newer `wg` |
+  | `frr`, `frr-pythontools` | `deb.frrouting.org`, component `frr-stable` | The newest FRR release, not 10.3 |
+
+  The FRR signing key is `files/etc/apt/keyrings/frrouting.gpg`. A new key
+  needs a commit. `frr-stable` moves to the next major release when FRR
+  makes one. An upgrade run then installs it, so read the FRR release notes
+  before the run. strongSwan, nftables and iproute2 stay on Debian 13: no
+  newer package exists for Debian 13.
 * **nftables is validated before install** (`nft -c`), as are the kea files.
   FRR and Suricata are validated after the daemons are up, in `validate.yml`.
 * **No `ConfigureWithoutCarrier` on the LAN side.** With it, `10.0.53.1` would
@@ -370,8 +385,8 @@ layout above), and the notes are JD's.
   must be spelled exactly like the stock ones (they are regexes used as hash
   keys). The package itself was missing from the role until 2026-10, so
   before that nothing was restarted at all. `needrestart -b` lists what is
-  running on replaced libraries. The backports kernel is not a security
-  origin and only moves through an upgrade run of this role.
+  running on replaced libraries. The backports packages and FRR are not
+  security origins. They only move through an upgrade run of this role.
   `journalctl -t unattended-upgrade` and
   `/var/log/unattended-upgrades/` show what happened; `unattended-upgrade
   --dry-run -d` previews.
@@ -573,7 +588,7 @@ section below.
 4. Watch: `journalctl -fu wan-failover` (default route installed within
    ~10 s of carrier), `swanctl --list-sas` (LINDS up), `vtysh -c 'show bgp summary'`
    (k8s peers + LINDS), `networkctl status wan0` (lease + PD),
-   `ip -6 route` (v6 default from RA), `suricatasc -c dump-counters /var/run/suricata-command.socket | grep wrong_thread`.
+   `ip -6 route` (v6 default from RA), `suricatasc -c dump-counters /var/run/suricata/suricata-command.socket | grep wrong_thread`.
 
 **Rollback:** the reverse — links down, VyOS on. The VyOS VM stays intact
 until this has run for a while.
@@ -1021,7 +1036,7 @@ The "commit" is `ansible-playbook playbooks/router.yml`.
 | `show lldp neighbors` | `lldpcli show neighbors` |
 | `show log` | `journalctl -f`; per daemon `journalctl -u strongswan -u frr -u kea-dhcp4-server -u wan-failover --since -1h` |
 | `monitor traffic interface wan0` | `tcpdump -ni wan0` |
-| IDS | `suricatasc -c uptime /var/run/suricata-command.socket`, `-c 'iface-stat wan0'`, `tail -f /var/log/suricata/eve.json \| jq -c 'select(.event_type=="alert")'` |
+| IDS | `suricatasc -c uptime /var/run/suricata/suricata-command.socket`, `-c 'iface-stat wan0'`, `tail -f /var/log/suricata/eve.json \| jq -c 'select(.event_type=="alert")'` |
 | `show system uptime` / `show version` | `uptime`, `uname -r`, `hostnamectl` |
 | `restart dhcp server` etc. | `systemctl restart kea-dhcp4-server` / `pdns-recursor` / `frr` / `strongswan` / `suricata` |
 | `show configuration` | the files under `/etc` are the config; the role's `files/etc/` mirrors them |

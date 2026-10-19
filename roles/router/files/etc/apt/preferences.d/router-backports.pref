@@ -1,0 +1,10 @@
+# Managed by LINDS-Ansible (roles/router). These packages come from
+# trixie-backports, because it has newer versions than trixie:
+#   suricata, suricata-update  8.x, not 7.0
+#   wireguard-tools            1.0.20250521, not 1.0.20210914
+# apt gives backports priority 100, so without this pin it keeps the stable
+# versions. With 500 on both, apt takes the higher version. The kernel does
+# not need a pin (tasks/packages.yml installs it with default_release).
+Package: suricata suricata-update wireguard-tools
+Pin: release n=trixie-backports
+Pin-Priority: 500

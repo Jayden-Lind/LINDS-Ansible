@@ -1,0 +1,8 @@
+# Managed by LINDS-Ansible (roles/router). FRR from the FRR project's own
+# repository: the newest stable release (frr-stable). Debian 13 has 10.3
+# only. The key is files/etc/apt/keyrings/frrouting.gpg.
+Types: deb
+URIs: https://deb.frrouting.org/frr
+Suites: trixie
+Components: frr-stable
+Signed-By: /etc/apt/keyrings/frrouting.gpg
