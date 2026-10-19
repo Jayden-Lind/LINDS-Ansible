@@ -67,12 +67,11 @@ in an OU where that GPO is linked (`OU=Servers`, `OU=Domain Controllers`).
 
 ## Known problems
 
-- The SMB volumes of the cluster log on to `jd-fs-01` as its local
-  `Administrator`, with the password in the Vault secrets `smb-immich-creds`
-  and `smb-plex-secret`. A rebuilt server has the template password, so the
-  volumes fail with "Host is down" until the local `Administrator` has the
-  Vault password. Set it with `ansible.windows.win_user` and `no_log`. A
-  domain service account for the cluster would remove this step.
+- The SMB volumes of the cluster log on as the domain account `svc-k8s-smb`
+  (`windows_directory_users`). Its password is in the Vault secrets
+  `linds-keyvault/smb-immich-creds` and `smb-plex-secret` (keys `username`,
+  `password`, `domain`). It needs no file permissions of its own: the share
+  gives `Everyone` Change, and the folders give `Authenticated Users` Modify.
 
 - After a restart, Server for NFS can take 10 to 20 minutes to start.
 - An NFS client keeps a mount to the old server. Remount it after the server

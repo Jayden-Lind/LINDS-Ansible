@@ -106,10 +106,8 @@ the data disk, and two machines that write to one volume destroy it.
   required (`Get-SmbServerConfiguration | Select RequireSecuritySignature`).
 - Each replicated folder goes to "normal". The member checks every file again,
   which takes more than a day for 5 TiB (see [replication.md](replication.md)).
-- The cluster volumes reconnect by themselves. For `jd-fs-01` they log on as
-  the local `Administrator`: give it the password of the Vault secret
-  `smb-immich-creds` first (see the known problems of
-  `roles/windows_fileserver/README.md`). Check with a write from the Immich
-  pod and a listing from the Plex pod.
+- The cluster volumes reconnect by themselves: they log on with the domain
+  account `svc-k8s-smb`. Check with a write from the Immich pod and a listing
+  from the Plex pod.
 - Remount the NFS clients and restart the programs that keep a connection
   open.
