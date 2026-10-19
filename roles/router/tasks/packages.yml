@@ -93,7 +93,7 @@
     mode: '0644'
   register: router_apt_backports_source
 
-# Suricata 8 and a newer wireguard-tools from trixie-backports. The pin
+# Suricata 8, wireguard-tools and mtr-tiny from trixie-backports. The pin
 # gives these packages the same priority as stable, so apt takes the newer
 # version. All other packages stay on trixie.
 - name: Packages from trixie-backports (pin)
@@ -102,28 +102,31 @@
     dest: /etc/apt/preferences.d/router-backports.pref
     mode: '0644'
 
-# FRR from the FRR project's repository (frr-stable). Debian 13 has 10.3.
-# The signing key is a file in the role, so the trust does not change
-# without a commit. Its version is higher than Debian's, so apt takes it.
-- name: FRR repository key
+# The vendors' own repositories, for the newest stable release of FRR, Kea,
+# PowerDNS Recursor and lldpd (each .sources file says which). The signing
+# keys are files in the role, so the trust does not change without a
+# commit. Their versions are higher than Debian's, so apt takes them.
+- name: Vendor repository keys
   ansible.builtin.copy:
-    src: etc/apt/keyrings/frrouting.gpg
-    dest: /etc/apt/keyrings/frrouting.gpg
+    src: "etc/apt/keyrings/{{ item }}"
+    dest: "/etc/apt/keyrings/{{ item }}"
     mode: '0644'
+  loop: [frrouting.gpg, isc-kea.asc, powerdns.asc, lldpd-obs.asc]
 
-- name: FRR repository
+- name: Vendor repositories
   ansible.builtin.copy:
-    src: etc/apt/sources.list.d/frrouting.sources
-    dest: /etc/apt/sources.list.d/frrouting.sources
+    src: "etc/apt/sources.list.d/{{ item }}"
+    dest: "/etc/apt/sources.list.d/{{ item }}"
     mode: '0644'
-  register: router_apt_frr_source
+  loop: [frrouting.sources, isc-kea.sources, powerdns-recursor.sources, lldpd.sources]
+  register: router_apt_vendor_sources
 
 # The apt tasks below skip the refresh while the cache is less than an hour
 # old. A new source must be read before them.
 - name: apt cache refresh (sources changed)
   ansible.builtin.apt:
     update_cache: true
-  when: (router_apt_backports_source is changed) or (router_apt_frr_source is changed)
+  when: (router_apt_backports_source is changed) or (router_apt_vendor_sources is changed)
 
 - name: apt full-upgrade
   ansible.builtin.apt:
@@ -153,8 +156,11 @@
       - libcharon-extra-plugins   # eap-mschapv2
       - libstrongswan-extra-plugins
       - libstrongswan-standard-plugins
-      - kea-dhcp4-server
-      - kea-dhcp-ddns-server
+      # ISC's Kea packages: the services are isc-kea-dhcp4-server and
+      # isc-kea-dhcp-ddns-server. lease_cmds is in isc-kea-hooks.
+      - isc-kea-dhcp4
+      - isc-kea-dhcp-ddns
+      - isc-kea-hooks
       - pdns-recursor
       - chrony
       - snmpd
@@ -178,6 +184,15 @@
       - vnstat
       - qemu-guest-agent
     state: present
+
+# Debian's Kea packages, replaced by ISC's (above). apt removes them when it
+# installs ISC's. Purge also deletes their AppArmor profiles: these name the
+# same binaries (/usr/sbin/kea-dhcp4) and would confine ISC's Kea.
+- name: Debian's Kea packages purged
+  ansible.builtin.apt:
+    name: [kea-dhcp4-server, kea-dhcp-ddns-server, kea-common]
+    state: absent
+    purge: true
 
 # The genericcloud image boots Debian's cloud kernel: same version as the
 # full one, trimmed module set — but it carries everything a virtio router

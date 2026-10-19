@@ -119,9 +119,9 @@ layout above), and the notes are JD's.
 | Static + BGP | FRR (`bgpd`, `staticd`), from deb.frrouting.org | `etc/frr/frr.conf` | Same dialect as VyOS's `protocols`; `systemctl reload frr` diffs |
 | Dual-WAN failover | `wan-failover` | `etc/wan-failover.json` | Per-WAN default in tables 1001/1002 for the health check (90/100 are the WireGuard tunnels'); hysteresis; carrier check; SNAT conntrack flush on switch |
 | IPsec | strongSwan (swanctl) | `etc/swanctl/swanctl.conf` | `LINDS` site-to-site over `ipsec0`, `LINDS_MOBILE` road-warrior over `ipsec10`; `encap = yes` is a line here, not a template patch |
-| DHCP | kea | `etc/kea/` | DDNS into AD DNS |
-| DNS forwarder | pdns-recursor | `etc/powerdns/recursor.yml` | Upstream Quad9 (over DNS over TLS at JD), 15-minute cache floor: see below |
-| NTP / SNMP / LLDP / DDNS | chrony, snmpd, lldpd, ddclient | `etc/chrony/`, `etc/snmp/`, `etc/default/` | |
+| DHCP | Kea, from ISC's repository (services `isc-kea-dhcp4-server`, `isc-kea-dhcp-ddns-server`) | `etc/kea/` | DDNS into AD DNS |
+| DNS forwarder | pdns-recursor, from repo.powerdns.com | `etc/powerdns/recursor.yml` | Upstream Quad9 (over DNS over TLS at JD), 15-minute cache floor: see below |
+| NTP / SNMP / LLDP / DDNS | chrony, snmpd, lldpd (from its author's OBS repository), ddclient | `etc/chrony/`, `etc/snmp/`, `etc/default/` | |
 | mDNS reflector | avahi-daemon | `etc/avahi/avahi-daemon.conf` | Repeats mDNS between `lan0`, `lan0.52` and `lan0.58` so devices on one can be found from the others; publishes nothing itself |
 | IDS | Suricata 8 + suricata-update, from trixie-backports | `etc/suricata/` | One worker thread on `lan0`; WAN traffic and DNS only (BPF filter); TLS flows bypassed after the handshake; EVE → rsyslog imfile → Alloy → Loki; weekly rule refresh reloads in place |
 | Kernel | linux-image-cloud-amd64 from trixie-backports (7.x, `router_kernel_backports`), sysctl, modules, grub, tuned | `etc/sysctl.d/`, `etc/modules-load.d/`, `etc/default/grub.d/` | `ignore_routes_with_linkdown` keeps a link-down build reachable; `ip_nonlocal_bind` lets daemons bind `.1` addresses before the LAN link is up |
@@ -149,14 +149,26 @@ layout above), and the notes are JD's.
   | --- | --- | --- |
   | `linux-image-cloud-amd64` | trixie-backports (`router_kernel_backports`) | Kernel 7.x, not 6.12 |
   | `suricata`, `suricata-update` | trixie-backports, pinned in `etc/apt/preferences.d/router-backports.pref` | Suricata 8, not 7.0 |
-  | `wireguard-tools` | trixie-backports, same pin | Newer `wg` |
+  | `wireguard-tools`, `mtr-tiny` | trixie-backports, same pin | Newer `wg` and `mtr` |
   | `frr`, `frr-pythontools` | `deb.frrouting.org`, component `frr-stable` | The newest FRR release, not 10.3 |
+  | `isc-kea-dhcp4`, `isc-kea-dhcp-ddns`, `isc-kea-hooks` | ISC's `kea-3-2` repository on Cloudsmith | Kea 3.2, not 2.6 |
+  | `pdns-recursor` | `repo.powerdns.com`, suite `trixie-rec-54` | Recursor 5.4, not 5.2 |
+  | `lldpd` | openSUSE Build Service, `home:vbernat` (the lldpd author) | 1.0.22, not 1.0.18 |
 
-  The FRR signing key is `files/etc/apt/keyrings/frrouting.gpg`. A new key
-  needs a commit. `frr-stable` moves to the next major release when FRR
-  makes one. An upgrade run then installs it, so read the FRR release notes
-  before the run. strongSwan, nftables and iproute2 stay on Debian 13: no
-  newer package exists for Debian 13.
+  The signing keys are in `files/etc/apt/keyrings/`. A new key needs a
+  commit. The `lldpd-obs.asc` key expires on 2027-01-05. `frr-stable`
+  moves to the next major release when FRR makes one, and an upgrade run
+  then installs it: read the FRR release notes before the run. ISC and
+  PowerDNS make one repository for each stable series. To move to the next
+  series, change the name in `isc-kea.sources` or
+  `powerdns-recursor.sources`. strongSwan, nftables and iproute2 stay on
+  Debian 13: no newer package exists for Debian 13.
+* **ISC's Kea replaces Debian's.** The packages and the services have
+  different names (`isc-kea-dhcp4-server`, not `kea-dhcp4-server`). The
+  binaries, `/etc/kea`, `/var/lib/kea` and the `_kea` user are the same.
+  The role purges Debian's Kea packages, because their AppArmor profiles
+  name the same binaries. Kea 3 accepts control sockets only under
+  `/var/run/kea`.
 * **nftables is validated before install** (`nft -c`), as are the kea files.
   FRR and Suricata are validated after the daemons are up, in `validate.yml`.
 * **No `ConfigureWithoutCarrier` on the LAN side.** With it, `10.0.53.1` would
@@ -761,7 +773,7 @@ anywhere, and the router then sits idle until the swap.
    | `swanctl --list-conns` | `LINDS` |
    | `wg show wg101` | no handshake, ever, while wan0 is down |
    | `nft list chain inet router output` | the three "only by the WAN" counters climbing: charon and WireGuard keep trying, the packets go nowhere |
-   | `journalctl -u kea-dhcp4-server` | `the interface lan0 is not running`, five times every five seconds for five minutes after each start, then silence. It has stopped trying, which is why the cutover reboots the router |
+   | `journalctl -u isc-kea-dhcp4-server` | `the interface lan0 is not running`, five times every five seconds for five minutes after each start, then silence. It has stopped trying, which is why the cutover reboots the router |
 
    Nothing the idle router does reaches the live network: kea, the RA
    sender, avahi and miniupnpd are bound to `lan0` and its VLANs, charon may
@@ -800,9 +812,9 @@ On linds-proxmox-01, with `cutover/linds-router-cutover` copied to `/root`.
        ssh vyos@192.168.6.1 "sudo awk 'FNR==1 && NR!=1 {next} {print}' \
          /config/dhcp/dhcp4-leases.csv.2 /config/dhcp/dhcp4-leases.csv" > leases.csv
        scp leases.csv jayden@10.3.1.250:/tmp/
-       ssh jayden@10.3.1.250 'sudo systemctl stop kea-dhcp4-server &&
+       ssh jayden@10.3.1.250 'sudo systemctl stop isc-kea-dhcp4-server &&
          sudo install -o _kea -g _kea -m 0640 /tmp/leases.csv /var/lib/kea/kea-leases4.csv &&
-         sudo systemctl start kea-dhcp4-server'
+         sudo systemctl start isc-kea-dhcp4-server'
 
    (If there is no `.2` file at that moment, awk says so and the one file is
    the whole set.)
@@ -1021,7 +1033,7 @@ The "commit" is `ansible-playbook playbooks/router.yml`.
 | `show vpn ipsec policy` / `state` | `ip xfrm policy`, `ip xfrm state` |
 | `show vpn ipsec … certificate` | `swanctl --list-certs` |
 | `reset vpn ipsec site-to-site peer LINDS` | `swanctl --terminate --ike LINDS; swanctl --initiate --child LINDS` |
-| `show dhcp server leases` | `echo '{"command":"lease4-get-all","service":["dhcp4"]}' \| socat - UNIX-CONNECT:/run/kea/kea4-ctrl-socket \| jq -r '.arguments.leases[] \| [."ip-address", ."hw-address", .hostname] \| @tsv'` |
+| `show dhcp server leases` | `echo '{"command":"lease4-get-all","service":["dhcp4"]}' \| socat - UNIX-CONNECT:/var/run/kea/kea4-ctrl-socket \| jq -r '.arguments.leases[] \| [."ip-address", ."hw-address", .hostname] \| @tsv'` |
 | `show dhcp server statistics` | same socket, `"command":"statistic-get-all"` |
 | `show dns forwarding statistics` | `rec_control get-all`, `rec_control get cache-entries` |
 | `reset dns forwarding cache` | `rec_control wipe-cache '.$'` (everything) or `'linds.com.au$'` |
@@ -1034,9 +1046,9 @@ The "commit" is `ansible-playbook playbooks/router.yml`.
 | `show conntrack table ipv4` | `conntrack -L`; count `conntrack -C`; NATed only `conntrack -L --src-nat` |
 | `show ntp` | `chronyc tracking`, `chronyc sources` |
 | `show lldp neighbors` | `lldpcli show neighbors` |
-| `show log` | `journalctl -f`; per daemon `journalctl -u strongswan -u frr -u kea-dhcp4-server -u wan-failover --since -1h` |
+| `show log` | `journalctl -f`; per daemon `journalctl -u strongswan -u frr -u isc-kea-dhcp4-server -u wan-failover --since -1h` |
 | `monitor traffic interface wan0` | `tcpdump -ni wan0` |
 | IDS | `suricatasc -c uptime /var/run/suricata/suricata-command.socket`, `-c 'iface-stat wan0'`, `tail -f /var/log/suricata/eve.json \| jq -c 'select(.event_type=="alert")'` |
 | `show system uptime` / `show version` | `uptime`, `uname -r`, `hostnamectl` |
-| `restart dhcp server` etc. | `systemctl restart kea-dhcp4-server` / `pdns-recursor` / `frr` / `strongswan` / `suricata` |
+| `restart dhcp server` etc. | `systemctl restart isc-kea-dhcp4-server` / `pdns-recursor` / `frr` / `strongswan` / `suricata` |
 | `show configuration` | the files under `/etc` are the config; the role's `files/etc/` mirrors them |

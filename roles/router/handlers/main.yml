@@ -42,12 +42,12 @@
 
 - name: restart kea-dhcp4
   ansible.builtin.systemd_service:
-    name: kea-dhcp4-server
+    name: isc-kea-dhcp4-server
     state: restarted
 
 - name: restart kea-dhcp-ddns
   ansible.builtin.systemd_service:
-    name: kea-dhcp-ddns-server
+    name: isc-kea-dhcp-ddns-server
     state: restarted
 
 - name: restart chrony

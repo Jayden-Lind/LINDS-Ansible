@@ -1,0 +1,10 @@
+# Managed by LINDS-Ansible (roles/router). PowerDNS Recursor from the
+# PowerDNS repository: the newest stable series (5.4). Debian 13 has 5.2.
+# PowerDNS makes one suite for each series: change trixie-rec-54 when the
+# next series (5.5) is stable. The key is
+# files/etc/apt/keyrings/powerdns.asc.
+Types: deb
+URIs: https://repo.powerdns.com/debian
+Suites: trixie-rec-54
+Components: main
+Signed-By: /etc/apt/keyrings/powerdns.asc
