@@ -76,6 +76,19 @@ windows_gpo_definitions:
       # 5: always a time server, and always a reliable one.
       - { key: 'HKLM\SOFTWARE\Policies\Microsoft\W32Time\Config', name: AnnounceFlags, type: DWord, value: 5 }
 
+  # Accounts that only connect over the network, such as svc-k8s-smb for the
+  # cluster's SMB volumes. "Access this computer from the network" stays
+  # allowed; every other logon is denied on every computer.
+  - name: Service Accounts - Network Logon Only
+    comment: >-
+      Denies the group "Service Accounts" every logon except over the network.
+      Made by LINDS-Ansible, role windows_gpo. Do not edit it in GPMC.
+    privilege_rights:
+      SeDenyInteractiveLogonRight: ['LINDS\Service Accounts']
+      SeDenyRemoteInteractiveLogonRight: ['LINDS\Service Accounts']
+      SeDenyBatchLogonRight: ['LINDS\Service Accounts']
+      SeDenyServiceLogonRight: ['LINDS\Service Accounts']
+
 # The Default Domain Policy is linked to the domain and enforced, so these
 # values overrode the two GPOs above on every computer.
 windows_gpo_remove_values:

@@ -15,8 +15,9 @@ It has two plays:
 | The domain | the first host in `windows_dc` | `topology` | `windows_ad_topology` | Sites, subnets, site link, `_msdcs` delegation |
 | | | `recovery` | `windows_ad_recovery` | AD Recycle Bin, FSMO roles |
 | | | `dfsr` | `windows_dfsr` | The NAS replication group |
-| | | `gpo` | `windows_gpo` | The GPOs that the code owns: the server baseline and the time hierarchy |
-| | | `directory` | `windows_directory` | OUs, groups, users, membership, GPO links, password policy |
+| | | `directory` | `windows_directory` | OUs, groups, users, membership, password policy |
+| | | `gpo` | `windows_gpo` | The GPOs that the code owns: the server baseline, the time hierarchy, the service accounts' logon rights |
+| | | `directory` | `windows_directory` (`tasks/links.yml`) | The GPO links, after the GPOs exist |
 
 A server gets the settings of each group that it is in: `windows_dc`,
 `windows_ca` and `windows_fileserver`. Only the servers in `windows_managed`

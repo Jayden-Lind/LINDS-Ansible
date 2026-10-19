@@ -1,6 +1,7 @@
 # Make one GPO agree with its definition: the GPO and its comment, its
 # registry policy values and registry preference items (exact for each key
-# that the definition names), the computers that apply it, and its WMI filter.
+# that the definition names), its user rights, the computers that apply it,
+# and its WMI filter.
 # The GPOs of this role have computer settings only, so the user half is off.
 # SupportsShouldProcess: without it, win_powershell does not run the script in
 # check mode. The script reads $Ansible.CheckMode itself.
@@ -94,6 +95,43 @@ if ($apply) {
             Note "stop $who applying the GPO (not in the code)"
             $type = switch ("$($p.Trustee.SidType)") { 'Computer' { 'Computer' } 'User' { 'User' } default { 'Group' } }
             if (-not $check) { Set-GPPermission -Guid $gpo.Id -TargetName $who.TrimEnd('$') -TargetType $type -PermissionLevel None -Replace | Out-Null }
+        }
+    }
+}
+
+# User rights (Security Settings, GptTmpl.inf in SYSVOL). No GroupPolicy cmdlet
+# sets them, so the script does what GPMC does: it writes the security
+# template, adds the Security extension to the GPO and raises the computer
+# version, so that each computer applies the change at its next refresh.
+$rights = $d.privilege_rights
+if ($rights -and @($rights.PSObject.Properties).Count) {
+    Import-Module ActiveDirectory
+    $domain = Get-ADDomain
+    $lines = foreach ($p in @($rights.PSObject.Properties | Sort-Object Name)) {
+        $sids = foreach ($who in @($p.Value)) { '*' + ([Security.Principal.NTAccount]$who).Translate([Security.Principal.SecurityIdentifier]).Value }
+        "$($p.Name) = " + ((@($sids) | Sort-Object) -join ',')
+    }
+    $want = "[Unicode]`r`nUnicode=yes`r`n[Version]`r`nsignature=`"`$CHICAGO`$`"`r`nRevision=1`r`n[Privilege Rights]`r`n" + (@($lines) -join "`r`n") + "`r`n"
+    $gpt = "\\$($domain.DNSRoot)\SYSVOL\$($domain.DNSRoot)\Policies\{$($gpo.Id)}"
+    $inf = "$gpt\Machine\Microsoft\Windows NT\SecEdit\GptTmpl.inf"
+    $have = if (Test-Path -LiteralPath $inf) { [IO.File]::ReadAllText($inf, [Text.Encoding]::Unicode) } else { '' }
+    if ($have -ne $want) {
+        Note "set the user rights: $((@($rights.PSObject.Properties) | ForEach-Object { $_.Name }) -join ', ')"
+        if (-not $check) {
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $inf) | Out-Null
+            [IO.File]::WriteAllText($inf, $want, [Text.Encoding]::Unicode)
+            $dn = "CN={$($gpo.Id)},CN=Policies,CN=System,$($domain.DistinguishedName)"
+            $obj = Get-ADObject -Identity $dn -Properties gPCMachineExtensionNames, versionNumber
+            # The Security extension and its GPMC snap-in, kept sorted as GPMC does.
+            $security = '[{827D319E-6EAC-11D2-A4EA-00C04F79F83A}{803E14A0-B4FB-11D0-A0D0-00A0C90F574B}]'
+            $entries = @([regex]::Matches("$($obj.gPCMachineExtensionNames)", '\[[^\]]+\]') | ForEach-Object { $_.Value })
+            if ($entries -notcontains $security) { $entries += $security }
+            # The low 16 bits are the computer version.
+            $version = [int]$obj.versionNumber + 1
+            Set-ADObject -Identity $dn -Replace @{ gPCMachineExtensionNames = ((@($entries) | Sort-Object) -join ''); versionNumber = $version }
+            $ini = "$gpt\GPT.INI"
+            $text = [IO.File]::ReadAllText($ini)
+            [IO.File]::WriteAllText($ini, [regex]::Replace($text, '(?m)^Version=\d+', "Version=$version"))
         }
     }
 }

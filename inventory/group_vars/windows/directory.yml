@@ -31,6 +31,7 @@ windows_directory_gpo_links:
     - gpo: Default Domain Policy
       enforced: true
     - gpo: Server - Baseline
+    - gpo: Service Accounts - Network Logon Only
   OU=Domain Controllers:
     - gpo: PDC Emulator - Time
     - gpo: Domain Controller - Time
@@ -115,6 +116,11 @@ windows_directory_groups:
     scope: global
     category: security
     description: null
+  - name: Service Accounts
+    ou: OU=Server-Accounts
+    scope: global
+    category: security
+    description: Accounts that only log on over the network (GPO Service Accounts - Network Logon Only)
   - name: Time-Machine
     ou: OU=Server-Accounts
     scope: global
