@@ -24,9 +24,6 @@ Two layers give these rights:
   `inventory/host_vars/jd-fs-01.linds.com.au/fileserver.yml`. The role
   `windows_fileserver` applies them.
 
-**NOTE:** Some folders in that file are not applied yet. See
-[Apply a large folder](#apply-a-large-folder).
-
 ## Check the rights
 
 1. Run `ansible-playbook playbooks/windows-nas-access.yml`.
@@ -84,38 +81,37 @@ Measured on 19 October 2026:
 | Folder | Size | `linds-dc` reads | `linds-dc` writes | Pool `NAS` | Time |
 | --- | --- | --- | --- | --- | --- |
 | `Music` | 4.6 GB | 13.0 GB | 13.0 GB | +8.9 GiB | 4 minutes |
-| `papa usb` | 0.9 GB | 2.7 GB | 2.5 GB | +2.2 GiB | 2 minutes |
 
-## Apply a large folder
+## Change a large folder
 
-`jayden`, `business doc`, `holiday videos` and `photos` hold 4.6 TB together.
-With the shadow copies of `E:`, the pool needs about 9 TB of free space for
-them. It has about 4.5 TB.
+A large folder is one that holds more than about 200 GB, or a change to
+several folders at the same time. Without shadow copies of `E:`, the pool
+grows by about the staging quota of each folder. With them, it grows by about
+2 times the size of the folders.
 
 Before you start:
 
-- Make sure that the pool `NAS` is below 60 %:
+- Make sure that the pool `NAS` is below 65 %:
   `ssh root@192.168.6.205 lvs NAS/NAS`.
-- Decide what happens to the shadow copies of `E:`. If you delete them, the
-  old blocks do not stay on the pool. `jd-fs-01` keeps its own shadow copies of
-  `D:`.
+- Make sure that a Kerberos ticket stays valid for the whole run. Get one that
+  you can renew for a week: `kinit -f -r 7d Administrator@LINDS.COM.AU`.
 
 Procedure:
 
-1. If you decided to delete them, delete the shadow copies of `E:` on
-   `linds-dc`: `vssadmin delete shadows /for=E: /all`.
-2. If you deleted them, disable the scheduled task `shadow-copy-E` on
-   `linds-dc`.
-3. Remove the comment signs of one folder in `fileserver.yml`. Start with the
-   smallest.
-4. Apply it as for a small folder.
+1. Delete the shadow copies of `E:` on `linds-dc`:
+   `vssadmin delete shadows /for=E: /all /quiet`. `jd-fs-01` keeps its own
+   shadow copies of `D:`.
+2. Disable the scheduled task `shadow-copy-E` on `linds-dc`.
+3. Free the space that the shadow copies kept ([thin-storage.md](thin-storage.md)).
+4. Change the folders in `fileserver.yml`, and apply them as for a small
+   folder.
 5. Monitor the pool every hour. If it reaches 80 %, stop DFS Replication on
    `linds-dc` (`Stop-Service DFSR`), and find what holds the space.
-6. When the backlog is empty, do the next folder.
-7. When all folders are done, enable `shadow-copy-E` again.
+6. When the backlog is empty, enable `shadow-copy-E` again.
 
 **WARNING:** If the pool `NAS` becomes full, new blocks of `E:` silently
 become zeros. Never let it reach 100 %.
 
-**NOTE:** While the backlog is large, new files reach `linds-dc` only after
-the files that are in the backlog before them.
+**NOTE:** `linds-dc` writes about 40 MB/s. A change to all NAS folders (5.2 TB)
+takes about 4 days. While the backlog is large, new files reach `linds-dc`
+only after the files that are in the backlog before them.

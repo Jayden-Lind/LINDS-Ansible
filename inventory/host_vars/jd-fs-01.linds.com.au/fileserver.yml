@@ -50,9 +50,30 @@ windows_fileserver_folder_permissions:
     rules:
       - {who: LINDS\FreeNAS Read & Write, rights: Modify}
       - {who: LINDS\Domain Users, rights: ReadAndExecute}
+  - path: D:\business doc
+    clean_below: true
+    rules:
+      - {who: LINDS\FreeNAS Read & Write, rights: Modify}
+      - {who: LINDS\Domain Users, rights: ReadAndExecute}
+  - path: D:\holiday videos
+    clean_below: true
+    rules:
+      - {who: LINDS\FreeNAS Read & Write, rights: Modify}
+      - {who: LINDS\Domain Users, rights: ReadAndExecute}
+      - {who: LINDS\Service Accounts, rights: ReadAndExecute}   # Plex
+  - path: D:\photos
+    clean_below: true
+    rules:
+      - {who: LINDS\FreeNAS Read & Write, rights: Modify}
+      - {who: LINDS\Domain Users, rights: ReadAndExecute}
+      - {who: LINDS\Service Accounts, rights: Modify}           # Immich
 
   # The personal folders: the family can change them. Other accounts cannot
   # open them.
+  - path: D:\jayden
+    clean_below: true
+    rules:
+      - {who: LINDS\FreeNAS Read & Write, rights: Modify}
   - path: D:\cheryls files
     clean_below: true
     rules:
@@ -91,33 +112,3 @@ windows_fileserver_folder_permissions:
     rules:
       - {who: CREATOR OWNER, rights: FullControl, propagation: InheritOnly}
       - {who: LINDS\Redirected Folders, rights: "ReadData, AppendData, ReadAttributes, ExecuteFile", inherit: None}
-
-  # NOT APPLIED YET: these four folders hold 4.6 TB. The share already limits
-  # the other accounts to read. To set the NTFS permissions, linds-dc writes
-  # each file again (measured: 2.8 times the data). While shadow copies of E:
-  # exist, the thin pool NAS also keeps the old blocks (about 2 times the
-  # data). For these folders, that is more than the free space of the pool.
-  #
-  # WARNING: Do not remove the comment signs before you read
-  # docs/windows/runbooks/nas-permissions.md.
-  # - path: D:\jayden
-  #   clean_below: true
-  #   rules:
-  #     - {who: LINDS\FreeNAS Read & Write, rights: Modify}
-  # - path: D:\business doc
-  #   clean_below: true
-  #   rules:
-  #     - {who: LINDS\FreeNAS Read & Write, rights: Modify}
-  #     - {who: LINDS\Domain Users, rights: ReadAndExecute}
-  # - path: D:\holiday videos
-  #   clean_below: true
-  #   rules:
-  #     - {who: LINDS\FreeNAS Read & Write, rights: Modify}
-  #     - {who: LINDS\Domain Users, rights: ReadAndExecute}
-  #     - {who: LINDS\Service Accounts, rights: ReadAndExecute}   # Plex
-  # - path: D:\photos
-  #   clean_below: true
-  #   rules:
-  #     - {who: LINDS\FreeNAS Read & Write, rights: Modify}
-  #     - {who: LINDS\Domain Users, rights: ReadAndExecute}
-  #     - {who: LINDS\Service Accounts, rights: Modify}           # Immich
