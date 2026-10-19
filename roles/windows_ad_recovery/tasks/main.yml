@@ -50,3 +50,19 @@
         }
       }
   run_once: true
+  register: windows_ad_recovery_fsmo
+
+# The GPO "PDC Emulator - Time" follows the PDC emulator role through a WMI
+# filter, but only at the next Group Policy refresh, up to two hours later.
+# Until then the new PDC emulator has no time source. This is the play's host
+# when it is the PDC emulator in fsmo_placement, which is the usual case.
+- name: Apply Group Policy on the new PDC emulator and resync its time
+  ansible.windows.win_command: "{{ item }}"
+  loop:
+    - gpupdate /target:computer /force
+    - w32tm /resync /rediscover
+  changed_when: false
+  when:
+    - windows_ad_recovery_fsmo is changed
+    - "'PDCEmulator' in windows_ad_recovery_fsmo.output | default([]) | join(' ')"
+    - fsmo_placement.PDCEmulator | lower == inventory_hostname | lower

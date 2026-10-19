@@ -5,6 +5,11 @@ windows_dc_site: "{{ ad_site }}"
 # The Directory Services Restore Mode password, from the vault.
 windows_dsrm_password: "{{ vault_windows_dsrm_password | default('') }}"
 
+# Who may transfer a zone from this DNS server: [{zone, secure_secondaries}],
+# where secure_secondaries is NoTransfer, TransferAnyServer,
+# TransferToZoneNameServer or TransferToSecureServers. Empty: no change.
+windows_dc_dns_zone_transfers: []
+
 # The DNS forwarders of the server. Set them in the inventory.
 windows_dc_dns_forwarders: []
 

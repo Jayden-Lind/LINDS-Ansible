@@ -21,3 +21,26 @@
   ansible.windows.win_dns_client:
     adapter_names: "*"
     dns_servers: "{{ windows_dc_dns_client_servers }}"
+
+# A zone transfer setting belongs to each DNS server, even for an AD-integrated
+# zone: it does not replicate, and a new domain controller starts with
+# NoTransfer.
+- name: Set who may transfer each zone from this DNS server
+  ansible.windows.win_powershell:
+    parameters:
+      Transfers: "{{ windows_dc_dns_zone_transfers | to_json }}"
+    script: |
+      [CmdletBinding(SupportsShouldProcess)]
+      param([string]$Transfers)
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      $items = $Transfers | ConvertFrom-Json
+      foreach ($t in $items) {
+          $zone = Get-DnsServerZone -Name $t.zone
+          if ("$($zone.SecureSecondaries)" -ne $t.secure_secondaries) {
+              if (-not $Ansible.CheckMode) { Set-DnsServerPrimaryZone -Name $t.zone -SecureSecondaries $t.secure_secondaries }
+              $Ansible.Changed = $true
+              "$($t.zone): $($zone.SecureSecondaries) -> $($t.secure_secondaries)"
+          }
+      }
+  when: windows_dc_dns_zone_transfers | length > 0
