@@ -100,8 +100,9 @@ recursor:
     # (outgoing.dot_to_port_853 is on by default), and outgoing.edns_padding
     # hides the size of each query. The ISP cannot read the names that the
     # router looks up. Clients do not change: they send plain DNS to the
-    # router. Recursor 5.2 does not check the server certificate, so DoT
-    # stops a passive observer but not an attacker who intercepts on purpose.
+    # router. The recursor checks the server certificate (name
+    # dns.quad9.net, system CA store; outgoing.tls_configurations below), so
+    # an attacker who intercepts the connection gets SERVFAIL, not answers.
     # Measured 2026-10-18: on an open connection a lookup takes 9-11 ms, the
     # same as UDP. A new connection adds about 25-30 ms. Quad9 closes an
     # idle connection after about 10 s, the same as tcp_max_idle_ms, so a
@@ -127,6 +128,15 @@ recursor:
 outgoing:
   # Forward to RFC1918 targets (the default refuses them).
   dont_query: []
+  # Check Quad9's certificate on the DoT connections (Recursor 5.4+). If
+  # the check fails, every name not in the cache gets SERVFAIL. Tested
+  # 2026-10-20 on a second instance: dns.quad9.net answers, a wrong name
+  # (dns.google) gets SERVFAIL.
+  tls_configurations:
+    - name: quad9
+      subnets: ['9.9.9.9', '149.112.112.112', '2620:fe::fe', '2620:fe::9']
+      subject_name: dns.quad9.net
+      validate_certificate: true
 
 recordcache:
   max_entries: 1000000

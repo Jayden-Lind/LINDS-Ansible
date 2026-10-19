@@ -21,6 +21,14 @@
 # suricata.yaml leaves stream memory uncapped; MemoryMax= on the unit is what
 # keeps a runaway from taking the router's other daemons with it. A cgroup
 # limit applies on daemon-reload, no restart needed.
+# Where Suricata keeps its compiled rule databases (sgh-mpm-caching in
+# suricata.yaml). Suricata does not make the directory itself.
+- name: Suricata rule cache dir
+  ansible.builtin.file:
+    path: /var/lib/suricata/cache/sgh
+    state: directory
+    mode: '0750'
+
 - name: suricata.service drop-in dir
   ansible.builtin.file:
     path: /etc/systemd/system/suricata.service.d

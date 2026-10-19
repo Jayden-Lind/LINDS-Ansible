@@ -194,10 +194,9 @@ host-mode: router
 #     | grep -E 'reassembly_memuse|segment_memcap_drop|memcap_pressure'
 stream:
   memcap: 0
-  # Stop all work on a TCP flow when it can no longer be inspected: when TLS
-  # encryption starts (tls encryption-handling: bypass), or when the flow
-  # passes the reassembly depth. Without this key, the TLS bypass does
-  # nothing in Suricata 7. Check: flow_bypassed.local_pkts in dump-counters.
+  # Stop all work on a TCP flow when it passes the reassembly depth (TLS
+  # and SSH flows stop when the encryption starts: encryption-handling
+  # below). Check: flow_bypassed.local_pkts in dump-counters.
   bypass: yes
   reassembly:
     memcap: 0
@@ -238,6 +237,12 @@ threshold-file: /etc/suricata/threshold.config
 # (about 520 MB) and one second more to load.
 detect:
   profile: high
+  # Keep the compiled pattern-matcher (Hyperscan) databases on disk, so a
+  # start, a rule reload or a `suricata -T` loads them instead of compiling
+  # them again. tasks/suricata.yml makes the directory; Suricata deletes
+  # files that it has not used for 7 days.
+  sgh-mpm-caching: yes
+  sgh-mpm-caching-path: /var/lib/suricata/cache/sgh
 
 app-layer:
   protocols:
@@ -256,6 +261,9 @@ app-layer:
         enabled: yes
     ssh:
       enabled: yes
+      # As for TLS: stop processing the flow when the encryption starts. The
+      # EVE ssh event (client and server software) comes before that.
+      encryption-handling: bypass
     dhcp:
       enabled: yes
     smb:

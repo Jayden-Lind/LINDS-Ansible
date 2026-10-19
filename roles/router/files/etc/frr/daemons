@@ -22,3 +22,6 @@ vtysh_enable=yes
 zebra_options="  -A 127.0.0.1 -s 90000000"
 bgpd_options="   -A 127.0.0.1"
 staticd_options="-A 127.0.0.1"
+# mgmtd (FRR 10) listened on all addresses (port 2623) without this; the
+# other daemons only listen on 127.0.0.1.
+mgmtd_options="  -A 127.0.0.1"

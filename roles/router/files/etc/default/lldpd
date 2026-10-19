@@ -1,4 +1,6 @@
 # Managed by LINDS-Ansible: roles/router/files/etc/default/lldpd
 # Legacy protocols as on VyOS (-c cdp, -e edp, -f fdp, -s sonmp) and the
 # SNMP AgentX subagent (-x; snmpd runs `master agentx`).
-DAEMON_ARGS="-c -e -f -s -x"
+# -I lan0: LLDP on the LAN trunk only. Without it lldpd also ran on wan0
+# and sent the router's name, OS and addresses to the ISP's equipment.
+DAEMON_ARGS="-c -e -f -s -x -I lan0"
