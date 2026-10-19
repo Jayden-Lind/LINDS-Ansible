@@ -12,6 +12,9 @@
 #   linds-ansible-deploy --retry              try the last commit of main again
 #   linds-ansible-deploy --only NAME          only this entry of deploy/playbooks
 #
+# Touch paused in the state folder to stop the deploy, or paused.NAME to stop
+# one entry. A dry run does not look at these files.
+#
 # Optional settings:
 #   LINDS_ANSIBLE_DEPLOY_STATE           state, clone, environments, logs (~/.local/state/linds-ansible-deploy)
 #   LINDS_ANSIBLE_DEPLOY_VAULT_PASSWORD  the vault password file (~/LINDS-Ansible/vault_password)
@@ -553,6 +556,11 @@ def deploy(sha, args):
             else:
                 log(f"{entry.name}: no earlier deploy of {entry.spec}")
             did += 1
+            pause = STATE / f"paused.{entry.name}"
+            if pause.exists() and not dry_run:
+                log(f"{entry.name}: paused, {pause} exists. Not applied.")
+                github_status(sha, entry.name, "pending", "Paused on jd-jump-01: not applied yet")
+                continue
             if not dry_run:
                 github_status(sha, entry.name, "pending", f"Checking {short(sha)}")
             text = deploy_entry(env, entry, sha, base, hosts, "windows" in host_groups, dry_run)

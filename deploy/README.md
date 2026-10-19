@@ -61,14 +61,16 @@ deploy.
   next poll.
 
 **CAUTION:** The deploy cannot see a playbook that runs on a different
-computer, or a job that is between two playbooks. Pause the deploy before you
-build, replace or retire a server:
+computer, or a job that is between two playbooks. Before you build, replace
+or retire a Windows server, pause the entry `windows`:
 
 ```shell
-touch ~/.local/state/linds-ansible-deploy/paused
+touch ~/.local/state/linds-ansible-deploy/paused.windows
 ```
 
-Remove the file when you are done.
+When you are done, remove the file and run `linds-ansible-deploy --retry`.
+For work on other hosts, pause their entry the same way, or pause all entries
+with the file `paused`.
 
 ## Windows
 
@@ -130,6 +132,7 @@ The commands are in `~/.local/state/linds-ansible-deploy/repo/deploy/`.
 | See what a branch would do | `linds-ansible-deploy --dry-run --ref <branch>` |
 | Try a failed entry again | `linds-ansible-deploy --retry`, optionally with `--only <name>` |
 | Pause the deploy | `touch ~/.local/state/linds-ansible-deploy/paused`. Remove the file to continue. |
+| Pause one entry, for example `windows` | `touch ~/.local/state/linds-ansible-deploy/paused.windows`. Its commit status is pending. Remove the file, then run `--retry`. |
 | Read the log | `journalctl --user -t linds-ansible-deploy` |
 | Read the output of a run | `~/.local/state/linds-ansible-deploy/logs/`, kept for 30 days |
 
@@ -148,6 +151,7 @@ The commands are in `~/.local/state/linds-ansible-deploy/repo/deploy/`.
 | `deployed.json` | For each entry: the commit that its hosts match |
 | `failed.json` | For each entry that stopped or failed: the commit and why |
 | `paused` | If it exists, the deploy does nothing |
+| `paused.<name>` | If it exists, the deploy does not apply that entry |
 | `windows.keytab` | Optional: the keytab for the Windows playbooks |
 
 ## If it fails

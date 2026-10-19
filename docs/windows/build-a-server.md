@@ -10,10 +10,10 @@ Three tools build a server:
 
 ## Before you start
 
-**CAUTION:** Pause the deploy on `jd-jump-01` before step 1:
-`touch ~/.local/state/linds-ansible-deploy/paused`. A deploy of `windows.yml`
-can change a server that is not complete. Remove the file after the last
-step of the procedure. See [deploy/README.md](../../deploy/README.md).
+**CAUTION:** Pause the deploy of `windows.yml` on `jd-jump-01` before step 1:
+`touch ~/.local/state/linds-ansible-deploy/paused.windows`. Otherwise a merge
+can change a server that is not complete. After the last step, remove the
+file and run `linds-ansible-deploy --retry`. See [deploy/README.md](../../deploy/README.md).
 
 - Add the host to `inventory/windows.yml` with `windows_hostname`,
   `windows_ipv4_address`, `windows_ipv4_prefix`, `windows_ipv4_gateway`,
