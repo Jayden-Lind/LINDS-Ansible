@@ -11,6 +11,9 @@
     name: claranet.motd
   vars:
     motd_template: "{{ ansible_parent_role_paths[0] }}/template/motd"
+    # The default adds the time of the run. Then each run changes the file,
+    # and a check never shows that the host matches the repository.
+    motd_template_append: ""
 
 - name: Logrotate
   ansible.builtin.include_role:

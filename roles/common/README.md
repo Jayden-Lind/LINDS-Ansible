@@ -9,7 +9,8 @@ and the LINDS CA certificate.
 On every host:
 
 1. Applies `robertdebock.auto_update` with `auto_update_apply_updates: true`.
-2. Installs the login message from `template/motd` (`claranet.motd`).
+2. Installs the login message from `template/motd` (`claranet.motd`). The
+   message does not show the time of the last run.
 3. Applies `robertdebock.logrotate`: daily, 7 old files, compressed.
 4. Sets the time zone to `common_timezone`. The distribution keeps the clock
    in time (chrony or systemd-timesyncd).
