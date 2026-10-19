@@ -2,98 +2,51 @@
 name: JD-DC-01
 domain: linds.com.au
 role: Domain controller (PDC emulator)
-os: Microsoft Windows Server 2025 Datacenter
-edition: ServerDatacenter
+os: Microsoft Windows Server 2025 Standard
+edition: ServerStandard
 build: '26100'
-memory_gb: 32
-processors: 8
+memory_gb: 8
+processors: 4
 time_zone: AUS Eastern Standard Time
 features:
-  - AD-Certificate
-  - ADCS-Cert-Authority
-  - ADCS-Enroll-Web-Svc
-  - ADCS-Web-Enrollment
   - AD-Domain-Services
   - DNS
   - FileAndStorage-Services
   - File-Services
-  - FS-DFS-Namespace
-  - FS-DFS-Replication
   - FS-FileServer
-  - FS-NFS-Service
-  - FS-SMB1
-  - FS-SMB1-CLIENT
-  - FS-SMB1-SERVER
   - GPMC
-  - NET-Framework-45-ASPNET
   - NET-Framework-45-Core
   - NET-Framework-45-Features
-  - NET-WCF-HTTP-Activation45
   - NET-WCF-Services45
   - NET-WCF-TCP-PortSharing45
-  - NFS-Client
   - PowerShell
   - PowerShellRoot
   - RSAT
   - RSAT-AD-AdminCenter
-  - RSAT-ADCS
-  - RSAT-ADCS-Mgmt
   - RSAT-ADDS
   - RSAT-ADDS-Tools
+  - RSAT-ADLDS
   - RSAT-AD-PowerShell
   - RSAT-AD-Tools
   - RSAT-DFS-Mgmt-Con
   - RSAT-DNS-Server
   - RSAT-File-Services
-  - RSAT-NFS-Admin
   - RSAT-Role-Tools
-  - Simple-TCPIP
   - Storage-Services
   - System-DataArchiver
-  - WAS
-  - WAS-Config-APIs
-  - WAS-Process-Model
-  - Web-App-Dev
-  - Web-ASP
-  - Web-Asp-Net45
-  - Web-Cert-Auth
-  - Web-Client-Auth
-  - Web-Common-Http
-  - Web-Default-Doc
-  - Web-Dir-Browsing
-  - Web-Filtering
-  - Web-Health
-  - Web-Http-Errors
-  - Web-Http-Logging
-  - Web-Http-Redirect
-  - Web-Http-Tracing
-  - Web-ISAPI-Ext
-  - Web-ISAPI-Filter
-  - Web-Log-Libraries
-  - Web-Metabase
-  - Web-Mgmt-Compat
-  - Web-Mgmt-Console
-  - Web-Mgmt-Tools
-  - Web-Net-Ext45
-  - Web-Performance
-  - Web-Request-Monitor
-  - Web-Scripting-Tools
-  - Web-Security
-  - Web-Server
-  - Web-Stat-Compression
-  - Web-Static-Content
-  - Web-WebServer
-  - Web-Windows-Auth
   - WindowsAdminCenterSetup
   - Windows-Defender
+  - Wireless-Networking
   - WoW64-Support
   - XPS-Viewer
 volumes:
   - letter: C
-    label: ''
+    label: Windows
     file_system: NTFS
-    size_gb: 39
+    size_gb: 80
 addresses:
   - 10.0.50.200/24 (Manual)
 dns_servers:
-  - 10.0.50.1
+  - 10.3.1.200
+  - 10.3.1.201
+  - 127.0.0.1

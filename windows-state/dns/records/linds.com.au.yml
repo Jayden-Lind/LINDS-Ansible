@@ -40,6 +40,14 @@
   type: A
   data: 10.0.50.200
   ttl: 3600
+- name: jd-dc-01
+  type: AAAA
+  data: 2001:8003:dc6f:6300:a520:25c4:33db:6fb4
+  ttl: 3600
+- name: jd-dc-01
+  type: AAAA
+  data: 2001:8004:1bc0:37b2:2857:1d89:c447:be91
+  ttl: 3600
 - name: jd-opnsense-01
   type: A
   data: 10.0.50.1
