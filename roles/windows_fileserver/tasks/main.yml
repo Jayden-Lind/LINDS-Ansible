@@ -61,6 +61,18 @@
   loop_control:
     label: "{{ item.name }}"
 
+# One PowerShell task, not win_acl: win_acl writes one entry at a time, and
+# Windows then rewrites the permissions of every item below the folder each
+# time. On a replicated folder, DFS Replication then sends each rewrite.
+- name: Set the NTFS permissions of the folders
+  ansible.windows.win_powershell:
+    parameters:
+      Folders: "{{ windows_fileserver_folder_permissions | to_json }}"
+      Broad: "{{ windows_fileserver_broad_identities | to_json }}"
+    script: "{{ lookup('ansible.builtin.file', 'folder-permissions.ps1') }}"
+  register: windows_fileserver_permissions
+  when: windows_fileserver_folder_permissions | length > 0
+
 - name: Set the NFS server settings
   ansible.windows.win_powershell:
     parameters:
@@ -116,4 +128,5 @@
   ansible.builtin.debug:
     msg:
       smb: "{{ windows_fileserver_smb.output | default([]) }}"
+      permissions: "{{ windows_fileserver_permissions.output | default([]) }}"
       nfs: "{{ windows_fileserver_nfs.output | default([]) }}"

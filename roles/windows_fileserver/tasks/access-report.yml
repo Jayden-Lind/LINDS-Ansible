@@ -1,0 +1,20 @@
+---
+# A report: what each enabled domain account can do in each top folder of the
+# shares. It reads only. playbooks/windows-nas-access.yml uses it.
+- name: Find what each account can do in each top folder
+  ansible.windows.win_powershell:
+    parameters:
+      Share: "{{ item }}"
+    script: "{{ lookup('ansible.builtin.file', 'access-report.ps1') }}"
+  # A token without a password (S4U) is possible only as SYSTEM in a WinRM session.
+  become: true
+  become_method: ansible.builtin.runas
+  become_user: SYSTEM
+  check_mode: false
+  changed_when: false
+  register: windows_fileserver_access
+  loop: "{{ windows_fileserver_report_shares }}"
+
+- name: Show the report
+  ansible.builtin.debug:
+    msg: "{{ windows_fileserver_access.results | map(attribute='output') | list }}"

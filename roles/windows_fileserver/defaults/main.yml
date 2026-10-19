@@ -14,6 +14,30 @@ windows_fileserver_volumes: []
 #       - {who: Everyone, rights: Change}      # Full, Change or Read
 windows_fileserver_shares: []
 
+# NTFS permissions of folders. The role makes the permissions of each folder
+# exact: SYSTEM and Administrators with full control, then the listed rules.
+# The folder does not inherit from its parent. With clean_below, the role also
+# removes the own entries for windows_fileserver_broad_identities from the
+# items below the folder, so that they inherit from it.
+#   - path: D:\Music
+#     clean_below: true
+#     rules:
+#       - {who: LINDS\FreeNAS Read & Write, rights: Modify}
+#       - who: LINDS\Domain Users
+#         rights: ReadAndExecute
+#         inherit: ObjectInherit              # default: ContainerInherit, ObjectInherit
+#         propagation: NoPropagateInherit     # default: None
+# Set a replicated folder on one member only. DFS Replication copies the
+# permissions to the other members.
+windows_fileserver_folder_permissions: []
+
+# Identities that must not have an own entry below a folder with clean_below.
+windows_fileserver_broad_identities:
+  - S-1-1-0        # Everyone
+  - S-1-5-11       # Authenticated Users
+  - S-1-5-32-545   # BUILTIN\Users
+  - Domain Users   # the domain group
+
 # NFS exports. A client that is not listed gets no access:
 #   - name: NAS
 #     path: E:\
@@ -40,3 +64,6 @@ windows_fileserver_shadow_copies: []
 # clears the replication data of an earlier member from the volumes. The role
 # windows_dfsr manages the membership.
 windows_fileserver_replication: false
+
+# The shares in the access report (tasks_from: access-report).
+windows_fileserver_report_shares: [NAS]

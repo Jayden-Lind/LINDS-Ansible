@@ -55,6 +55,7 @@ with `-e bootstrap_address=<address>`.
 | Replace a domain controller | retire, then build | [runbooks/replace-a-domain-controller.md](runbooks/replace-a-domain-controller.md) |
 | Replace a file server that is not a domain controller | retire, then build | [runbooks/replace-a-file-server.md](runbooks/replace-a-file-server.md) |
 | Add a replicated folder | edit the inventory, then `ansible-playbook playbooks/windows.yml` | [runbooks/replication.md](runbooks/replication.md) |
+| See or change who can open the NAS folders | `ansible-playbook playbooks/windows-nas-access.yml` | [runbooks/nas-permissions.md](runbooks/nas-permissions.md) |
 
 ## Where the settings are
 
