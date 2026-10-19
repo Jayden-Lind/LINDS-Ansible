@@ -529,6 +529,18 @@ layout above), and the notes are JD's.
   failover, `swanctl --list-sas --ike LINDS` should show IPv4 addresses; if
   it shows IPv6, `swanctl --terminate --ike LINDS` and JD dials again over
   IPv4 within a second.
+* **LINDS refuses a new tunnel from the cellular backup.** linds-vyos-01
+  accepts IKE only from `jd.linds.com.au` (the fixed line). It answers a
+  dial from the cellular address with NO_PROPOSAL_CHOSEN, and charon does
+  not retry that answer. An SA that already exists can move to the backup
+  (MOBIKE, above), but a new one cannot start there. At boot the backup is
+  the default route for the first ~15 s, so the first dial always fails.
+  The trap dials again when traffic goes into `ipsec0`: FRR connects to
+  10.255.0.2 every 10 s (`timers connect 10`), and after a failed dial the
+  kernel waits `xfrm_acq_expires` (60 s, in jd's `strongswan.d/router.conf`;
+  the default 165 s kept the tunnel down for 2 min 47 s after the boot on
+  2026-10-20). So the tunnel comes back within about a minute of wan0 being
+  the active WAN. To dial at once: `swanctl --initiate --child LINDS`.
 * **Two `LINDS` SAs at once** happen when both ends dial at the same moment;
   a VyOS IPsec commit does that, since VyOS dials again on reload while JD's
   trap does too. While LINDS is still linds-vyos-01, never terminate one of
