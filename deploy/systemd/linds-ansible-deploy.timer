@@ -1,0 +1,10 @@
+[Unit]
+Description=Look for a LINDS-Ansible merge to deploy every five minutes
+
+[Timer]
+OnBootSec=5min
+# Counted from the end of the last run, so a long deploy never overlaps the next.
+OnUnitInactiveSec=5min
+
+[Install]
+WantedBy=timers.target

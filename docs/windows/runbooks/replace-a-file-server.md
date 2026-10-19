@@ -16,6 +16,11 @@ There are two ways to move the data disk:
 
 ## Before you start
 
+**CAUTION:** Pause the deploy on `jd-jump-01` before step 1:
+`touch ~/.local/state/linds-ansible-deploy/paused`. A deploy of `windows.yml`
+can change a server that is not complete. Remove the file after the last
+step of the procedure. See [deploy/README.md](../../../deploy/README.md).
+
 1. Build the new VM and prepare it while the old server is in service (see
    [build-a-server.md](../build-a-server.md), steps 1 to 4: Terraform,
    `windows-prepare.yml`, `windows-edition.yml`).

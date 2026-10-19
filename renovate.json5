@@ -10,12 +10,13 @@
   //   https://github.com/pulls?q=is%3Aopen+is%3Apr+user%3AJayden-Lind+label%3Arenovate
   //
   // What it tracks here is requirements.yml: the Galaxy roles and
-  // collections. Merging a PR changes nothing on any host - the new version
-  // is used once `make update-requirements` has installed it on the box the
-  // playbooks run from.
+  // collections. It also tracks requirements-windows.txt, the pinned Python
+  // environment of the Windows playbooks. The deploy (deploy/README.md) uses
+  // the versions that these two files pin, so merging a PR runs the checks of
+  // every playbook in deploy/playbooks with the new version. For a run by
+  // hand, run `make update-requirements` and rebuild .venv after a merge.
   //
-  // It also tracks requirements-windows.txt, the pinned Python environment of
-  // the Windows playbooks; rebuild .venv after a merge. Not tracked:
+  // Not tracked:
   // requirements.txt, which names its packages without a version (Renovate
   // skips those), and anything installed with apt on the hosts themselves.
   labels: ["renovate"],

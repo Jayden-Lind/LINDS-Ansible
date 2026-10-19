@@ -1,0 +1,706 @@
+#!/usr/bin/python3
+#
+# linds-ansible-deploy: applies what is merged to main to the hosts. It runs
+# the playbooks that deploy/playbooks lists, one after the other, and only the
+# ones whose files changed. Each playbook runs in check mode first. The deploy
+# applies a merge only to hosts that match the commit it applied last, and it
+# never reboots a host. deploy/README.md has the why and the how.
+#
+#   linds-ansible-deploy                      deploy origin/main, if not done already
+#   linds-ansible-deploy --dry-run            check, and print what a deploy would do
+#   linds-ansible-deploy --dry-run --ref REF  the same for another branch or commit
+#   linds-ansible-deploy --retry              try the last commit of main again
+#   linds-ansible-deploy --only NAME          only this entry of deploy/playbooks
+#
+# Optional settings:
+#   LINDS_ANSIBLE_DEPLOY_STATE           state, clone, environments, logs (~/.local/state/linds-ansible-deploy)
+#   LINDS_ANSIBLE_DEPLOY_VAULT_PASSWORD  the vault password file (~/LINDS-Ansible/vault_password)
+
+import argparse
+import datetime
+import fcntl
+import hashlib
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import time
+import traceback
+from dataclasses import dataclass
+from pathlib import Path
+
+import yaml
+
+HERE = Path(__file__).resolve().parent
+SOURCE = Path(__file__).read_bytes()
+
+STATE = Path(
+    os.environ.get("LINDS_ANSIBLE_DEPLOY_STATE")
+    or Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state") / "linds-ansible-deploy"
+)
+VAULT_PASSWORD = Path(
+    os.environ.get("LINDS_ANSIBLE_DEPLOY_VAULT_PASSWORD") or Path.home() / "LINDS-Ansible/vault_password"
+)
+REPO_URL = "https://github.com/Jayden-Lind/LINDS-Ansible.git"
+GITHUB_REPO = "Jayden-Lind/LINDS-Ansible"
+REPO = STATE / "repo"  # the clone; the timer runs this script from it
+PREVIOUS = STATE / "previous"  # a worktree at the commit an entry was last deployed from
+DRY_RUN = STATE / "dry-run"  # a worktree for --dry-run
+LOGS = STATE / "logs"
+KEYTAB = STATE / "windows.keytab"
+ALERTMANAGER = ["--namespace", "monitoring", "alertmanager-monitoring-kube-prometheus-alertmanager-0",
+                "--container", "alertmanager"]
+
+RUN_TIMEOUT = 2 * 3600  # seconds for one ansible-playbook run
+LOG_DAYS = 30
+
+# Files that change no host. A merge that changes only these runs no playbook.
+IGNORED = re.compile(
+    r"\.md$|^docs/|^deploy/|^\.github/|^\.gitignore$|^\.ansible-lint$|^renovate\.json5$"
+    r"|^Makefile$|^local_setup\.sh$|^requirements\.txt$"
+)
+# Files that every playbook uses: the configuration and the versions of
+# Ansible, the collections and the Galaxy roles.
+SHARED = {"ansible.cfg", "requirements.yml", "requirements-windows.txt"}
+# A check that shows one of these as changed means that the apply would
+# reboot a host. The deploy does not do that.
+REBOOTS = {"ansible.builtin.reboot", "reboot", "ansible.windows.win_reboot", "win_reboot"}
+
+
+def log(*parts):
+    print(*parts, flush=True)
+
+
+def short(sha):
+    return sha[:7] if sha else "none"
+
+
+def sh(*cmd, check=True, **kw):
+    """Runs a command and returns its output."""
+    r = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **kw)
+    if check and r.returncode != 0:
+        raise Stop(f"{Path(str(cmd[0])).name} {' '.join(str(c) for c in cmd[1:3])} failed: "
+                   f"{(r.stderr or r.stdout).strip()[-300:]}")
+    return r.stdout
+
+
+def git(*args, cwd=REPO, check=True):
+    return sh("git", "-C", cwd, *args, check=check).strip()
+
+
+def is_commit(sha):
+    return bool(sha) and subprocess.run(["git", "-C", REPO, "cat-file", "-e", f"{sha}^{{commit}}"],
+                                        capture_output=True).returncode == 0
+
+
+class Stop(Exception):
+    """The deploy of one entry, or of the whole commit, cannot go on."""
+
+
+class NoTicket(Stop):
+    """A Windows playbook has no Kerberos ticket. The next poll tries again
+    when there is one."""
+
+
+def read_json(name):
+    try:
+        return json.loads((STATE / name).read_text())
+    except FileNotFoundError:
+        return {}
+
+
+def write_json(name, data):
+    tmp = STATE / f".{name}.tmp"
+    tmp.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n")
+    tmp.replace(STATE / name)
+
+
+def now_utc(minutes=0):
+    t = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=minutes)
+    return t.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# --- GitHub and Alertmanager -------------------------------------------------
+
+def github_status(sha, context, state, description):
+    r = subprocess.run(
+        ["gh", "api", "--method", "POST", f"repos/{GITHUB_REPO}/statuses/{sha}", "-f", f"state={state}",
+         "-f", f"context=deploy/{context}", "-f", f"description={description[:140]}"],
+        capture_output=True, text=True)
+    if r.returncode != 0:
+        log(f"warning: could not set the commit status deploy/{context} on GitHub")
+
+
+# The alert goes to Alertmanager, which sends it to Discord. While the failure
+# stands, each poll raises it again about once an hour, each time ending two
+# hours out. A later success resolves it: the same alert with an end time
+# that has passed.
+def alert(name, summary, start=None, end=None):
+    r = subprocess.run(
+        ["kubectl", "--request-timeout=30s", "exec", *ALERTMANAGER, "--", "amtool",
+         "--alertmanager.url=http://localhost:9093", "alert", "add", "alertname=LindsAnsibleDeployFailed",
+         "severity=warning", f"entry={name}", f"--annotation=summary=LINDS-Ansible deploy of {name}: {summary[:450]}",
+         f"--start={start or now_utc()}", f"--end={end or now_utc(120)}"],
+        capture_output=True, text=True)
+    if r.returncode != 0:
+        log(f"warning: could not update the alert for {name} in Alertmanager")
+
+
+def keep_alerts(failed):
+    for name, f in failed.items():
+        if time.time() - f.get("alerted", 0) > 50 * 60:
+            alert(name, f["why"])
+            f["alerted"] = time.time()
+    write_json("failed.json", failed)
+
+
+def resolve_alert(name, failed):
+    f = failed.pop(name, None)
+    if f is not None:
+        alert(name, f["why"], start=now_utc(-1), end=now_utc())
+
+
+# --- deploy/playbooks ---------------------------------------------------------
+
+@dataclass
+class Entry:
+    name: str
+    playbook: str
+    args: list
+
+    @property
+    def spec(self):
+        return " ".join([self.playbook, *self.args])
+
+
+def read_entries(tree):
+    entries = []
+    for line in (tree / "deploy/playbooks").read_text().splitlines():
+        words = shlex.split(line, comments=True)
+        if words:
+            if len(words) < 2:
+                raise Stop(f"deploy/playbooks: a line needs a name and a playbook: {line!r}")
+            entries.append(Entry(words[0], words[1], words[2:]))
+    return entries
+
+
+# --- the Ansible environment --------------------------------------------------
+
+def ensure_env(tree):
+    """The Python environment, collections and Galaxy roles that the
+    requirements files of TREE pin. Makes it if it does not exist."""
+    reqs = [tree / "requirements-windows.txt", tree / "requirements.yml"]
+    digest = hashlib.sha256(b"".join(p.read_bytes() for p in reqs)).hexdigest()[:12]
+    env = STATE / "env" / digest
+    if (env / "ready").exists():
+        env.touch()
+        return env
+    log(f"Installing the Ansible environment {digest} from requirements-windows.txt and requirements.yml")
+    shutil.rmtree(env, ignore_errors=True)
+    env.mkdir(parents=True)
+    galaxy = {**os.environ, "ANSIBLE_COLLECTIONS_PATH": str(env / "collections"),
+              "ANSIBLE_ROLES_PATH": str(env / "roles")}
+    sh("/usr/bin/python3", "-m", "venv", env / "venv")
+    sh(env / "venv/bin/pip", "install", "--quiet", "--disable-pip-version-check", "-r", reqs[0])
+    sh(env / "venv/bin/ansible-galaxy", "collection", "install", "-r", reqs[1], "-p", env / "collections",
+       env=galaxy)
+    sh(env / "venv/bin/ansible-galaxy", "role", "install", "-r", reqs[1], "-p", env / "roles", env=galaxy)
+    (env / "ready").touch()
+    # Keep the three newest environments: a dry run of a branch can need another one.
+    for old in sorted((STATE / "env").iterdir(), key=lambda p: p.stat().st_mtime)[:-3]:
+        shutil.rmtree(old, ignore_errors=True)
+    return env
+
+
+def ansible_env(env, tree, extra=None):
+    e = {**os.environ,
+         "ANSIBLE_CONFIG": str(tree / "ansible.cfg"),
+         "ANSIBLE_VAULT_PASSWORD_FILE": str(VAULT_PASSWORD),
+         "ANSIBLE_COLLECTIONS_PATH": str(env / "collections"),
+         "ANSIBLE_ROLES_PATH": f"{tree / 'roles'}:{env / 'roles'}",
+         "ANSIBLE_CALLBACK_PLUGINS": str(HERE / "callback_plugins"),
+         "ANSIBLE_CALLBACKS_ENABLED": "deploy_summary",
+         "ANSIBLE_NOCOLOR": "1",
+         "ANSIBLE_FORCE_COLOR": "0",
+         "PATH": f"{env / 'venv/bin'}:{os.environ.get('PATH', '')}"}
+    e.update(extra or {})
+    return e
+
+
+def ansible(env, tree, *cmd):
+    return sh(env / "venv/bin" / cmd[0], *cmd[1:], cwd=tree, env=ansible_env(env, tree))
+
+
+def inventory_groups(env, tree):
+    """For each host in the inventory: its groups, and the groups above them."""
+    inv = json.loads(ansible(env, tree, "ansible-inventory", "--list"))
+    parents, direct = {}, {}
+    for group, data in inv.items():
+        if group == "_meta":
+            continue
+        for host in data.get("hosts", []):
+            direct.setdefault(host, set()).add(group)
+        for child in data.get("children", []):
+            parents.setdefault(child, set()).add(group)
+    groups = {}
+    for host, todo in direct.items():
+        found, todo = {"all"}, list(todo)
+        while todo:
+            g = todo.pop()
+            if g not in found:
+                found.add(g)
+                todo.extend(parents.get(g, ()))
+        groups[host] = found
+    return groups
+
+
+def hosts_of(env, tree, entry):
+    out = ansible(env, tree, "ansible-playbook", entry.playbook, *entry.args, "--list-hosts")
+    hosts = {m.group(1) for m in re.finditer(r"^ {6}(\S+)\s*$", out, re.M)}
+    if not hosts:
+        raise Stop(f"{entry.spec} names no hosts")
+    return hosts
+
+
+@dataclass
+class Result:
+    changed: list
+    problem: str
+    log: Path
+
+
+def run_playbook(env, tree, entry, sha, check, extra_env):
+    """One run of the playbook of ENTRY from TREE. The full output goes to a
+    file in LOGS; the summary comes from callback_plugins/deploy_summary.py."""
+    LOGS.mkdir(exist_ok=True)
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    logfile = LOGS / f"{stamp}-{short(sha)}-{entry.name}-{'check' if check else 'apply'}.log"
+    summary = logfile.with_suffix(".json")
+    cmd = [env / "venv/bin/ansible-playbook", entry.playbook, *entry.args, "--diff"] + (["--check"] if check else [])
+    e = ansible_env(env, tree, {**extra_env, "LINDS_ANSIBLE_DEPLOY_SUMMARY": str(summary)})
+    with open(logfile, "w") as out:
+        try:
+            rc = subprocess.run([str(c) for c in cmd], cwd=tree, env=e, stdout=out, stderr=subprocess.STDOUT,
+                                timeout=RUN_TIMEOUT).returncode
+        except subprocess.TimeoutExpired:
+            return Result([], f"stopped after {RUN_TIMEOUT // 60} minutes", logfile)
+    try:
+        s = json.loads(summary.read_text())
+    except (FileNotFoundError, ValueError):
+        tail = [l for l in logfile.read_text(errors="replace").splitlines() if l.strip()][-1:] or [""]
+        return Result([], f"ansible-playbook stopped (exit {rc}): {tail[0][:200]}", logfile)
+    if s["unreachable"]:
+        return Result(s["changed"], f"cannot connect to {', '.join(s['unreachable'])}", logfile)
+    if s["failed"]:
+        f = s["failed"][0]
+        return Result(s["changed"], f"{f['host']}: {f['task']}: {f['msg']}", logfile)
+    if rc != 0:
+        return Result(s["changed"], f"ansible-playbook exit {rc}", logfile)
+    return Result(s["changed"], "", logfile)
+
+
+def tasks_text(changed, limit=3):
+    """For example: "2 tasks (router : dns config, router : restart dns)"."""
+    names = list(dict.fromkeys(c["task"] for c in changed))
+    text = ", ".join(names[:limit]) + (f" and {len(names) - limit} more" if len(names) > limit else "")
+    return f"{len(names)} task{'s' if len(names) != 1 else ''} ({text})"
+
+
+# --- which entries a change is for ---------------------------------------------
+
+class _Loader(yaml.SafeLoader):
+    pass
+
+
+_Loader.add_multi_constructor("!", lambda loader, suffix, node: None)  # !vault, !unsafe
+
+
+def load_yaml(path):
+    try:
+        return yaml.load(path.read_text(), Loader=_Loader)
+    except (OSError, yaml.YAMLError):
+        return None
+
+
+def role_names(tasks):
+    """The role names that a task list imports or includes."""
+    for task in tasks if isinstance(tasks, list) else []:
+        if not isinstance(task, dict):
+            continue
+        for key, value in task.items():
+            if key.split(".")[-1] in ("import_role", "include_role") and isinstance(value, dict):
+                yield str(value.get("name", ""))
+            elif key in ("block", "rescue", "always"):
+                yield from role_names(value)
+
+
+def roles_of(tree, playbook):
+    """The roles of this repository that a playbook uses, with the roles that
+    those use. None if a role name is a template: then any role can count."""
+    plays = load_yaml(tree / playbook)
+    if not isinstance(plays, list):
+        return None
+    todo, found = [], set()
+    for play in plays:
+        if not isinstance(play, dict) or any(k.split(".")[-1] == "import_playbook" for k in play):
+            return None
+        for r in play.get("roles") or []:
+            todo.append(r if isinstance(r, str) else str(r.get("role") or r.get("name") or ""))
+        for key in ("pre_tasks", "tasks", "post_tasks", "handlers"):
+            todo.extend(role_names(play.get(key)))
+    while todo:
+        name = todo.pop()
+        if "{{" in name:
+            return None
+        role = tree / "roles" / name
+        if name in found or not role.is_dir():  # Galaxy roles come with requirements.yml
+            continue
+        found.add(name)
+        meta = load_yaml(role / "meta/main.yml") if (role / "meta/main.yml").exists() else None
+        for dep in (meta or {}).get("dependencies") or []:
+            todo.append(dep if isinstance(dep, str) else str(dep.get("role") or dep.get("name") or ""))
+        for sub in ("tasks", "handlers"):
+            for f in sorted((role / sub).rglob("*.y*ml")) if (role / sub).is_dir() else []:
+                todo.extend(role_names(load_yaml(f)))
+    return found
+
+
+def inventory_names(path):
+    """The groups and hosts that an inventory file names, or None."""
+    data = load_yaml(path) if path.exists() else None
+    if not isinstance(data, dict):
+        return None
+    names = set()
+
+    def walk(groups):
+        for group, body in (groups or {}).items():
+            names.add(str(group))
+            if isinstance(body, dict):
+                names.update(str(h) for h in (body.get("hosts") or {}))
+                walk(body.get("children") if isinstance(body.get("children"), dict) else None)
+
+    walk(data)
+    return names
+
+
+def text_of(tree, playbook, roles):
+    """The text of a playbook and of all files of its roles."""
+    parts = [(tree / playbook).read_text(errors="replace")]
+    for name in sorted(roles):
+        for f in sorted((tree / "roles" / name).rglob("*")):
+            if f.is_file() and f.stat().st_size < 2_000_000:
+                parts.append(f.read_text(errors="replace"))
+    return "\n".join(parts)
+
+
+def files_for(tree, entry, changed, hosts, groups):
+    """The changed files that the playbook of ENTRY uses or can use."""
+    roles = roles_of(tree, entry.playbook)
+    text = None
+    found = []
+    for f in changed:
+        p = f.split("/")
+        if IGNORED.search(f):
+            continue
+        if f in SHARED:
+            found.append(f)
+        elif p[0] == "roles" and len(p) > 2:
+            if roles is None or p[1] in roles:
+                found.append(f)
+        elif p[0] == "inventory" and len(p) > 2 and p[1] in ("group_vars", "host_vars"):
+            name = re.sub(r"\.ya?ml$", "", p[2])
+            if name in (groups if p[1] == "group_vars" else hosts):
+                found.append(f)
+        elif p[0] == "inventory":
+            names = inventory_names(tree / f)
+            if names is None or names & (hosts | groups):
+                found.append(f)
+        elif p[0] == "playbooks" and len(p) == 2:
+            if f == entry.playbook:
+                found.append(f)
+        else:
+            # Any other file counts if the playbook or its roles name it. Outside
+            # playbooks/, the name of its top folder also counts.
+            if text is None:
+                text = text_of(tree, entry.playbook, roles) if roles is not None else ""
+            if roles is None or p[-1] in text or (p[0] != "playbooks" and len(p) > 1 and p[0] in text):
+                found.append(f)
+    return found
+
+
+# --- Kerberos for the Windows playbooks -----------------------------------------
+
+def kerberos():
+    """Gets a Kerberos ticket for a Windows playbook. Returns the environment
+    for ansible-playbook. With a keytab the deploy gets its own ticket.
+    Without one it uses the ticket of the person who logs in to this box."""
+    if KEYTAB.exists():
+        principal = re.findall(r"^\s*\d+\s+(?:\S+\s+\S+\s+)?(\S+@\S+)", sh("klist", "-k", KEYTAB), re.M)
+        if not principal:
+            raise Stop(f"{KEYTAB} has no principal")
+        env = {"KRB5CCNAME": f"FILE:{STATE / 'krb5cc'}"}
+        sh("kinit", "-f", "-k", "-t", KEYTAB, principal[0], env={**os.environ, **env})
+        return env
+    subprocess.run(["kinit", "-R"], capture_output=True)  # renew it, if it can be renewed
+    if subprocess.run(["klist", "-s"]).returncode != 0:
+        raise NoTicket("no Kerberos ticket on jd-jump-01: run kinit -f Administrator@LINDS.COM.AU")
+    return {}
+
+
+# --- one entry -------------------------------------------------------------------
+
+def worktree(path, sha):
+    """Puts a worktree of the clone at PATH, at commit SHA."""
+    if (path / ".git").exists():
+        git("checkout", "--quiet", "--force", "--detach", sha, cwd=path)
+        git("clean", "-fdq", cwd=path)
+    else:
+        shutil.rmtree(path, ignore_errors=True)
+        git("worktree", "prune")
+        git("worktree", "add", "--quiet", "--force", "--detach", path, sha)
+
+
+def deploy_entry(env, entry, sha, base, hosts, needs_kerberos, dry_run):
+    """Checks ENTRY at SHA and applies it if it is safe. Returns what it did.
+    Raises Stop when it does not apply."""
+    extra = kerberos() if needs_kerberos else {}
+    tree = DRY_RUN if dry_run else REPO
+    names = ", ".join(sorted(h.removesuffix(".linds.com.au") for h in hosts))
+
+    log(f"{entry.name}: check of {short(sha)} ({entry.spec})")
+    now = run_playbook(env, tree, entry, sha, True, extra)
+    if now.problem:
+        raise Stop(f"the check of {short(sha)} failed: {now.problem}")
+    if not now.changed:
+        return f"No change on {names} at {short(sha)}"
+    log(f"{entry.name}: the check shows changes in {tasks_text(now.changed, 10)}")
+
+    reboot = [c for c in now.changed if c["action"] in REBOOTS]
+    if reboot:
+        raise Stop(f"the change reboots {reboot[0]['host']} ({reboot[0]['task']}); apply it by hand")
+    if not base or not is_commit(base):
+        raise Stop(f"the check shows changes in {tasks_text(now.changed)} on {names}, and there is no "
+                   "earlier deploy to compare with; apply by hand")
+
+    # Do the hosts still match the commit that the deploy applied last? If not,
+    # someone changed them by hand, and the apply would undo that.
+    worktree(PREVIOUS, base)
+    if not (PREVIOUS / entry.playbook).exists():
+        raise Stop(f"{entry.playbook} is not in {short(base)}; apply by hand")
+    log(f"{entry.name}: check of {short(base)}, the commit it was deployed from last")
+    before = run_playbook(env, PREVIOUS, entry, base, True, extra)
+    if before.problem:
+        raise Stop(f"the check of {short(base)} failed: {before.problem}")
+    if before.changed:
+        raise Stop(f"changes on {names} that are not in {short(base)}, in {tasks_text(before.changed)}; "
+                   "apply by hand")
+
+    if dry_run:
+        return f"Would apply {tasks_text(now.changed)}"
+    log(f"{entry.name}: applying {short(sha)}")
+    done = run_playbook(env, tree, entry, sha, False, extra)
+    log(f"{entry.name}: the output is in {done.log}")
+    if done.problem:
+        raise Stop(f"the apply failed: {done.problem}")
+    return f"Applied {short(sha)}: {tasks_text(done.changed)}"
+
+
+# --- the commit ------------------------------------------------------------------
+
+def deploy(sha, args):
+    dry_run = args.dry_run
+    tree = DRY_RUN if dry_run else REPO
+    deployed = read_json("deployed.json")
+    failed = read_json("failed.json")
+    entries = read_entries(tree)
+    names = [e.name for e in entries]
+    for name in args.only or []:
+        if name not in names:
+            raise Stop(f"--only {name}: no such entry in deploy/playbooks")
+    if not dry_run:
+        # Forget the entries that are gone from deploy/playbooks.
+        for name in set(deployed) - set(names):
+            deployed.pop(name)
+        for name in set(failed) - set(names) - {"ansible"}:
+            resolve_alert(name, failed)
+    log(f"{'Dry run of' if dry_run else 'Deploying'} {git('log', '-1', '--format=%h %s', sha)}")
+
+    env = ensure_env(tree)
+    groups = inventory_groups(env, tree)
+    did = 0
+    for entry in entries:
+        if args.only and entry.name not in args.only:
+            continue
+        last = deployed.get(entry.name, {})
+        base = last.get("sha") if last.get("spec") == entry.spec else None
+        try:
+            hosts = hosts_of(env, tree, entry)
+            host_groups = set().union(*(groups.get(h, {"all"}) for h in hosts))
+            if base and is_commit(base):
+                changed = git("diff", "--no-renames", "--name-only", base, sha).splitlines()
+                files = files_for(tree, entry, changed, hosts, host_groups)
+                if not files:
+                    log(f"{entry.name}: none of its files changed since {short(base)}")
+                    if not dry_run:
+                        deployed[entry.name] = {"sha": sha, "spec": entry.spec}
+                        resolve_alert(entry.name, failed)
+                    continue
+                more = f" and {len(files) - 1} more" if len(files) > 1 else ""
+                log(f"{entry.name}: {files[0]}{more} changed since {short(base)}")
+            else:
+                log(f"{entry.name}: no earlier deploy of {entry.spec}")
+            did += 1
+            if not dry_run:
+                github_status(sha, entry.name, "pending", f"Checking {short(sha)}")
+            text = deploy_entry(env, entry, sha, base, hosts, "windows" in host_groups, dry_run)
+        except Stop as e:
+            text = f"Not applied: {e}"
+            log(f"{entry.name}: {text}")
+            if not dry_run:
+                github_status(sha, entry.name, "failure", text)
+                failed[entry.name] = {"sha": sha, "why": f"{short(sha)}: {text}", "alerted": time.time(),
+                                      "ticket": isinstance(e, NoTicket)}
+                alert(entry.name, failed[entry.name]["why"])
+                write_json("failed.json", failed)
+            continue
+        log(f"{entry.name}: {text}")
+        if not dry_run:
+            deployed[entry.name] = {"sha": sha, "spec": entry.spec}
+            write_json("deployed.json", deployed)
+            github_status(sha, entry.name, "success", text)
+            resolve_alert(entry.name, failed)
+            write_json("failed.json", failed)
+    if not did:
+        log("No playbook uses the files that changed.")
+        if not dry_run and not args.only:
+            github_status(sha, "ansible", "success", "No playbook uses the files that changed")
+    if not dry_run:
+        write_json("deployed.json", deployed)
+        write_json("failed.json", failed)
+
+
+def other_playbooks():
+    """The process IDs of the ansible-playbook runs on this box."""
+    pids = []
+    for d in Path("/proc").iterdir():
+        try:
+            argv = (d / "cmdline").read_bytes().split(b"\0")[:2] if d.name.isdigit() else []
+        except OSError:
+            continue
+        if any(Path(a.decode(errors="replace")).name == "ansible-playbook" for a in argv):
+            pids.append(int(d.name))
+    return pids
+
+
+def prune_logs():
+    cutoff = time.time() - LOG_DAYS * 86400
+    for f in LOGS.glob("*") if LOGS.exists() else []:
+        if f.stat().st_mtime < cutoff:
+            f.unlink()
+
+
+def main():
+    p = argparse.ArgumentParser(description="Apply what is merged to LINDS-Ansible main. See deploy/README.md.")
+    p.add_argument("--dry-run", action="store_true", help="check and print what a deploy would do; change nothing")
+    p.add_argument("--ref", help="with --dry-run: a branch or commit instead of origin/main")
+    p.add_argument("--retry", action="store_true", help="try the last commit of main again")
+    p.add_argument("--only", action="append", metavar="NAME", help="only this entry of deploy/playbooks")
+    args = p.parse_args()
+    if args.ref and not args.dry_run:
+        p.error("--ref is for dry runs only: the deploy only applies main")
+
+    STATE.mkdir(parents=True, exist_ok=True)
+    STATE.chmod(0o700)
+    if os.environ.get("LINDS_ANSIBLE_DEPLOY_SHA"):  # started by the step below, with the lock held
+        sha = os.environ["LINDS_ANSIBLE_DEPLOY_SHA"]
+    else:
+        lock = os.open(STATE / "lock", os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            log("A deploy is already running.")
+            return 0
+        if not args.dry_run:
+            if (STATE / "paused").exists():
+                log(f"Paused: {STATE / 'paused'} exists.")
+                return 0
+            tf = subprocess.run(["systemctl", "--user", "is-active", "linds-tf-deploy.service"],
+                                capture_output=True, text=True).stdout.strip()
+            if tf in ("active", "activating"):
+                log("linds-tf-deploy is running. The deploy waits for the next poll.")
+                return 0
+            busy = other_playbooks()
+            if busy:
+                log(f"ansible-playbook is running on this box (PID {', '.join(map(str, busy))}). "
+                    "The deploy waits for the next poll.")
+                return 0
+        try:
+            if not (REPO / ".git").exists():
+                sh("git", "clone", "--quiet", REPO_URL, REPO)
+            git("fetch", "--quiet", "--prune", "origin")
+        except Stop as e:
+            log(f"Cannot fetch from GitHub; the next poll tries again. {e}")
+            return 1
+        ref = args.ref or "origin/main"
+        sha = git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}", check=False) or \
+            git("rev-parse", "--verify", "--quiet", f"origin/{ref}^{{commit}}", check=False)
+        if not sha:
+            log(f"No such branch or commit: {ref}")
+            return 2
+        if not args.dry_run:
+            if read_json("seen.json").get("sha") == sha and not args.retry:
+                failed = read_json("failed.json")
+                waiting = sorted(n for n, f in failed.items() if f.get("ticket") and f.get("sha") == sha)
+                if not waiting or not (KEYTAB.exists() or subprocess.run(["klist", "-s"]).returncode == 0):
+                    keep_alerts(failed)
+                    return 0
+                log(f"There is a Kerberos ticket now. Trying again: {', '.join(waiting)}")
+                args.retry, args.only = True, waiting
+            # The checkout rewrites this script. If the commit changes it, the
+            # deploy goes on in the commit's own copy.
+            git("checkout", "--quiet", "--force", "--detach", sha)
+            git("clean", "-fdq")
+            script = REPO / "deploy/linds-ansible-deploy"
+            if not script.exists():
+                log(f"{short(sha)} has no deploy/linds-ansible-deploy. Nothing to do.")
+                return 1
+            if script.read_bytes() != SOURCE:
+                os.set_inheritable(lock, True)
+                argv = (["--retry"] if args.retry else []) + [a for n in args.only or [] for a in ("--only", n)]
+                os.execve(sys.executable, [sys.executable, str(script), *argv],
+                          {**os.environ, "LINDS_ANSIBLE_DEPLOY_SHA": sha})
+        else:
+            worktree(DRY_RUN, sha)
+
+    try:
+        deploy(sha, args)
+    except Exception as e:
+        # A problem with the commit as a whole, for example the environment,
+        # or a fault in this script. It is not tried again until the next
+        # commit or --retry.
+        if not isinstance(e, Stop):
+            traceback.print_exc()
+            e = f"{type(e).__name__}: {e}"
+        log(f"FAILED: {e}")
+        if not args.dry_run:
+            github_status(sha, "ansible", "failure", f"Not deployed: {e}")
+            failed = read_json("failed.json")
+            failed["ansible"] = {"sha": sha, "why": f"{short(sha)}: {e}", "alerted": time.time()}
+            alert("ansible", failed["ansible"]["why"])
+            write_json("failed.json", failed)
+            write_json("seen.json", {"sha": sha})
+        return 1
+    if not args.dry_run:
+        failed = read_json("failed.json")
+        resolve_alert("ansible", failed)
+        write_json("failed.json", failed)
+        write_json("seen.json", {"sha": sha})
+    prune_logs()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

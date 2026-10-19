@@ -11,6 +11,10 @@ syslog. It applies the role `truenas`.
 
 ## Procedure
 
+**NOTE:** Merging to `main` applies this playbook to the TrueNAS. See
+[deploy/README.md](../deploy/README.md). Use the commands below to see a
+change before you merge it, or to apply a change by hand.
+
 1. Run `ansible-playbook playbooks/truenas.yml --check --diff`.
 2. Run `ansible-playbook playbooks/truenas.yml`.
 
