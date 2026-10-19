@@ -66,7 +66,12 @@ outputs:
       community-id: false
       types:
         - alert
-        - dns
+        # Version 2 keeps the format that Alloy and the dashboards read
+        # (dns.type query/answer, dns.rrname). Suricata 8 writes version 3
+        # by default (type request/response, the name in dns.queries[]).
+        # Suricata 9 removes version 2: change Alloy and the dashboards first.
+        - dns:
+            version: 2
         # extended adds sni, version, serial, fingerprint and the certificate
         # dates. The basic log has the subject and issuer only, which TLS 1.3
         # hides, so most tls events were empty. The "Top TLS SNI" panel of
@@ -185,7 +190,7 @@ host-mode: router
 # MemoryMax= on the unit
 # (suricata.service.d/memory.conf): a runaway costs a Suricata restart, not
 # the router. Check with
-#   suricatasc -c dump-counters /var/run/suricata-command.socket \
+#   suricatasc -c dump-counters /var/run/suricata/suricata-command.socket \
 #     | grep -E 'reassembly_memuse|segment_memcap_drop|memcap_pressure'
 stream:
   memcap: 0
@@ -210,11 +215,11 @@ stream:
 flow:
   memcap: 256mb
 
-# Where suricatasc (and suricata-update's reload) expect it; the compiled-in
-# default would land it in /var.
+# Where suricatasc (and suricata-update's reload) expect it: the default of
+# Suricata 8's suricatasc. The package's tmpfiles.d makes /run/suricata.
 unix-command:
   enabled: yes
-  filename: /var/run/suricata-command.socket
+  filename: /var/run/suricata/suricata-command.socket
 
 vlan:
   use-for-tracking: true
