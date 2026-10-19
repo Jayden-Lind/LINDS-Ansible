@@ -169,6 +169,14 @@ layout above), and the notes are JD's.
   The role purges Debian's Kea packages, because their AppArmor profiles
   name the same binaries. Kea 3 accepts control sockets only under
   `/var/run/kea`.
+* **`systemctl reload frr` can attach a new route-map before it exists.**
+  frr-reload adds the `neighbor ... route-map NAME in` line before the
+  `route-map NAME` lines, and FRR denies everything through a route-map that
+  does not exist until its route-map timer (5 s) runs. On 2026-10-20 the
+  cluster peers showed 0 prefixes for those seconds, and the routes came by
+  LINDS. To add an inbound route-map to a live box, make the route-map first
+  in `vtysh` (`conf t`), wait 6 s, then attach it. A boot or a restart is
+  not affected: the whole file is loaded before the sessions come up.
 * **nftables is validated before install** (`nft -c`), as are the kea files.
   FRR and Suricata are validated after the daemons are up, in `validate.yml`.
 * **No `ConfigureWithoutCarrier` on the LAN side.** With it, `10.0.53.1` would
@@ -231,12 +239,10 @@ layout above), and the notes are JD's.
   VLAN 52 rather than a reply. A device that has to reach something private
   itself needs a rule of its own next to it. Being found from the main LAN
   is the reflector's job (above).
-  * kea answers a VLAN 52 client twice: its raw socket on `lan0` also sees
-    the tagged frames, so the journal shows a 10.0.50.x offer next to the
-    10.0.52.x one for the same transaction. The first goes out untagged and
-    never reaches the client. Seen for the UniFi console as well, before
-    any of this; harmless, but do not read the 10.0.50.x line as the
-    address the device got.
+  * Kea answers a VLAN 52 client once. Kea 2.6 also offered it a 10.0.50.x
+    address, because its raw socket on `lan0` saw the tagged frames (ISC
+    issue #3792, fixed in Kea 3.1.7). If a 10.0.50.x offer shows up next to
+    a 10.0.52.x one again, it went out untagged and never reached the client.
 * **Software flowtable, main LAN, VLAN 52 and VLAN 53 <-> WAN.** The last
   six forward rules hand established TCP/UDP flows between `lan0`, `lan0.52`,
   `lan0.53` and `wan0` to `flowtable ft`; later packets skip the ruleset. `conntrack -L |
@@ -316,9 +322,11 @@ layout above), and the notes are JD's.
   ISP cannot read the names that the router looks up. Clients do not
   change: they send plain DNS to the router on port 53. The LINDS file
   still uses plain DNS.
-  * Recursor 5.2 does not check the certificate of the server. DoT stops a
-    passive observer, but not an attacker who intercepts the connection on
-    purpose.
+  * The recursor checks the certificate of the server
+    (`outgoing.tls_configurations`: name `dns.quad9.net`, the system CA
+    store). An attacker who intercepts the connection gets SERVFAIL, not
+    answers. If Quad9 changes the name on its certificate, every name not in
+    the cache fails: look for TLS errors in `journalctl -u pdns-recursor`.
   * On an open connection, a lookup takes the same time as on UDP. A new
     connection adds about 25-30 ms. The recursor and Quad9 both close an
     idle connection after about 10 s.
@@ -547,6 +555,14 @@ layout above), and the notes are JD's.
   them by id: on 2026-10-15 VyOS kept sending on the deleted one, and
   LINDS→JD traffic was lost for 75 seconds until the whole connection was
   terminated (`swanctl --terminate --ike LINDS`) and JD dialled again.
+* **BGP import from the cluster is filtered** (`RM-K8S-IN` in jd's
+  `frr.conf`): the pod CIDRs, the service range and the LoadBalancer pool
+  (`K8S-PODS`, `K8S-SVC`, `K8S-EXT`), nothing else. The peer group accepts
+  any host on 10.0.53.0/24 that speaks BGP as AS 64512, so without the
+  filter such a host could announce any route, a default route too. All the
+  cluster's routes were inside these lists when the filter went on
+  (2026-10-20). If the LoadBalancer pool in LINDS-Terraform
+  `proxmox/cilium.tf` changes, change `K8S-EXT` with it.
 * **BGP export to LINDS carries the JD LANs** (`JD-LANS`: 10.0.50.0/24,
   10.0.53.0/24, VLAN 58's 10.0.58.0/24, and the road-warrior pool
   10.0.10.0/24 so LINDS can answer remote-access clients). VyOS sent LINDS
@@ -724,8 +740,8 @@ from the box. Everything that VyOS did and this router does differently:
   "whatever the main table has a route for" instead, which includes the
   WAN's connected /17: traffic from them to another Telstra customer in it
   leaves by the WAN, not the tunnel. That is still so at JD.
-* **Conntrack helpers:** ftp, pptp and tftp, as at JD. VyOS also loaded
-  h323, nfs, sip and sqlnet; the only flows the sip helper held were the
+* **Conntrack helpers:** ftp and tftp, as at JD. VyOS also loaded h323,
+  nfs, pptp, sip and sqlnet; the only flows the sip helper held were the
   torrent client's peers on port 5060 and scans of the WAN address.
 * **Dynamic DNS updates and the `linds.com.au` forwarders** go to the two
   DCs here and then JD's. VyOS listed 10.0.50.1 for both, which is JD's
