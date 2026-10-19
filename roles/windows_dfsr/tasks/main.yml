@@ -12,6 +12,13 @@
   ansible.builtin.meta: end_role
   when: not dfsr_group
 
+# The DFSR PowerShell module. A domain controller built from the template does
+# not have it.
+- name: Install the replication management tools
+  ansible.windows.win_feature:
+    name: RSAT-DFS-Mgmt-Con
+    state: present
+
 - name: Make the replication group
   ansible.windows.win_powershell:
     parameters:

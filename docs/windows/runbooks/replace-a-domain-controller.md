@@ -97,3 +97,17 @@ runs. Stop VM 113 before you start VM 104, and the reverse.
 Other machines with their own Kerberos ticket cache keep a ticket for the old
 server. Their connections to the new server fail until the ticket expires.
 Run `kinit -R` (Linux) or `klist purge` (Windows) on them.
+
+## Known problems
+
+- The first convergence after a promotion can run out of time ("JD-DC-01
+  reachable=False ... no inbound replication partner"). The partner did not
+  yet resolve the new server, whose DNS record the retirement had removed. If
+  `repadmin /showrepl` on the new server shows successful inbound
+  replication, run `windows-promote.yml` again. Each step that is complete
+  does nothing.
+- A zone transfer setting belongs to each DNS server and does not replicate.
+  A new domain controller refuses transfers until `windows.yml` (tag `dc`)
+  sets `windows_dc_dns_zone_transfers`. external-dns needs it on `jd-dc-01`.
+- A domain controller with the CA role installed cannot be demoted, also when
+  no CA is configured. The retirement removes such a role first.
