@@ -96,7 +96,7 @@
     mode: '0644'
   notify: restart journald
 
-- name: Kernel command line (mitigations)
+- name: GRUB settings (mitigations, console)
   ansible.builtin.copy:
     src: etc/default/grub.d/90-router.cfg
     dest: /etc/default/grub.d/90-router.cfg
