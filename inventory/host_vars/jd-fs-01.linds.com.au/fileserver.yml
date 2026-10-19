@@ -19,3 +19,105 @@ windows_fileserver_smb_require_signing: false
 # on linds-dc.
 windows_fileserver_shadow_copies:
   - { letter: D, days: [monday, tuesday, wednesday, thursday, friday], times: ["07:00", "12:00"] }
+
+
+# The NTFS permissions of the NAS folders. jd-fs-01 holds them for both sites:
+# DFS Replication copies them to linds-dc. Do not set the replicated folders on
+# linds-dc too. See roles/windows_fileserver/README.md.
+#
+# - The family (FreeNAS Read & Write) can change the shared and the personal
+#   folders.
+# - Other domain accounts can read the shared folders only.
+# - The cluster (Service Accounts) can change immich and photos, and read
+#   holiday videos.
+# - Only administrators can open server.
+windows_fileserver_folder_permissions:
+  # The volume root: all domain accounts can see the folders and read the
+  # files at the root. Only administrators can make a folder at the root.
+  - path: D:\
+    rules:
+      - {who: LINDS\FreeNAS Read & Write, rights: ReadAndExecute, inherit: ObjectInherit, propagation: NoPropagateInherit}
+      - {who: LINDS\Domain Users, rights: ReadAndExecute, inherit: ObjectInherit, propagation: NoPropagateInherit}
+
+  # The shared folders: the family can change them, other accounts can read.
+  - path: D:\Music
+    clean_below: true
+    rules:
+      - {who: LINDS\FreeNAS Read & Write, rights: Modify}
+      - {who: LINDS\Domain Users, rights: ReadAndExecute}
+  - path: D:\papa usb
+    clean_below: true
+    rules:
+      - {who: LINDS\FreeNAS Read & Write, rights: Modify}
+      - {who: LINDS\Domain Users, rights: ReadAndExecute}
+
+  # The personal folders: the family can change them. Other accounts cannot
+  # open them.
+  - path: D:\cheryls files
+    clean_below: true
+    rules:
+      - {who: LINDS\FreeNAS Read & Write, rights: Modify}
+  - path: D:\zoe
+    clean_below: true
+    rules:
+      - {who: LINDS\FreeNAS Read & Write, rights: Modify}
+
+  # personal files: the family can read all files and add files. Only the
+  # person who added a file can change it.
+  - path: D:\personal files
+    clean_below: true
+    rules:
+      - {who: CREATOR OWNER, rights: FullControl, propagation: InheritOnly}
+      - {who: LINDS\FreeNAS Read & Write, rights: ReadAndExecute}
+      - {who: LINDS\FreeNAS Read & Write, rights: "CreateFiles, AppendData", inherit: ContainerInherit}
+
+  # The Immich library: Immich changes it, the family can read it.
+  - path: D:\immich
+    clean_below: true
+    rules:
+      - {who: LINDS\Service Accounts, rights: Modify}
+      - {who: LINDS\FreeNAS Read & Write, rights: ReadAndExecute}
+
+  # Backups of the servers: administrators only.
+  - path: D:\server
+    clean_below: true
+    rules: []
+
+  # The redirected folders (share RedirectedFolders$ on linds-dc), as
+  # Microsoft recommends: a member of Redirected Folders can make one folder
+  # at the top, and has full control of it.
+  - path: D:\server\RedirectedFolders
+    clean_below: true
+    rules:
+      - {who: CREATOR OWNER, rights: FullControl, propagation: InheritOnly}
+      - {who: LINDS\Redirected Folders, rights: "ReadData, AppendData, ReadAttributes, ExecuteFile", inherit: None}
+
+  # NOT APPLIED YET: these four folders hold 4.6 TB. The share already limits
+  # the other accounts to read. To set the NTFS permissions, linds-dc writes
+  # each file again (measured: 2.8 times the data). While shadow copies of E:
+  # exist, the thin pool NAS also keeps the old blocks (about 2 times the
+  # data). For these folders, that is more than the free space of the pool.
+  #
+  # WARNING: Do not remove the comment signs before you read
+  # docs/windows/runbooks/nas-permissions.md.
+  # - path: D:\jayden
+  #   clean_below: true
+  #   rules:
+  #     - {who: LINDS\FreeNAS Read & Write, rights: Modify}
+  # - path: D:\business doc
+  #   clean_below: true
+  #   rules:
+  #     - {who: LINDS\FreeNAS Read & Write, rights: Modify}
+  #     - {who: LINDS\Domain Users, rights: ReadAndExecute}
+  # - path: D:\holiday videos
+  #   clean_below: true
+  #   rules:
+  #     - {who: LINDS\FreeNAS Read & Write, rights: Modify}
+  #     - {who: LINDS\Domain Users, rights: ReadAndExecute}
+  #     - {who: LINDS\Service Accounts, rights: ReadAndExecute}   # Plex
+  # - path: D:\photos
+  #   clean_below: true
+  #   rules:
+  #     - {who: LINDS\FreeNAS Read & Write, rights: Modify}
+  #     - {who: LINDS\Domain Users, rights: ReadAndExecute}
+  #     - {who: LINDS\Service Accounts, rights: Modify}           # Immich

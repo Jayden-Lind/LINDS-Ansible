@@ -1,0 +1,11 @@
+---
+# The NTFS permissions of the volume root of linds-dc (role windows_fileserver).
+# The share is in fileserver.vault.yml. The permissions of the replicated
+# folders come from jd-fs-01 through DFS Replication: do not set them here.
+windows_fileserver_folder_permissions:
+  # All domain accounts can see the folders and read the files at the root.
+  # Only administrators can make a folder at the root.
+  - path: E:\
+    rules:
+      - {who: LINDS\FreeNAS Read & Write, rights: ReadAndExecute, inherit: ObjectInherit, propagation: NoPropagateInherit}
+      - {who: LINDS\Domain Users, rights: ReadAndExecute, inherit: ObjectInherit, propagation: NoPropagateInherit}

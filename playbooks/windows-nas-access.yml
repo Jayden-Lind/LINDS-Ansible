@@ -1,0 +1,16 @@
+---
+# Show what each enabled domain account can do in each top folder of the NAS
+# share, on each file server. It reads only.
+#
+#   ansible-playbook playbooks/windows-nas-access.yml
+#
+# Read playbooks/windows-nas-access.md before you use it.
+
+- name: The access report of each file server
+  hosts: windows_fileserver
+  gather_facts: false
+  tasks:
+    - name: Make the report
+      ansible.builtin.include_role:
+        name: windows_fileserver
+        tasks_from: access-report
