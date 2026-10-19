@@ -5,13 +5,16 @@
 # WMI filters: {name, description, query}. The query is WQL in root\CIMv2.
 windows_gpo_wmi_filters: []
 
-# GPOs: {name, comment, apply_to, wmi_filter, policy, preferences}.
+# GPOs: {name, comment, apply_to, wmi_filter, policy, preferences,
+#        privilege_rights}.
 #   apply_to     Computer names. Only these computers apply the GPO. If you omit
 #                it, every computer in a linked container applies it.
 #   wmi_filter   The name of a WMI filter from windows_gpo_wmi_filters.
 #   policy       Registry policy values: {key, name, type, value}. The role
 #                removes other values from each key that it names.
 #   preferences  Registry preference items: {key, name, type, value}.
+#   privilege_rights  User rights: {SeDenyInteractiveLogonRight: [DOMAIN\group],
+#                ...}. The GPO then holds exactly these rights.
 # An item with state: absent is removed. The type is DWord or String.
 # The links are in windows_directory_gpo_links (role windows_directory).
 windows_gpo_definitions: []

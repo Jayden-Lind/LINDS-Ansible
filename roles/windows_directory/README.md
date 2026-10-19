@@ -11,8 +11,10 @@ group membership, GPO links and the password policy.
    password in `windows_directory_initial_passwords`, if there is one.
 4. It makes the members of each group in `windows_directory_members` exact.
 5. It makes the members of each group in `windows_directory_privileged` exact.
-6. It makes the GPO links of each container in `windows_directory_gpo_links`
-   exact, in the given order. It removes a link that is not in the list.
+6. `tasks/links.yml` makes the GPO links of each container in
+   `windows_directory_gpo_links` exact, in the given order. It removes a link
+   that is not in the list. `playbooks/windows.yml` runs it after the role
+   `windows_gpo`, because a GPO can name a group that this role makes.
 7. It sets the password policy and the machine account quota, if they are set.
 8. It lists the OUs, groups and users that exist but are not in the files.
 

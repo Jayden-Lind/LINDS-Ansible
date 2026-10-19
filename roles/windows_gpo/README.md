@@ -14,6 +14,9 @@ the inventory.
    - The registry policy values in `policy`. For each key in the list, the role
      removes the values that are not in the list.
    - The registry preference items in `preferences`, with the action Update.
+   - The user rights in `privilege_rights` (Security Settings). The role writes
+     the security template of the GPO in SYSVOL, adds the Security extension
+     and raises the version of the GPO, as GPMC does.
    - The computers in `apply_to`. Only these computers apply the GPO.
      Authenticated Users keep Read.
    - The WMI filter in `wmi_filter`.
@@ -36,11 +39,14 @@ Set them in `inventory/group_vars/windows/gpo.yml`.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `windows_gpo_wmi_filters` | `[]` | `{name, description, query}` for each WMI filter. The query is WQL in `root\CIMv2`. |
-| `windows_gpo_definitions` | `[]` | `{name, comment, apply_to, wmi_filter, policy, preferences}` for each GPO. |
+| `windows_gpo_definitions` | `[]` | `{name, comment, apply_to, wmi_filter, policy, preferences, privilege_rights}` for each GPO. |
 | `windows_gpo_remove_values` | `[]` | `{gpo, key, name}` for each value to remove from a GPO that the role does not own. |
 
 Each item in `policy` and `preferences` is `{key, name, type, value}`. The
 type is `DWord` or `String`. An item with `state: absent` is removed.
+`privilege_rights` maps a right to the accounts or groups that get it, for
+example `SeDenyInteractiveLogonRight: ['LINDS\Service Accounts']`. The GPO
+then holds exactly these rights.
 
 The GPOs in the inventory:
 
@@ -49,6 +55,7 @@ The GPOs in the inventory:
 | `Server - Baseline` | the domain | The settings of `windows_baseline`, for the servers in the inventory group `windows_managed`. |
 | `PDC Emulator - Time` | `Domain Controllers`, first | The PDC emulator gets its time from `ntp_servers`. |
 | `Domain Controller - Time` | `Domain Controllers`, second | The other domain controllers get their time from the domain. |
+| `Service Accounts - Network Logon Only` | the domain | The group `Service Accounts` may only log on over the network: interactive, Remote Desktop, batch and service logons are denied. |
 
 ## How to use it
 

@@ -63,13 +63,20 @@
         name: windows_dfsr
       tags: dfsr
 
-    # Before the directory, which links the GPOs.
+    # The GPOs name groups (for example in user rights), so the groups come
+    # first. The links come after the GPOs.
+    - name: OUs, groups, users and the password policy
+      ansible.builtin.import_role:
+        name: windows_directory
+      tags: directory
+
     - name: The GPOs that the code owns
       ansible.builtin.import_role:
         name: windows_gpo
       tags: gpo
 
-    - name: OUs, groups, users and GPO links
+    - name: The GPO links
       ansible.builtin.import_role:
         name: windows_directory
+        tasks_from: links
       tags: directory
