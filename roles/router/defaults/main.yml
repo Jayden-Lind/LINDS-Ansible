@@ -38,8 +38,6 @@ router_apt_upgrade: false
 # linux-image-cloud-amd64 from trixie-backports instead of stable's kernel
 # (true for jd-router-01, group_vars/jd_router.yml).
 router_kernel_backports: false
-# VyOS `system option performance network-throughput` == this tuned profile.
-router_tuned_profile: network-throughput
 router_timezone: Australia/Melbourne
 
 # Hostname-endpoint WireGuard tunnels get `wg set … endpoint` re-run when the

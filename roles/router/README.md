@@ -124,7 +124,7 @@ layout above), and the notes are JD's.
 | NTP / SNMP / LLDP / DDNS | chrony, snmpd, lldpd (from its author's OBS repository), ddclient | `etc/chrony/`, `etc/snmp/`, `etc/default/` | |
 | mDNS reflector | avahi-daemon | `etc/avahi/avahi-daemon.conf` | Repeats mDNS between `lan0`, `lan0.52` and `lan0.58` so devices on one can be found from the others; publishes nothing itself |
 | IDS | Suricata 8 + suricata-update, from trixie-backports | `etc/suricata/` | One worker thread on `lan0`; WAN traffic and DNS only (BPF filter); TLS flows bypassed after the handshake; EVE → rsyslog imfile → Alloy → Loki; weekly rule refresh reloads in place |
-| Kernel | linux-image-cloud-amd64 from trixie-backports (7.x, `router_kernel_backports`), sysctl, modules, grub, tuned | `etc/sysctl.d/`, `etc/modules-load.d/`, `etc/default/grub.d/` | `ignore_routes_with_linkdown` keeps a link-down build reachable; `ip_nonlocal_bind` lets daemons bind `.1` addresses before the LAN link is up |
+| Kernel | linux-image-cloud-amd64 from trixie-backports (7.x, `router_kernel_backports`), sysctl, modules, grub | `etc/sysctl.d/`, `etc/modules-load.d/`, `etc/default/grub.d/` | `ignore_routes_with_linkdown` keeps a link-down build reachable; `ip_nonlocal_bind` lets daemons bind `.1` addresses before the LAN link is up |
 
 ## Conventions and sharp edges
 
@@ -273,8 +273,10 @@ layout above), and the notes are JD's.
   day to store about 2 MB of text. What was turned down:
   `wg-reresolve@.service` has `LogLevelMax=notice` (systemd's
   start/finish lines for a unit that runs every minute); kea-dhcp4 logs at
-  WARN except its `leases` logger, so one `DHCP4_LEASE_ALLOC` line per
-  lease and no per-packet lines; kea-dhcp-ddns logs at WARN (failed updates
+  WARN except its `leases` logger, so no per-packet lines: one
+  `DHCP4_LEASE_ALLOC` line for a new lease, and `DHCP4_INIT_REBOOT` plus
+  `DHCP4_LEASE_REUSE` for a renewal answered from Kea 3's lease cache (about
+  70 lines an hour at JD, 2026-10-20); kea-dhcp-ddns logs at WARN (failed updates
   still show); pdns-recursor's half-hourly statistics report is off
   (`rec_control get-all` has the numbers); the apt timers no longer wait for
   a network-online that cannot arrive and log a timeout as an error; and
@@ -416,8 +418,11 @@ layout above), and the notes are JD's.
   GSO and GRO off on lan0 every start (after rule loading, so a check a few
   seconds after a restart still shows them on). `nic-tuning.service` sets
   the VF rx ring to 8192, enables UDP GRO forwarding on both NICs and
-  re-asserts lan0's offloads (`sg` before `tso`, which needs it). irqbalance
-  spreads the queues. All of it is ethtool, none of it is expressible in
+  re-asserts lan0's offloads (`sg` before `tso`, which needs it). It also
+  puts each queue's interrupt on the CPU its driver chose (queue N on CPU N);
+  irqbalance is not installed, because it ignored those hints. Check: in
+  `/proc/interrupts` each `virtio1-input.N` and `mlx5_compN` line grows in
+  one column only. All of it is ethtool or /proc, none of it is expressible in
   `.link` files. `ethtool -k lan0 | grep -E "^(scatter|tcp-seg|generic)"`
   must show four `on`s.
 * **Hardware GRO is on for lan0 at JD** (`GenericReceiveOffloadHardware=yes`
@@ -484,22 +489,35 @@ layout above), and the notes are JD's.
     bypass.
   * Check: `capture.kernel_packets` does not move during an SMB copy from
     the cluster, and `eve.json` still has `dns` and `tls` events.
-* **Suricata's stream memory is not capped.** With no `stream:` section it
-  ran on the compiled-in 256 MiB reassembly cap, which was full within hours
-  of every start (`memcap_pressure` 99-100, `tcp.segment_memcap_drop` and
-  `tcp.reassembly_gap` climbing): payload the detection engine never saw.
-  `stream.memcap` and `stream.reassembly.memcap` are 0 (unlimited); the
-  reassembly depth bounds each session, and `MemoryMax=4G` on the unit
-  (`suricata.service.d/memory.conf`) is the backstop, so a runaway costs a
-  Suricata restart rather than the router. `suricatasc -c 'memcap-show
-  stream-reassembly'` says `unlimited`; watch `tcp.reassembly_memuse`.
-* **EVE reaches Loki through rsyslog imfile, and logrotate truncates the
-  file under it.** Debian's `logrotate.d/suricata` uses `copytruncate`, and
-  imfile without `reopenOnTruncate` keeps its old offset: after the first
-  weekly rotation (2026-09-13) the reader sat 6 GB into a file that never
-  grew that large again, and the Grafana Suricata dashboard was empty for
-  three weeks while everything looked healthy on the box. Fixed in
-  `rsyslog.d/60-suricata-eve.conf` and proven with a forced rotation. If the
+* **Suricata's stream memory has wide caps.** `stream.memcap` is 256 MiB and
+  `stream.reassembly.memcap` 1 GiB. With the WAN-only capture filter,
+  reassembly uses a few MiB (3.3 MiB at most in 2026-10). The caps keep a
+  runaway inside Suricata (`tcp.segment_memcap_drop` climbs) rather than
+  letting it grow until `MemoryMax=4G` on the unit
+  (`suricata.service.d/memory.conf`) kills it. Before the filter, the
+  internal SMB traffic filled the compiled-in 256 MiB cap within hours,
+  which is why it was once unlimited. Watch `tcp.reassembly_memuse`.
+* **HOME_NET is per site and includes IPv6.** `suricata.yaml` takes
+  `vars.address-groups` from `files/<site>/etc/suricata/site-address-groups.yaml`
+  (a node-level `!include`: an include at the end of the file would replace
+  all of `vars`). JD's HOME_NET has the delegated /56, ULA and link-local.
+  Without IPv6 in HOME_NET, most rules (a `$HOME_NET` source) never matched
+  IPv6 traffic, about a third of the LAN's. `validate.yml` fails when lan0
+  has a global address outside HOME_NET: add the new prefix to the site file.
+* **Suricata alert suppressions are per site** (`files/<site>/etc/suricata/threshold.config`).
+  At JD it suppresses the P2P and protocol-anomaly rules that jd-torrent-01
+  (10.0.50.24, a Kea reservation) raises in normal work, for that host only:
+  more than half of all alerts before. `suricatasc -c dump-counters` shows
+  `detect.alerts_suppressed`.
+* **EVE reaches Loki through rsyslog imfile.** Suricata 8's
+  `logrotate.d/suricata` renames `eve.json`, creates a new one and sends
+  Suricata a HUP; imfile follows the new file by its inode. Suricata 7's
+  rotation used `copytruncate`, and imfile without `reopenOnTruncate` kept
+  its old offset: after the first weekly rotation (2026-09-13) the reader
+  sat 6 GB into a file that never grew that large again, and the Grafana
+  Suricata dashboard was empty for three weeks while everything looked
+  healthy on the box. `reopenOnTruncate` stays on in
+  `rsyslog.d/60-suricata-eve.conf` in case a rotation truncates again. If the
   dashboard is empty: `ss -tn state established '( dport = :1515 )'` should
   show two sessions, and `/var/spool/rsyslog/imfile-state:*` should hold an
   offset just below the size of `eve.json`.
@@ -804,7 +822,7 @@ anywhere, and the router then sits idle until the swap.
    | `swanctl --list-conns` | `LINDS` |
    | `wg show wg101` | no handshake, ever, while wan0 is down |
    | `nft list chain inet router output` | the three "only by the WAN" counters climbing: charon and WireGuard keep trying, the packets go nowhere |
-   | `journalctl -u isc-kea-dhcp4-server` | `the interface lan0 is not running`, five times every five seconds for five minutes after each start, then silence. It has stopped trying, which is why the cutover reboots the router |
+   | `journalctl -u isc-kea-dhcp4-server` | `the interface lan0 is not running`, once a minute (kea keeps trying to open its sockets for 24 h, `service-sockets-max-retries`) |
 
    Nothing the idle router does reaches the live network: kea, the RA
    sender, avahi and miniupnpd are bound to `lan0` and its VLANs, charon may
@@ -855,9 +873,9 @@ On linds-proxmox-01, with `cutover/linds-router-cutover` copied to `/root`.
 
    It sets VM 101 not to start with the host, shuts it down, takes the new
    router's management NIC link-down, brings its LAN and WAN up and reboots
-   it. The reboot is not a courtesy: a router built with its links down has
-   daemons that gave up on them, kea first of all, and a boot with the
-   links up is what every later boot will be. The site is offline from the
+   it. The reboot is not a courtesy: a router built with its links down
+   may have daemons that gave up on them (kea did, before it retried for
+   24 h), and a boot with the links up is what every later boot will be. The site is offline from the
    shutdown until the new router has booted and its WAN has a lease; on the
    test VM the links and the reboot together took about half a minute.
    `./linds-router-cutover cutover --revert-after 15` does the same and

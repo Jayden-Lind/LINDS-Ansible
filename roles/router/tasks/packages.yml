@@ -170,13 +170,11 @@
       - conntrack                 # failover flushes SNAT entries on switchover
       - wireguard-tools           # wg(8) for the endpoint re-resolver + debugging
       - ethtool
-      - tuned
       - iputils-ping
       - tcpdump
       - mtr-tiny
       - bind9-dnsutils
       - jq
-      - irqbalance
       # Traffic TUIs: per-flow, per-interface graphs, LAN stations, history.
       - iftop
       - bmon

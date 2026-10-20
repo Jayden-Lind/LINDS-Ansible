@@ -11,6 +11,16 @@
     name: [suricata, suricata-update]
     state: present
 
+# Per site: HOME_NET (suricata.yaml includes this file) and the alert
+# suppressions.
+- name: Suricata site files
+  ansible.builtin.copy:
+    src: "{{ router_site }}/etc/suricata/{{ item }}"
+    dest: "/etc/suricata/{{ item }}"
+    mode: '0644'
+  loop: [site-address-groups.yaml, threshold.config]
+  notify: restart suricata
+
 - name: suricata.yaml
   ansible.builtin.copy:
     src: etc/suricata/suricata.yaml

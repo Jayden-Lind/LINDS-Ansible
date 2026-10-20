@@ -2,7 +2,8 @@
 # ethtool settings the .link files cannot express
 # (files/<router_site>/etc/systemd/system/nic-tuning.service, per site
 # because it depends on what the NICs are): VF rx ring, UDP GRO forwarding.
-# irqbalance (packages.yml) spreads the VF and virtio queues over the vCPUs.
+# The same unit puts each queue's interrupt on the CPU its driver chose (queue
+# N on CPU N, which XPS also uses). irqbalance moved them away from that.
 
 - name: nic-tuning unit
   ansible.builtin.copy:
@@ -22,8 +23,12 @@
     enabled: true
     state: started
 
-- name: irqbalance enabled
-  ansible.builtin.systemd_service:
+# irqbalance ignores the drivers' affinity hints. On 2026-10-20 it had put
+# most of lan0's and wan0's queues on CPU3, so one flow's receive, forward
+# and transmit work ran on three CPUs. nic-tuning.service sets the drivers'
+# layout instead.
+- name: irqbalance absent
+  ansible.builtin.apt:
     name: irqbalance
-    enabled: true
-    state: started
+    state: absent
+    purge: true

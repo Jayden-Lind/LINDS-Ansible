@@ -1,0 +1,23 @@
+%YAML 1.1
+---
+# Managed by LINDS-Ansible: roles/router/files/jd/etc/suricata/site-address-groups.yaml.
+# vars.address-groups of suricata.yaml, for jd-router-01. HOME_NET has the
+# IPv6 prefix that Telstra delegates (2001:8003:dc6f:6300::/56: lan0 and
+# lan0.52), ULA and link-local (clients ask the router's lan0 link-local
+# for DNS). Without them most rules (a $HOME_NET source) never matched IPv6.
+# validate.yml fails if lan0 has a global address outside HOME_NET.
+HOME_NET: "[10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,2001:8003:dc6f:6300::/56,fc00::/7,fe80::/10]"
+EXTERNAL_NET: "!$HOME_NET"
+HTTP_SERVERS: "$HOME_NET"
+SMTP_SERVERS: "$HOME_NET"
+SQL_SERVERS: "$HOME_NET"
+DNS_SERVERS: "$HOME_NET"
+TELNET_SERVERS: "$HOME_NET"
+AIM_SERVERS: "$EXTERNAL_NET"
+DC_SERVERS: "$HOME_NET"
+DNP3_SERVER: "$HOME_NET"
+DNP3_CLIENT: "$HOME_NET"
+MODBUS_CLIENT: "$HOME_NET"
+MODBUS_SERVER: "$HOME_NET"
+ENIP_CLIENT: "$HOME_NET"
+ENIP_SERVER: "$HOME_NET"

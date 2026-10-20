@@ -117,11 +117,6 @@
     name: suricata-update
     state: started
 
-- name: restart tuned
-  ansible.builtin.systemd_service:
-    name: tuned
-    state: restarted
-
 - name: restart nic-tuning
   ansible.builtin.systemd_service:
     name: nic-tuning

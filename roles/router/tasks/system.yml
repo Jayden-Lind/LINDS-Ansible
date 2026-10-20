@@ -103,19 +103,10 @@
     mode: '0644'
   notify: update-grub
 
-- name: tuned enabled
-  ansible.builtin.systemd_service:
+# tuned is not used. Its network-throughput profile set only sysctls that
+# 90-router.conf sets too, and CPU frequency settings that a VM does not have.
+- name: tuned absent
+  ansible.builtin.apt:
     name: tuned
-    enabled: true
-    state: started
-
-- name: Active tuned profile
-  ansible.builtin.command: tuned-adm active
-  register: router_tuned_active
-  changed_when: false
-  failed_when: false
-
-- name: tuned profile
-  ansible.builtin.command: tuned-adm profile {{ router_tuned_profile }}
-  when: router_tuned_active.stdout is not search(router_tuned_profile)
-  changed_when: true
+    state: absent
+    purge: true

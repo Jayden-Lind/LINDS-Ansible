@@ -26,6 +26,30 @@
   changed_when: false
   when: router_suricata | bool
 
+# Every global IPv6 address on lan0 must be inside Suricata's HOME_NET
+# (files/<site>/etc/suricata/site-address-groups.yaml). If the ISP delegates
+# another prefix, most rules stop matching IPv6 without any error. The output
+# lists the addresses that are outside; add their prefix to HOME_NET.
+- name: Suricata HOME_NET covers lan0's IPv6 addresses
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import ipaddress, json, re, subprocess, sys
+        text = open("/etc/suricata/site-address-groups.yaml").read()
+        home = re.search(r'^HOME_NET:\s*"\[(.*)\]"', text, re.M).group(1)
+        nets = [ipaddress.ip_network(n.strip(), strict=False) for n in home.split(",")]
+        out = subprocess.run(["ip", "-6", "-j", "addr", "show", "dev", "lan0", "scope", "global"],
+                             capture_output=True, text=True, check=True).stdout
+        addrs = [a["local"] for i in json.loads(out or "[]") for a in i.get("addr_info", []) if "local" in a]
+        outside = [a for a in addrs if not any(ipaddress.ip_address(a) in n for n in nets if n.version == 6)]
+        print(" ".join(outside))
+        sys.exit(1 if outside else 0)
+  changed_when: false
+  check_mode: false
+  when: router_suricata | bool
+
 # Every connection the site's swanctl.conf defines (router_ipsec_connections).
 - name: swanctl connections loaded
   ansible.builtin.command: swanctl --list-conns

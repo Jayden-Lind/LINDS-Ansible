@@ -17,6 +17,9 @@ ExecStart=/usr/sbin/ethtool -K wan0 rx-udp-gro-forwarding on
 # sg first: TSO needs scatter-gather.
 ExecStart=/usr/sbin/ethtool -K lan0 sg on gro on gso on tso on
 ExecStart=/usr/sbin/ethtool -K lan0 rx-udp-gro-forwarding on
+# Each queue interrupt on the CPU its driver chose (affinity_hint: queue N
+# on CPU N, as XPS sends). irqbalance is not installed: it moved them.
+ExecStart=/bin/sh -c 'for a in /proc/irq/*/*-input.* /proc/irq/*/*-output.* /proc/irq/*/mlx5_comp*; do [ -e "$$a" ] || continue; d=$$(dirname "$$a"); h=$$(cat "$$d/affinity_hint"); case "$$h" in *[1-9a-f]*) echo "$$h" > "$$d/smp_affinity";; esac; done; true'
 
 [Install]
 WantedBy=multi-user.target
