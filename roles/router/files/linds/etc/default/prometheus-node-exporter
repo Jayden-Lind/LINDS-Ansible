@@ -2,4 +2,9 @@
 # On the cluster network only (nftables input rule 16; LINDS-Kubernetes
 # base/monitoring/router-metrics.yaml scrapes it). The textfile directory holds
 # router.prom, written by router-metrics.timer.
-ARGS="--web.listen-address=10.3.1.1:9100 --collector.textfile.directory=/var/lib/prometheus/node-exporter"
+#
+# Only the collectors that the Router dashboard and the alerts use. Debian's
+# defaults also include the systemd collector: 840 of 1,800 series, and new
+# series for each transient unit. router_failed_units in router.prom is the
+# part of it that is necessary.
+ARGS="--web.listen-address=10.3.1.1:9100 --collector.disable-defaults --collector.cpu --collector.meminfo --collector.loadavg --collector.stat --collector.vmstat --collector.uname --collector.os --collector.time --collector.timex --collector.filesystem --collector.netdev --collector.netclass --collector.netstat --collector.softnet --collector.conntrack --collector.netdev.device-exclude=^lo$ --collector.netclass.ignored-devices=^lo$ --collector.textfile --collector.textfile.directory=/var/lib/prometheus/node-exporter"
