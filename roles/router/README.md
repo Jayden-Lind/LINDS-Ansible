@@ -549,6 +549,9 @@ layout above), and the notes are JD's.
   the default 165 s kept the tunnel down for 2 min 47 s after the boot on
   2026-10-20). So the tunnel comes back within about a minute of wan0 being
   the active WAN. To dial at once: `swanctl --initiate --child LINDS`.
+  linds-router-01 has the same two settings (its `strongswan.d/router.conf`,
+  `timers connect 10` to 10.255.0.1): JD refuses a dial from an address that
+  `linds-pfsense.linds.com.au` does not have yet, as right after the cutover.
 * **Two `LINDS` SAs at once** happen when both ends dial at the same moment;
   a VyOS IPsec commit does that, since VyOS dials again on reload while JD's
   trap does too. While LINDS is still linds-vyos-01, never terminate one of
