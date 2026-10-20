@@ -77,6 +77,9 @@
 - name: Services
   ansible.builtin.import_tasks: services.yml
   tags: [services]
+- name: Troubleshooting and metrics
+  ansible.builtin.import_tasks: tools.yml
+  tags: [tools]
 
 - name: IPsec
   ansible.builtin.import_tasks: ipsec.yml

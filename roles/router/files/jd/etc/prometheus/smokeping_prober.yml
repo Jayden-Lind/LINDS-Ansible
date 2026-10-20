@@ -1,0 +1,20 @@
+# Managed by LINDS-Ansible: roles/router/files/jd/etc/prometheus/smokeping_prober.yml.
+# Latency and loss, one ping a second to each target, for the Router dashboard:
+# two public anchors per family (the internet as clients see it) and the other
+# site's router over the IPsec tunnel. Never the ISP's gateway: fast pings at
+# it were followed by half an hour of WAN flaps on 2026-10-10.
+---
+targets:
+  - hosts: [1.1.1.1, 9.9.9.9]
+    interval: 1s
+    network: ip4
+    protocol: icmp
+  - hosts: ["2606:4700:4700::1111", "2620:fe::fe"]
+    interval: 1s
+    network: ip6
+    protocol: icmp
+  # The LINDS router (linds-vyos-01 until its replacement), over ipsec0
+  - hosts: [10.255.0.2]
+    interval: 1s
+    network: ip4
+    protocol: icmp

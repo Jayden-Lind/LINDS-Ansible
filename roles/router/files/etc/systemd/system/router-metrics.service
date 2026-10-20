@@ -1,0 +1,11 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/system/router-metrics.service.
+# Writes the router's own metrics (WAN, IPsec, WireGuard, BGP, DHCP pools,
+# failed units) for node-exporter's textfile collector: `router metrics`.
+[Unit]
+Description=Router metrics for the Prometheus textfile collector
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/router metrics
+# Every 30 s: keep the journal free of start/finish lines.
+LogLevelMax=notice

@@ -1,0 +1,4 @@
+# Managed by LINDS-Ansible: roles/router/files/jd/etc/default/prometheus-smokeping-prober.
+# Targets: /etc/prometheus/smokeping_prober.yml. On the cluster network only
+# (nftables input rule 16).
+ARGS="--web.listen-address=10.0.53.1:9374"

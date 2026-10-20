@@ -3,9 +3,10 @@
 #   suricata, suricata-update  8.x, not 7.0
 #   wireguard-tools            1.0.20250521, not 1.0.20210914
 #   mtr-tiny                   0.96, not 0.95
+#   linux-perf                 the backports kernel's version (perf must match it)
 # apt gives backports priority 100, so without this pin it keeps the stable
 # versions. With 500 on both, apt takes the higher version. The kernel does
 # not need a pin (tasks/packages.yml installs it with default_release).
-Package: suricata suricata-update wireguard-tools mtr-tiny
+Package: suricata suricata-update wireguard-tools mtr-tiny linux-perf
 Pin: release n=trixie-backports
 Pin-Priority: 500

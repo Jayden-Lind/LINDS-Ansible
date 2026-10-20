@@ -1,0 +1,8 @@
+#!/bin/sh
+# Managed by LINDS-Ansible: roles/router/files/etc/update-motd.d/20-router.
+# The router's state at login. pam_motd runs this as root on every SSH login,
+# so it has 5 s and never fails the login.
+echo
+timeout 5 /usr/local/sbin/router status 2>/dev/null || echo "router status: no answer in 5 s"
+echo
+echo "More: router --help (wan, vpn, bgp, leases, host, dns, ids, trace, logs)"

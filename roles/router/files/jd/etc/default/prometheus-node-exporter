@@ -1,0 +1,5 @@
+# Managed by LINDS-Ansible: roles/router/files/jd/etc/default/prometheus-node-exporter.
+# On the cluster network only (nftables input rule 16; LINDS-Kubernetes
+# base/monitoring/router-metrics.yaml scrapes it). The textfile directory holds
+# router.prom, written by router-metrics.timer.
+ARGS="--web.listen-address=10.0.53.1:9100 --collector.textfile.directory=/var/lib/prometheus/node-exporter"

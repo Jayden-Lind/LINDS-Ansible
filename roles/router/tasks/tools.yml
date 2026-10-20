@@ -1,0 +1,71 @@
+---
+# Troubleshooting and metrics: the `router` command (files/usr/local/sbin/
+# router), its summary at login, the router-metrics timer, and three
+# Prometheus exporters (node, FRR, smokeping) for LINDS-Kubernetes
+# base/monitoring/router-metrics.yaml and its Router dashboard. The exporters
+# listen on the cluster network only: the address is in each site's
+# files/<site>/etc/default/, the opening is nftables input rule 16.
+
+# No recommends: prometheus-node-exporter-collectors would add timers for
+# apt, SMART and IPMI metrics that this router does not need.
+- name: Tools and exporters
+  ansible.builtin.apt:
+    name:
+      - iperf3                       # throughput tests through the router (its daemon stays off)
+      - htop
+      - dropwatch                    # where in the kernel packets are dropped
+      - linux-perf                   # backports, pinned to match the kernel
+      - prometheus-node-exporter
+      - prometheus-frr-exporter
+      - prometheus-smokeping-prober
+    state: present
+    install_recommends: false
+
+- name: router command
+  ansible.builtin.copy:
+    src: usr/local/sbin/router
+    dest: /usr/local/sbin/router
+    mode: '0755'
+
+- name: router status at login
+  ansible.builtin.copy:
+    src: etc/update-motd.d/20-router
+    dest: /etc/update-motd.d/20-router
+    mode: '0755'
+
+- name: router-metrics units
+  ansible.builtin.copy:
+    src: "etc/systemd/system/{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: '0644'
+  loop: [router-metrics.service, router-metrics.timer]
+  notify: daemon-reload
+
+- name: Exporter settings
+  ansible.builtin.copy:
+    src: "{{ router_site }}/etc/default/{{ item }}"
+    dest: "/etc/default/{{ item }}"
+    mode: '0644'
+  loop: [prometheus-node-exporter, prometheus-frr-exporter, prometheus-smokeping-prober]
+  notify: restart exporters
+
+- name: smokeping targets
+  ansible.builtin.copy:
+    src: "{{ router_site }}/etc/prometheus/smokeping_prober.yml"
+    dest: /etc/prometheus/smokeping_prober.yml
+    mode: '0644'
+  notify: restart exporters
+
+- name: Flush handlers (units known, exporters on their addresses)
+  ansible.builtin.meta: flush_handlers
+
+- name: Exporters and the metrics timer enabled
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - prometheus-node-exporter
+    - prometheus-frr-exporter
+    - prometheus-smokeping-prober
+    - router-metrics.timer
