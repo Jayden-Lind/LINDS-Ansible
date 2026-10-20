@@ -316,12 +316,12 @@ layout above), and the notes are JD's.
   * To re-check after changing upstream, resolve the busiest names in the
     DNS log through each candidate and time a TCP handshake to each answer.
     The measurements are in the comments of `recursor.yml`.
-* **JD sends its upstream queries to Quad9 over DNS over TLS (DoT).** The
-  forwarders in `jd/etc/powerdns/recursor.yml` use port 853, and the
-  recursor uses TLS for port 853 (`dot_to_port_853`, on by default). The
-  ISP cannot read the names that the router looks up. Clients do not
-  change: they send plain DNS to the router on port 53. The LINDS file
-  still uses plain DNS.
+* **Both routers send their upstream queries to Quad9 over DNS over TLS
+  (DoT).** The forwarders in each site's `etc/powerdns/recursor.yml` use
+  port 853, and the recursor uses TLS for port 853 (`dot_to_port_853`, on
+  by default). The ISP cannot read the names that the router looks up.
+  Clients do not change: they send plain DNS to the router on port 53. The
+  measurements below are JD's.
   * The recursor checks the certificate of the server
     (`outgoing.tls_configurations`: name `dns.quad9.net`, the system CA
     store). An attacker who intercepts the connection gets SERVFAIL, not
