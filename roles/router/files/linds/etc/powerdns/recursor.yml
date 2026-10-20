@@ -51,8 +51,12 @@ recursor:
   # address from 9.9.9.10): 9.9.9.10 / 149.112.112.10 is the same service
   # without the block list and without DNSSEC validation.
   forward_zones_recurse:
+    # DNS over TLS (DoT) to Quad9, as at JD (see jd's recursor.yml for the
+    # measurements): port 853 makes the recursor use TLS, and the server
+    # certificate is checked (outgoing.tls_configurations below). Clients
+    # do not change: they send plain DNS to the router.
     - zone: '.'
-      forwarders: ['9.9.9.9', '149.112.112.112', '2620:fe::fe', '2620:fe::9']
+      forwarders: ['9.9.9.9:853', '149.112.112.112:853', '[2620:fe::fe]:853', '[2620:fe::9]:853']
     # The two DCs at this site plus JD's over the IPsec tunnel as backup;
     # pdns orders forwarders by measured speed. VyOS also listed 10.0.50.1,
     # which is jd-router-01's own forwarder and asks these same servers.
@@ -73,6 +77,13 @@ recursor:
 outgoing:
   # Forward to RFC1918 targets (the default refuses them).
   dont_query: []
+  # Check Quad9's certificate on the DoT connections (Recursor 5.4+). If
+  # the check fails, every name not in the cache gets SERVFAIL.
+  tls_configurations:
+    - name: quad9
+      subnets: ['9.9.9.9', '149.112.112.112', '2620:fe::fe', '2620:fe::9']
+      subject_name: dns.quad9.net
+      validate_certificate: true
 
 recordcache:
   max_entries: 1000000
