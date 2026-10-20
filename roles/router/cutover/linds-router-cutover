@@ -24,10 +24,10 @@
 #      NICs come up. Management first: its address and the router's own
 #      10.3.1.1 are the same network on the same wire.
 #   4. The new router is rebooted. It was built with those links down, and
-#      not every daemon recovers from that by itself: kea gives up trying to
-#      open its sockets five minutes after it starts, so DHCP would stay
-#      dead (seen on the test build, 2026-10-13). A boot with the links up
-#      is also exactly what every later boot will be.
+#      not every daemon recovers from that by itself (kea gave up on its
+#      sockets after five minutes on the test build of 2026-10-13; it now
+#      retries for 24 h). A boot with the links up is also exactly what
+#      every later boot will be.
 # The links are changed with `qm set ... link_down=`, which Proxmox applies to
 # the running guest without unplugging the NIC as long as nothing else on the
 # netN line changes; this script rewrites only that one word.

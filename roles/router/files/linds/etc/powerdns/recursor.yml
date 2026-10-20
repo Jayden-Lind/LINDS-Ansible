@@ -66,9 +66,25 @@ recursor:
     # Drop this stub in the same change if that advertisement ever goes.
     - zone: k8s.linds.com.au
       forwarders: ['10.96.0.10']
+    # The reverse zones the DCs host (AD-integrated, so every DC has them).
+    # Without these, serve_rfc1918 (on by default) answers 10.in-addr.arpa
+    # and 168.192.in-addr.arpa itself: NXDOMAIN for every LAN address,
+    # including the PTR records that Kea's DDNS writes. Only these four:
+    # a forward of all of 10.in-addr.arpa would loop, since jd-dc-01
+    # forwards what it does not host to this router.
+    - zone: 50.0.10.in-addr.arpa
+      forwarders: ['10.3.1.200', '10.3.1.201', '10.0.50.200']
+    - zone: 250.0.10.in-addr.arpa
+      forwarders: ['10.3.1.200', '10.3.1.201', '10.0.50.200']
+    - zone: 1.4.10.in-addr.arpa
+      forwarders: ['10.3.1.200', '10.3.1.201', '10.0.50.200']
+    - zone: 6.168.192.in-addr.arpa
+      forwarders: ['10.3.1.200', '10.3.1.201', '10.0.50.200']
   minimum_ttl_override: 900
   threads: 2
-  hint_file: /usr/share/dns/root.hints
+  # No root hints and no root refresh: every query is forwarded (the '.'
+  # forward zone above), so the recursor never resolves from the root.
+  hint_file: no-refresh
   include_dir: /etc/powerdns/recursor.d
   socket_dir: /var/run/pdns-recursor
   setuid: pdns
@@ -84,6 +100,19 @@ outgoing:
       subnets: ['9.9.9.9', '149.112.112.112', '2620:fe::fe', '2620:fe::9']
       subject_name: dns.quad9.net
       validate_certificate: true
+
+# Prometheus metrics (/metrics) for the cluster's Prometheus
+# (LINDS-Kubernetes base/monitoring/router-metrics.yaml), on the cluster
+# network only (nftables input rule 16). No api_key: the REST API then
+# refuses its config, zone and cache endpoints (401); /metrics and the
+# read-only statistics answer. loglevel none: without it every scrape
+# writes a journal line.
+webservice:
+  webserver: true
+  address: 10.3.1.1
+  port: 8082
+  allow_from: ['10.3.1.0/24', '10.244.0.0/16']
+  loglevel: none
 
 recordcache:
   max_entries: 1000000
