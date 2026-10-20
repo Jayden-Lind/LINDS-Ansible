@@ -915,6 +915,17 @@ up. Checked afterwards on the two Windows servers and the jump box: none had
 taken an address, a route or a neighbour from it. A test segment that is
 really private is a bridge of its own with no ports.)
 
+On 2026-10-20, after the package upgrades (kernel 7.2.9, FRR 10.7.1,
+Suricata 8, ISC Kea 3.2.1, Recursor 5.4.7, lldpd 1.0.22), the build was
+run again the same way on a scratch VM (VM 9101, deleted afterwards):
+159 tasks ok and none failed from a fresh image, a second run that changed
+one file (it found `xfrm_acq_expires` in the `swanctl` section of the LINDS
+`strongswan.d/router.conf`, where charon does not read it), a third run
+that changed nothing. A 95-second capture on the VM's management NIC saw
+no IKE, ESP or WireGuard packet leave (the output guard dropped 18 IKE and
+84 WireGuard packets). linds-vyos-01's lease files, merged as in step 1 of
+the cutover, loaded into Kea 3.2.1: 26 leases, every address in the files.
+
 * **The build**: one run from a fresh image to a green `validate.yml`
   (152 tasks ok, none failed), a second run that changed nothing,
   `--check --diff` clean.
