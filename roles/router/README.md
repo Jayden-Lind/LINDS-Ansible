@@ -1095,11 +1095,20 @@ deletes it at the end.
 The router reports to the cluster's Prometheus: node-exporter (with the
 `router_*` metrics that `router metrics` writes every 30 s), the FRR and
 smokeping exporters and the recursor. The exporters listen on the cluster
-network only (input rule 16). The Router dashboard in Grafana shows them,
-and these alerts go to Discord (LINDS-Kubernetes
-`base/monitoring/router-metrics.yaml`): the backup WAN in use, the LINDS
-tunnel or a BGP peer down, a DHCP pool nearly full, conntrack nearly full,
-DNS SERVFAILs, Suricata silent or dropping packets.
+network only (input rule 16). node-exporter has only the collectors that
+the dashboard and the alerts use (`files/<site>/etc/default/prometheus-node-exporter`).
+The Router dashboard in Grafana (folder Network) shows the data. These
+alerts go to Discord (LINDS-Kubernetes `base/monitoring/router-metrics.yaml`):
+
+* 10 minutes on the backup WAN, or a backup WAN that fails its health checks.
+* The site tunnel down, a BGP peer down, or no WireGuard handshake for
+  15 minutes.
+* A DHCP pool over 90% used, conntrack over 80% full, a failed systemd unit.
+* DNS SERVFAILs, Suricata silent or dropping packets.
+* The `router_*` metrics missing or older than 5 minutes.
+
+The cluster's general node alerts (memory, disk, CPU) apply to the router
+too.
 
 ## Status: VyOS op-mode to here
 
