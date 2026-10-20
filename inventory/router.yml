@@ -478,10 +478,9 @@ router:
     linds_router:
       hosts:
         linds-router-01:
-          # The management leg (net0, VLAN 300) while the router is built
-          # beside linds-vyos-01; 192.168.6.1 once it is the router - see
-          # roles/router/README.md, "Building and cutting over linds-router-01".
-          ansible_host: 10.3.1.250
+          # It was built through a management NIC at 10.3.1.250 (VLAN 300)
+          # beside linds-vyos-01; this is its address as the router.
+          ansible_host: 192.168.6.1
           # ----- Per-site secrets (copied from the 192.168.6.1 host in vyos.yml;
           # each one compared, by hash, with what linds-vyos-01 was running on
           # 2026-10-13) -----
