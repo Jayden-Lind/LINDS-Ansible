@@ -1,0 +1,791 @@
+#!/usr/bin/env python3
+"""router: the state of this router, one command per question.
+
+Managed by LINDS-Ansible: roles/router/files/usr/local/sbin/router.
+
+  router                    one screen: WAN, tunnels, BGP, DHCP, DNS, IDS, services
+  router wan                the WAN links, their leases and the failover log
+  router vpn                IPsec SAs and WireGuard peers
+  router bgp                BGP peers and prefix counts
+  router leases [TEXT]      DHCP leases (TEXT filters by address, MAC or name)
+  router host ADDR|NAME|MAC everything the router knows about one client
+  router dns NAME [TYPE]    a name through this router's recursor, Quad9 and the DCs
+  router ids                Suricata counters and the last alerts
+  router trace ADDR [SEC]   which firewall rules one host's packets go through
+  router logs [AREA] [-f] [--since 2h]   the journal of the router's services
+  router metrics [FILE]     Prometheus text metrics (the router-metrics timer)
+
+It needs root, and runs itself through sudo when started by a user. It only
+reads, except `trace`, which adds a table `inet router_trace` for the
+duration of the trace and deletes it afterwards.
+"""
+import argparse
+import ipaddress
+import json
+import os
+import re
+import socket
+import subprocess
+import sys
+import time
+
+KEA4_SOCKET = "/var/run/kea/kea4-ctrl-socket"
+FAILOVER_CONFIG = "/etc/wan-failover.json"
+EVE_LOG = "/var/log/suricata/eve.json"
+LEASE_DIR = "/run/systemd/netif/leases"
+TEXTFILE = "/var/lib/prometheus/node-exporter/router.prom"
+TRACE_TABLE = "router_trace"
+
+# `router logs AREA` -> systemd units.
+LOG_AREAS = {
+    "wan": ["wan-failover", "systemd-networkd"],
+    "vpn": ["strongswan"],
+    "bgp": ["frr"],
+    "dhcp": ["isc-kea-dhcp4-server", "isc-kea-dhcp-ddns-server"],
+    "dns": ["pdns-recursor"],
+    "ids": ["suricata", "suricata-update"],
+    "upnp": ["miniupnpd"],
+    "mdns": ["avahi-daemon"],
+    "firewall": ["nftables"],
+}
+
+COLOUR = sys.stdout.isatty()
+
+
+def paint(text, code):
+    return f"\033[{code}m{text}\033[0m" if COLOUR else text
+
+
+def good(text):
+    return paint(text, "32")
+
+
+def bad(text):
+    return paint(text, "31;1")
+
+
+def dim(text):
+    return paint(text, "2")
+
+
+def run(cmd, timeout=10):
+    """Return stdout of cmd, or "" if it cannot run or fails."""
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return out.stdout if out.returncode == 0 else ""
+
+
+def run_json(cmd, timeout=10):
+    try:
+        return json.loads(run(cmd, timeout) or "null")
+    except json.JSONDecodeError:
+        return None
+
+
+def kea(command, arguments=None, path=KEA4_SOCKET):
+    """One command over a Kea control socket; returns the response or None."""
+    request = {"command": command}
+    if arguments:
+        request["arguments"] = arguments
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(5)
+            s.connect(path)
+            s.sendall(json.dumps(request).encode())
+            data = b""
+            while True:
+                chunk = s.recv(65536)
+                if not chunk:
+                    break
+                data += chunk
+        response = json.loads(data)
+    except (OSError, ValueError):
+        return None
+    return response[0] if isinstance(response, list) else response
+
+
+def ago(seconds):
+    """1 h 5 min, 3 min, 40 s."""
+    seconds = int(seconds)
+    if seconds < 0:
+        return "?"
+    days, rest = divmod(seconds, 86400)
+    hours, rest = divmod(rest, 3600)
+    minutes, secs = divmod(rest, 60)
+    if days:
+        return f"{days} d {hours} h"
+    if hours:
+        return f"{hours} h {minutes} min"
+    if minutes:
+        return f"{minutes} min"
+    return f"{secs} s"
+
+
+def human_bytes(n):
+    n = float(n)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if n < 1024 or unit == "TiB":
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} TiB"
+
+
+def hostname():
+    return socket.gethostname()
+
+
+# ----- sources ----------------------------------------------------------------
+
+def failover_candidates():
+    """The WANs: from wan-failover's config, or wan0 alone where there is none."""
+    try:
+        with open(FAILOVER_CONFIG) as f:
+            return json.load(f)["candidates"]
+    except (OSError, ValueError, KeyError):
+        return [{"name": "primary", "dev": "wan0", "metric": 0}]
+
+
+def link_state(dev):
+    info = run_json(["ip", "-j", "addr", "show", "dev", dev]) or [{}]
+    info = info[0] if info else {}
+    v4 = [f'{a["local"]}/{a["prefixlen"]}' for a in info.get("addr_info", [])
+          if a.get("family") == "inet" and "local" in a]
+    v6 = [f'{a["local"]}/{a["prefixlen"]}' for a in info.get("addr_info", [])
+          if a.get("family") == "inet6" and a.get("scope") == "global" and "local" in a]
+    return {"up": "LOWER_UP" in info.get("flags", []), "ipv4": v4, "ipv6": v6,
+            "ifindex": info.get("ifindex")}
+
+
+def dhcp_lease(ifindex):
+    """systemd-networkd's lease for a link: ADDRESS, ROUTER, LIFETIME..."""
+    lease = {}
+    try:
+        with open(f"{LEASE_DIR}/{ifindex}") as f:
+            for line in f:
+                key, _, value = line.strip().partition("=")
+                lease[key] = value
+    except OSError:
+        pass
+    return lease
+
+
+def default_routes():
+    """dev -> metric of the IPv4 default routes in the main table."""
+    routes = run_json(["ip", "-j", "-4", "route", "show", "default"]) or []
+    return {r.get("dev"): r.get("metric", 0) for r in routes}
+
+
+def active_wan(candidates, routes):
+    present = [c for c in candidates if c["dev"] in routes]
+    return min(present, key=lambda c: routes[c["dev"]]) if present else None
+
+
+def ipsec_sas():
+    """[{name, state, established, local, remote, children: [...]}] from
+    `swanctl --list-sas --pretty` (one key per line, braces for nesting)."""
+    text = run(["swanctl", "--list-sas", "--pretty"])
+    sas, stack = [], []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("list-sa"):
+            continue
+        if line.endswith("{"):
+            name = line[:-1].strip()
+            node = {"_name": name}
+            if stack and stack[-1].get("_name") == "child-sas":
+                stack[-1].setdefault("_items", []).append(node)
+            elif not stack:
+                sas.append(node)
+            else:
+                stack[-1][name] = node
+            stack.append(node)
+        elif line == "}":
+            if stack:
+                stack.pop()
+        elif "=" in line and stack:
+            key, _, value = line.partition("=")
+            stack[-1][key.strip()] = value.strip()
+    result = []
+    for sa in sas:
+        children = sa.get("child-sas", {}).get("_items", [])
+        result.append({
+            "name": sa["_name"],
+            "state": sa.get("state", "?"),
+            "established": int(sa.get("established", "0") or 0),
+            "local": sa.get("local-host", "?"),
+            "remote": sa.get("remote-host", "?"),
+            "remote_vips": sa.get("remote-vips", ""),
+            "remote_id": sa.get("remote-eap-id") or sa.get("remote-id", ""),
+            "children": [{
+                "name": c.get("name", c["_name"]),
+                "state": c.get("state", "?"),
+                "installed": int(c.get("install-time", "0") or 0),
+                "bytes_in": int(c.get("bytes-in", "0") or 0),
+                "bytes_out": int(c.get("bytes-out", "0") or 0),
+            } for c in children],
+        })
+    return result
+
+
+def ipsec_connections():
+    """Names of the configured site-to-site connections (not the road warrior)."""
+    text = run(["swanctl", "--list-conns"])
+    return [m.group(1) for m in re.finditer(r"^(\S+): IKEv", text, re.M)]
+
+
+def wireguard():
+    """[{iface, peer, endpoint, handshake (epoch), rx, tx}] from `wg show all dump`."""
+    peers = []
+    for line in run(["wg", "show", "all", "dump"]).splitlines():
+        f = line.split("\t")
+        if len(f) == 9:  # interface, peer, psk, endpoint, ips, handshake, rx, tx, keepalive
+            peers.append({"iface": f[0], "peer": f[1][:8], "endpoint": f[3],
+                          "handshake": int(f[5] or 0), "rx": int(f[6] or 0),
+                          "tx": int(f[7] or 0)})
+    return peers
+
+
+def bgp_peers():
+    data = run_json(["vtysh", "-c", "show bgp summary json"]) or {}
+    peers = (data.get("ipv4Unicast") or {}).get("peers", {})
+    return [{"peer": ip, "state": p.get("state", "?"), "prefixes": p.get("pfxRcd", 0),
+             "uptime": p.get("peerUptime", ""), "dynamic": bool(p.get("dynamicPeer")),
+             "remote_as": p.get("remoteAs")}
+            for ip, p in sorted(peers.items(), key=lambda kv: ipaddress.ip_address(kv[0]))]
+
+
+def kea_subnets():
+    """subnet id -> {"subnet", "interface", "reserved": set of addresses}."""
+    cfg = (kea("config-get") or {}).get("arguments", {}).get("Dhcp4", {})
+    subnets = list(cfg.get("subnet4", []))
+    for net in cfg.get("shared-networks", []):
+        subnets += net.get("subnet4", [])
+    return {s["id"]: {"subnet": s["subnet"], "interface": s.get("interface", ""),
+                      "reserved": {r.get("ip-address") for r in s.get("reservations", [])}}
+            for s in subnets}
+
+
+def kea_leases():
+    resp = kea("lease4-get-all") or {}
+    return (resp.get("arguments") or {}).get("leases", [])
+
+
+def kea_pools():
+    """subnet id -> (assigned, total) from Kea's statistics."""
+    stats = (kea("statistic-get-all") or {}).get("arguments", {})
+    pools = {}
+    for key, samples in stats.items():
+        m = re.fullmatch(r"subnet\[(\d+)\]\.(assigned|total)-addresses", key)
+        if m and samples:
+            pools.setdefault(int(m.group(1)), {})[m.group(2)] = int(samples[0][0])
+    return {k: (v.get("assigned", 0), v.get("total", 0)) for k, v in pools.items()}
+
+
+def recursor_stats():
+    stats = {}
+    for line in run(["rec_control", "get-all"]).splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1].lstrip("-").isdigit():
+            stats[parts[0]] = int(parts[1])
+    return stats
+
+
+def suricata_counters():
+    data = run_json(["suricatasc", "-c", "dump-counters"])
+    if not data or data.get("return") != "OK" or not isinstance(data.get("message"), dict):
+        return None
+    return data["message"]
+
+
+def eve_tail(lines=20000):
+    """The last EVE events, newest last. Bounded: the whole file is too big."""
+    events = []
+    for line in run(["tail", "-n", str(lines), EVE_LOG], timeout=20).splitlines():
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            pass
+    return events
+
+
+def failed_units():
+    return [line.split()[0] for line in
+            run(["systemctl", "--failed", "--no-legend", "--plain"]).splitlines() if line.strip()]
+
+
+def conntrack_usage():
+    try:
+        with open("/proc/sys/net/netfilter/nf_conntrack_count") as c, \
+                open("/proc/sys/net/netfilter/nf_conntrack_max") as m:
+            return int(c.read()), int(m.read())
+    except OSError:
+        return 0, 0
+
+
+def uptime_seconds():
+    with open("/proc/uptime") as f:
+        return float(f.read().split()[0])
+
+
+# ----- commands -----------------------------------------------------------------
+
+def cmd_status(_args):
+    now = time.time()
+    load = os.getloadavg()[0]
+    mem = {}
+    with open("/proc/meminfo") as f:
+        for line in f:
+            key, value = line.split(":")
+            mem[key] = int(value.split()[0]) * 1024
+    used = mem["MemTotal"] - mem["MemAvailable"]
+    print(f"{hostname()}  up {ago(uptime_seconds())}, kernel {os.uname().release}, "
+          f"load {load:.2f}, memory {human_bytes(used)} of {human_bytes(mem['MemTotal'])}")
+
+    candidates, routes = failover_candidates(), default_routes()
+    active = active_wan(candidates, routes)
+    parts = []
+    for c in candidates:
+        st = link_state(c["dev"])
+        addr = st["ipv4"][0].split("/")[0] if st["ipv4"] else "no address"
+        role = "active" if active and c["dev"] == active["dev"] else (
+            "standby" if c["dev"] in routes else ("down" if not st["up"] else "unhealthy"))
+        text = f'{c["name"]} {c["dev"]} {addr} {role}'
+        parts.append(good(text) if role in ("active", "standby") else bad(text))
+    if active and active is not candidates[0]:
+        parts.append(bad("(running on the backup)"))
+    print(f"{'WAN':10}{', '.join(parts)}")
+
+    v6 = [a for dev in ("lan0",) for a in link_state(dev)["ipv6"]]
+    print(f"{'IPv6':10}{', '.join(v6) if v6 else bad('no global address on lan0')}")
+
+    sas = ipsec_sas()
+    site = [s for s in sas if any(c["state"] == "INSTALLED" for c in s["children"])
+            and not s["remote_vips"]]
+    roadw = [s for s in sas if s["remote_vips"]]
+    want = [c for c in ipsec_connections() if not c.endswith("_MOBILE")]
+    up = {s["name"] for s in site}
+    vpn = [good(f"{c} up {ago(next(s['established'] for s in site if s['name'] == c))}")
+           if c in up else bad(f"{c} DOWN") for c in want]
+    vpn.append(f"road warriors: {len(roadw)}")
+    wg = [f"{p['iface']} handshake {ago(now - p['handshake'])} ago" if p["handshake"]
+          else f"{p['iface']} no handshake" for p in wireguard()]
+    print(f"{'Tunnels':10}{', '.join(vpn + wg)}")
+
+    peers = bgp_peers()
+    dyn = [p for p in peers if p["dynamic"]]
+    static = [p for p in peers if not p["dynamic"]]
+    bgp = []
+    if dyn:
+        est = [p for p in dyn if p["state"] == "Established"]
+        bgp.append(f"cluster {len(est)} peers, {max((p['prefixes'] for p in est), default=0)} prefixes each")
+    for p in static:
+        bgp.append(good(f"{p['peer']} up, {p['prefixes']} prefixes") if p["state"] == "Established"
+                   else bad(f"{p['peer']} {p['state']}"))
+    print(f"{'BGP':10}{', '.join(bgp) if bgp else bad('no peers')}")
+
+    pools, subnets = kea_pools(), kea_subnets()
+    leases = kea_leases()
+    if subnets:
+        full = [f"{subnets[i]['subnet']} {a * 100 // t}%" for i, (a, t) in pools.items()
+                if t and i in subnets and a * 100 // t >= 80]
+        print(f"{'DHCP':10}{len(leases)} leases" + (", " + bad("pools nearly full: " + ", ".join(full)) if full else ""))
+    else:
+        print(f"{'DHCP':10}{bad('Kea does not answer on its control socket')}")
+
+    rec = recursor_stats()
+    if rec:
+        q = rec.get("questions", 0)
+        hits = rec.get("cache-hits", 0) + rec.get("packetcache-hits", 0)
+        sf = rec.get("servfail-answers", 0)
+        line = f"recursor up {ago(rec.get('uptime', 0))}, {q} questions, {hits * 100 // max(q, 1)}% from cache"
+        line += ", SERVFAIL " + (bad if q and sf * 100 / q > 5 else str)(f"{sf * 100 / max(q, 1):.1f}%")
+        print(f"{'DNS':10}{line}")
+    else:
+        print(f"{'DNS':10}{bad('the recursor does not answer')}")
+
+    sc = suricata_counters()
+    if sc:
+        drops = sc.get("capture", {}).get("kernel_drops", 0)
+        det = sc.get("detect", {})
+        print(f"{'IDS':10}Suricata up {ago(sc.get('uptime', 0))}, "
+              + (bad(f"{drops} drops") if drops else "0 drops")
+              + f", {det.get('alert', 0)} alerts ({det.get('alerts_suppressed', 0)} suppressed)")
+    else:
+        print(f"{'IDS':10}{dim('Suricata does not answer (not running here, or starting)')}")
+
+    used, maximum = conntrack_usage()
+    print(f"{'Conntrack':10}{used} of {maximum}" + (bad(" (over 80%)") if maximum and used > maximum * 0.8 else ""))
+    failed = failed_units()
+    print(f"{'Services':10}" + (bad("failed: " + ", ".join(failed)) if failed else good("all running")))
+
+
+def cmd_wan(_args):
+    candidates, routes = failover_candidates(), default_routes()
+    active = active_wan(candidates, routes)
+    for c in candidates:
+        st = link_state(c["dev"])
+        lease = dhcp_lease(st["ifindex"])
+        role = "ACTIVE" if active and c["dev"] == active["dev"] else (
+            "standby (healthy)" if c["dev"] in routes else "not installed")
+        print(f"{c['name']} {c['dev']}: {role}, carrier {'up' if st['up'] else 'DOWN'}")
+        print(f"  IPv4     {', '.join(st['ipv4']) or 'none'}"
+              + (f", gateway {lease['ROUTER']}" if lease.get("ROUTER") else ""))
+        if lease.get("LIFETIME"):
+            print(f"  lease    lifetime {lease['LIFETIME']}, from {lease.get('SERVER_ADDRESS', '?')}")
+        if st["ipv6"]:
+            print(f"  IPv6     {', '.join(st['ipv6'])}")
+        if c.get("targets"):
+            print(f"  checks   ping {', '.join(c['targets'])} every 5 s by {c['dev']}")
+    print("\nLAN IPv6:")
+    for dev in ("lan0", "lan0.52"):
+        st = link_state(dev)
+        if st["ipv6"]:
+            print(f"  {dev:9}{', '.join(st['ipv6'])}")
+    events = run(["journalctl", "-u", "wan-failover", "--since", "-7d", "--no-pager",
+                  "-o", "short-iso", "--grep", "active WAN"])
+    lines = events.strip().splitlines()[-10:]
+    print("\nFailover events in the last 7 days" + (":" if lines else ": none"))
+    for line in lines:
+        if line.startswith("-- Boot"):
+            print("  (reboot)")
+        else:
+            print("  " + re.sub(r"^(\S+) \S+ wan-failover\[\d+\]: ", r"\1  ", line))
+
+
+def cmd_vpn(_args):
+    now = time.time()
+    sas = ipsec_sas()
+    want = ipsec_connections()
+    print("IPsec")
+    for name in want:
+        mine = [s for s in sas if s["name"] == name]
+        if not mine:
+            print(f"  {name}: " + (dim("no clients") if name.endswith("_MOBILE") else bad("DOWN")))
+        for s in mine:
+            who = f" {s['remote_id']} {s['remote_vips']}" if s["remote_vips"] else ""
+            v6 = " (over IPv6)" if ":" in s["remote"] else ""
+            print(f"  {s['name']}: {s['state']} {ago(s['established'])}, {s['local']} <-> {s['remote']}{v6}{who}")
+            for c in s["children"]:
+                print(f"    {c['name']}: {c['state']} {ago(c['installed'])}, "
+                      f"in {human_bytes(c['bytes_in'])}, out {human_bytes(c['bytes_out'])}")
+    print("WireGuard")
+    for p in wireguard():
+        hs = f"handshake {ago(now - p['handshake'])} ago" if p["handshake"] else bad("no handshake")
+        print(f"  {p['iface']}: peer {p['peer']}... {p['endpoint']}, {hs}, "
+              f"rx {human_bytes(p['rx'])}, tx {human_bytes(p['tx'])}")
+
+
+def cmd_bgp(_args):
+    for p in bgp_peers():
+        state = good(p["state"]) if p["state"] == "Established" else bad(p["state"])
+        kind = "cluster" if p["dynamic"] else f"AS {p['remote_as']}"
+        print(f"  {p['peer']:15} {kind:9} {state:12} {p['prefixes']:>4} prefixes  up {p['uptime']}")
+    print(dim("  more: vtysh -c 'show bgp summary', 'show ip route bgp'"))
+
+
+def lease_rows(leases, subnets):
+    now = time.time()
+    rows = []
+    for lease in leases:
+        sub = subnets.get(lease.get("subnet-id"), {})
+        expires = lease.get("cltt", 0) + lease.get("valid-lft", 0) - now
+        rows.append({"ip": lease.get("ip-address", ""), "mac": lease.get("hw-address", ""),
+                     "name": (lease.get("hostname") or "").removesuffix("."),
+                     "where": sub.get("interface", ""),
+                     "fixed": lease.get("ip-address") in sub.get("reserved", set()),
+                     "expires": expires})
+    return sorted(rows, key=lambda r: ipaddress.ip_address(r["ip"]))
+
+
+def cmd_leases(args):
+    rows = lease_rows(kea_leases(), kea_subnets())
+    text = (args.text or "").lower()
+    rows = [r for r in rows if not text or text in f"{r['ip']} {r['mac']} {r['name']}".lower()]
+    for r in rows:
+        print(f"  {r['ip']:15} {r['mac']:17} {r['where']:8} {'fixed' if r['fixed'] else '     '} "
+              f"{ago(r['expires']):>9} left  {r['name']}")
+    print(dim(f"  {len(rows)} leases"))
+
+
+def resolve_target(target):
+    """An address, a MAC or a name -> (address or None, matching lease rows)."""
+    rows = lease_rows(kea_leases(), kea_subnets())
+    t = target.lower()
+    if re.fullmatch(r"([0-9a-f]{2}:){5}[0-9a-f]{2}", t):
+        match = [r for r in rows if r["mac"] == t]
+        return (match[0]["ip"] if match else None), match
+    try:
+        ip = str(ipaddress.ip_address(target))
+        return ip, [r for r in rows if r["ip"] == ip]
+    except ValueError:
+        pass
+    match = [r for r in rows if r["name"].split(".")[0] == t.split(".")[0]]
+    if match:
+        return match[0]["ip"], match
+    answer = run(["dig", "+short", "+time=2", "+tries=1", target, "A", f"@{local_dns_address()}"]).split()
+    return (answer[-1] if answer else None), []
+
+
+def local_dns_address():
+    st = link_state("lan0")
+    return st["ipv4"][0].split("/")[0] if st["ipv4"] else "127.0.0.1"
+
+
+def cmd_host(args):
+    ip, rows = resolve_target(args.target)
+    if not ip:
+        print(bad(f"{args.target}: no lease, no DNS name"))
+        return 1
+    print(f"{args.target} -> {ip}")
+    for r in rows:
+        print(f"  lease     {r['mac']} on {r['where']}, {'fixed (reservation)' if r['fixed'] else 'dynamic'}, "
+              f"{ago(r['expires'])} left, name {r['name'] or '(none)'}")
+    if not rows:
+        print(dim("  lease     none (static address, or not a DHCP client)"))
+    dns = local_dns_address()
+    for r in rows:
+        if r["name"]:
+            fwd = run(["dig", "+short", "+time=2", "+tries=1", r["name"], "A", f"@{dns}"]).split()
+            state = good("resolves to it") if ip in fwd else bad(f"resolves to {', '.join(fwd) or 'nothing'}")
+            print(f"  DNS       {r['name']} {state}")
+    ptr = run(["dig", "+short", "+time=2", "+tries=1", "-x", ip, f"@{dns}"]).strip()
+    print(f"  PTR       {ptr or dim('none (Kea writes forward records only)')}")
+    neigh = run(["ip", "neigh", "show", ip]).strip()
+    print(f"  neighbour {neigh or dim('none (not on a LAN, or not seen lately)')}")
+    route = run(["ip", "route", "get", ip]).splitlines()
+    print(f"  route     {route[0].strip() if route else '?'}")
+    flows = run(["conntrack", "-L", "-s", ip], timeout=15).splitlines() + \
+        run(["conntrack", "-L", "-d", ip], timeout=15).splitlines()
+    dests = {}
+    for f in flows:
+        m = re.search(r"src=(\S+) dst=(\S+).*?dport=(\d+)", f)
+        if m:
+            peer = m.group(2) if m.group(1) == ip else m.group(1)
+            key = f"{peer}:{m.group(3)}"
+            dests[key] = dests.get(key, 0) + 1
+    top = sorted(dests.items(), key=lambda kv: -kv[1])[:5]
+    print(f"  flows     {len(flows)} in conntrack" + (", most to " + ", ".join(f"{k} ({v})" for k, v in top) if top else ""))
+    upnp = [line.strip() for line in run(["nft", "list", "table", "inet", "miniupnpd"]).splitlines()
+            if f"to {ip}:" in line]
+    if upnp:
+        print(f"  UPnP      {len(upnp)} port mapping(s): " + "; ".join(re.sub(r".*th dport (\d+) dnat ip to (\S+)", r"\1 -> \2", u) for u in upnp))
+    alerts = [e for e in eve_tail() if e.get("event_type") == "alert"
+              and ip in (e.get("src_ip"), e.get("dest_ip"))]
+    if alerts:
+        print(f"  alerts    {len(alerts)} in the recent EVE log; the last:")
+        for e in alerts[-5:]:
+            print(f"    {e['timestamp'][11:19]} {e['alert']['signature']} "
+                  f"{e.get('src_ip')}:{e.get('src_port', '')} -> {e.get('dest_ip')}:{e.get('dest_port', '')}")
+    else:
+        print(dim("  alerts    none in the recent EVE log"))
+    print(dim(f"  more: router trace {ip}   (which firewall rules its packets go through)"))
+
+
+def cmd_dns(args):
+    qtype = args.type or "A"
+    servers = [("this router", local_dns_address()), ("Quad9", "9.9.9.9")]
+    if args.name.rstrip(".").endswith("linds.com.au"):
+        servers.append(("jd-dc-01", "10.0.50.200"))
+    for label, server in servers:
+        out = run(["dig", "+time=3", "+tries=1", "+noall", "+answer", "+comments", "+stats",
+                   args.name, qtype, f"@{server}"], timeout=10)
+        status = re.search(r"status: (\w+)", out)
+        qtime = re.search(r"Query time: (\d+ msec)", out)
+        answers = [line.split(None, 4)[-1] for line in out.splitlines()
+                   if line and not line.startswith(";") and len(line.split()) >= 5]
+        print(f"  {label:12} {server:15} {status.group(1) if status else 'no answer':9} "
+              f"{qtime.group(1) if qtime else '':9} {', '.join(answers[:4])}")
+    print(dim(f"  the router caches answers for at least 15 min: rec_control wipe-cache {args.name}"))
+
+
+def cmd_ids(_args):
+    sc = suricata_counters()
+    if not sc:
+        print(bad("Suricata does not answer on its socket"))
+        return 1
+    cap, det, flow = sc.get("capture", {}), sc.get("detect", {}), sc.get("flow", {})
+    print(f"Suricata up {ago(sc.get('uptime', 0))}: {cap.get('kernel_packets', 0)} packets, "
+          f"{cap.get('kernel_drops', 0)} dropped, {flow.get('total', 0)} flows, "
+          f"{det.get('alert', 0)} alerts, {det.get('alerts_suppressed', 0)} suppressed")
+    alerts = [e for e in eve_tail() if e.get("event_type") == "alert"]
+    print(f"The last alerts ({len(alerts)} in the recent EVE log):")
+    for e in alerts[-15:]:
+        a = e["alert"]
+        print(f"  {e['timestamp'][5:19].replace('T', ' ')}  {a['severity']}  {a['signature'][:60]:60} "
+              f"{e.get('src_ip')} -> {e.get('dest_ip')}:{e.get('dest_port', '')}")
+    print(dim("  Grafana: the Suricata and Network devices dashboards"))
+
+
+def cmd_trace(args):
+    try:
+        ip = ipaddress.ip_address(args.target)
+    except ValueError:
+        target, _ = resolve_target(args.target)
+        if not target:
+            print(bad(f"{args.target}: not an address, and no lease or DNS name"))
+            return 1
+        ip = ipaddress.ip_address(target)
+    fam = "ip" if ip.version == 4 else "ip6"
+    ruleset = f"""
+table inet {TRACE_TABLE} {{
+    chain pre {{
+        type filter hook prerouting priority raw - 10;
+        {fam} saddr {ip} meta nftrace set 1
+        {fam} daddr {ip} meta nftrace set 1
+    }}
+    chain out {{
+        type filter hook output priority raw - 10;
+        {fam} daddr {ip} meta nftrace set 1
+    }}
+}}
+"""
+    run(["nft", "delete", "table", "inet", TRACE_TABLE])  # left over from an interrupted trace
+    load = subprocess.run(["nft", "-f", "-"], input=ruleset, text=True, capture_output=True)
+    if load.returncode:
+        print(bad("nft refused the trace table: " + load.stderr.strip()))
+        return 1
+    print(f"Tracing {ip} for {args.seconds} s (Ctrl-C stops). Packets of flows already in the "
+          "flowtable skip the forward chain and show only their first hooks.")
+    seen = {}
+    try:
+        mon = subprocess.Popen(["nft", "monitor", "trace"], stdout=subprocess.PIPE, text=True)
+        deadline = time.time() + args.seconds
+        while time.time() < deadline:
+            line = mon.stdout.readline()
+            if not line:
+                break
+            m = re.match(r"trace id (\S+) (\S+) (\S+) (\S+) (.*)", line.strip())
+            if not m or m.group(3) == TRACE_TABLE:
+                continue
+            tid, chain, rest = m.group(1), m.group(4), m.group(5)
+            if rest.startswith("packet:"):
+                if tid not in seen:  # one header per packet; each hook prints its own
+                    pkt = re.sub(r"\b(ether|vlan) \S+ \S+ ?|\bip (length|id|ttl|dscp|ecn|hdrlength|protocol) \S+ ?|"
+                                 r"\b(tcp|udp) (flags|window|length|checksum) \S+ ?", "", rest[8:])
+                    seen[tid] = pkt.strip()
+                    print(f"\n{tid[:6]} {seen[tid][:150]}")
+            elif "verdict" in rest or rest.startswith("policy"):
+                comment = re.search(r'comment "([^"]+)"', rest)
+                verdict = re.search(r"\(verdict (\w+)", rest) or re.search(r"policy (\w+)", rest)
+                v = verdict.group(1) if verdict else "?"
+                # A raw, nat or helper chain that only passes the packet on
+                # decides nothing; the filter chains' policies do.
+                if rest.startswith("policy") and v == "accept" and chain not in ("input", "forward", "output"):
+                    continue
+                what = comment.group(1) if comment else re.sub(r"\s*\(verdict.*", "", rest)[:80]
+                mark = bad(v) if v in ("drop", "reject") else (good(v) if v == "accept" else v)
+                print(f"   {chain:14} {mark:8} {what}")
+    except KeyboardInterrupt:
+        pass
+    finally:
+        try:
+            mon.terminate()
+        except NameError:
+            pass
+        run(["nft", "delete", "table", "inet", TRACE_TABLE])
+    if not seen:
+        print(dim("No packets of that host in that time."))
+
+
+def cmd_logs(args):
+    if args.area and args.area not in LOG_AREAS:
+        print(f"areas: {', '.join(LOG_AREAS)}")
+        return 1
+    units = LOG_AREAS[args.area] if args.area else sorted({u for us in LOG_AREAS.values() for u in us})
+    cmd = ["journalctl", "--no-pager", "-o", "short-iso"] + [x for u in units for x in ("-u", u)]
+    since = args.since if not args.since[:1].isdigit() else "-" + args.since
+    cmd += ["-f"] if args.follow else [f"--since={since}", "-n", "200"]
+    return subprocess.call(cmd)
+
+
+def cmd_metrics(args):
+    """Prometheus text for node-exporter's textfile collector, written atomically."""
+    out = []
+
+    def metric(name, help_text, samples, kind="gauge"):
+        out.append(f"# HELP router_{name} {help_text}")
+        out.append(f"# TYPE router_{name} {kind}")
+        for labels, value in samples:
+            lab = ",".join(f'{k}="{v}"' for k, v in labels.items())
+            out.append(f"router_{name}{{{lab}}} {value}" if lab else f"router_{name} {value}")
+
+    candidates, routes = failover_candidates(), default_routes()
+    active = active_wan(candidates, routes)
+    metric("wan_active", "1 for the WAN that carries the default route.",
+           [({"wan": c["name"], "dev": c["dev"]}, int(bool(active) and c["dev"] == active["dev"]))
+            for c in candidates])
+    metric("wan_healthy", "1 if wan-failover has this WAN's default route installed.",
+           [({"wan": c["name"], "dev": c["dev"]}, int(c["dev"] in routes)) for c in candidates])
+    sas = ipsec_sas()
+    metric("ipsec_up", "1 if the site-to-site connection has an installed CHILD_SA.",
+           [({"conn": name}, int(any(s["name"] == name and any(c["state"] == "INSTALLED" for c in s["children"])
+                                     for s in sas)))
+            for name in ipsec_connections() if not name.endswith("_MOBILE")])
+    metric("ipsec_road_warriors", "Connected remote-access clients.",
+           [({}, sum(1 for s in sas if s["remote_vips"]))])
+    now = time.time()
+    metric("wireguard_handshake_age_seconds", "Seconds since the last handshake with the peer.",
+           [({"iface": p["iface"]}, int(now - p["handshake"]) if p["handshake"] else -1) for p in wireguard()])
+    peers = bgp_peers()
+    metric("bgp_peer_up", "1 if the BGP session is Established.",
+           [({"peer": p["peer"], "kind": "cluster" if p["dynamic"] else "static"}, int(p["state"] == "Established"))
+            for p in peers])
+    pools, subnets = kea_pools(), kea_subnets()
+    metric("dhcp_addresses_assigned", "Leases in the subnet.",
+           [({"subnet": subnets[i]["subnet"], "interface": subnets[i]["interface"]}, a)
+            for i, (a, t) in pools.items() if i in subnets])
+    metric("dhcp_addresses_total", "Addresses in the subnet's pools.",
+           [({"subnet": subnets[i]["subnet"], "interface": subnets[i]["interface"]}, t)
+            for i, (a, t) in pools.items() if i in subnets])
+    metric("dhcp_up", "1 if Kea answers on its control socket.", [({}, int(bool(subnets)))])
+    metric("failed_units", "systemd units in the failed state.", [({}, len(failed_units()))])
+    text = "\n".join(out) + "\n"
+    path = args.file or TEXTFILE
+    tmp = f"{path}.tmp"
+    with open(tmp, "w") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
+def main():
+    if os.geteuid() != 0:
+        os.execvp("sudo", ["sudo", sys.argv[0]] + sys.argv[1:])
+    parser = argparse.ArgumentParser(prog="router", description=__doc__.split("\n\n")[0],
+                                     formatter_class=argparse.RawDescriptionHelpFormatter,
+                                     epilog=__doc__.split("\n\n", 1)[1])
+    sub = parser.add_subparsers(dest="command")
+    sub.add_parser("status").set_defaults(func=cmd_status)
+    sub.add_parser("wan").set_defaults(func=cmd_wan)
+    sub.add_parser("vpn").set_defaults(func=cmd_vpn)
+    sub.add_parser("bgp").set_defaults(func=cmd_bgp)
+    p = sub.add_parser("leases")
+    p.add_argument("text", nargs="?")
+    p.set_defaults(func=cmd_leases)
+    p = sub.add_parser("host")
+    p.add_argument("target")
+    p.set_defaults(func=cmd_host)
+    p = sub.add_parser("dns")
+    p.add_argument("name")
+    p.add_argument("type", nargs="?")
+    p.set_defaults(func=cmd_dns)
+    sub.add_parser("ids").set_defaults(func=cmd_ids)
+    p = sub.add_parser("trace")
+    p.add_argument("target")
+    p.add_argument("seconds", nargs="?", type=int, default=15)
+    p.set_defaults(func=cmd_trace)
+    p = sub.add_parser("logs")
+    p.add_argument("area", nargs="?")
+    p.add_argument("-f", "--follow", action="store_true")
+    p.add_argument("--since", default="1h", help="how far back: 10min, 2h, 1d, or a date")
+    p.set_defaults(func=cmd_logs)
+    p = sub.add_parser("metrics")
+    p.add_argument("file", nargs="?")
+    p.set_defaults(func=cmd_metrics)
+    args = parser.parse_args()
+    return (args.func if args.command else cmd_status)(args) or 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

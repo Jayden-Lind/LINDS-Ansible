@@ -1,0 +1,11 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/system/router-metrics.timer.
+[Unit]
+Description=Router metrics every 30 s
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=30s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

@@ -117,6 +117,15 @@
     name: suricata-update
     state: started
 
+- name: restart exporters
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: restarted
+  loop:
+    - prometheus-node-exporter
+    - prometheus-frr-exporter
+    - prometheus-smokeping-prober
+
 - name: restart nic-tuning
   ansible.builtin.systemd_service:
     name: nic-tuning

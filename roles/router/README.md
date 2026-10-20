@@ -124,6 +124,7 @@ layout above), and the notes are JD's.
 | NTP / SNMP / LLDP / DDNS | chrony, snmpd, lldpd (from its author's OBS repository), ddclient | `etc/chrony/`, `etc/snmp/`, `etc/default/` | |
 | mDNS reflector | avahi-daemon | `etc/avahi/avahi-daemon.conf` | Repeats mDNS between `lan0`, `lan0.52` and `lan0.58` so devices on one can be found from the others; publishes nothing itself |
 | IDS | Suricata 8 + suricata-update, from trixie-backports | `etc/suricata/` | One worker thread on `lan0`; WAN traffic and DNS only (BPF filter); TLS flows bypassed after the handshake; EVE → rsyslog imfile → Alloy → Loki; weekly rule refresh reloads in place |
+| Troubleshooting and metrics | `router` (a script), node-exporter, frr-exporter, smokeping-prober | `usr/local/sbin/router`, `etc/default/prometheus-*`, `etc/prometheus/smokeping_prober.yml` | See "Troubleshooting" below; the exporters listen on the cluster network only |
 | Kernel | linux-image-cloud-amd64 from trixie-backports (7.x, `router_kernel_backports`), sysctl, modules, grub | `etc/sysctl.d/`, `etc/modules-load.d/`, `etc/default/grub.d/` | `ignore_routes_with_linkdown` keeps a link-down build reachable; `ip_nonlocal_bind` lets daemons bind `.1` addresses before the LAN link is up |
 
 ## Conventions and sharp edges
@@ -1069,7 +1070,40 @@ re-issue the two server certs under the new CA, then drop the old one.
 Renewing the AD CS CA with the *same* key pair avoids all of that: existing
 certs stay valid and only the CA file needs replacing.
 
+## Troubleshooting
+
+Start with `router`: one screen with the WAN, the tunnels, BGP, DHCP, DNS,
+the IDS, conntrack and failed services. The same summary is the login
+banner. `router --help` lists the other commands. They only read, except
+`router trace`, which adds the table `inet router_trace` while it runs and
+deletes it at the end.
+
+| Symptom | Command | What to look at |
+| --- | --- | --- |
+| The internet is down or slow | `router wan` | Which WAN is active, the lease, the failover events. The Router dashboard has the latency and loss history (smokeping, one ping a second to 1.1.1.1, 9.9.9.9 and the other site) |
+| One device has no internet | `router host NAME` (or an address or MAC) | Its lease, DNS name, neighbour entry, flows, UPnP mappings and recent alerts. Then `router trace ADDRESS` shows which firewall rules its packets go through |
+| A name does not resolve | `router dns NAME` | The answers of this router, Quad9 and the DC side by side. A wrong cached answer: `rec_control wipe-cache NAME` |
+| LINDS cannot be reached | `router vpn`, `router bgp` | The `LINDS` SA and its CHILD_SA, BGP to 10.255.0.2. To dial at once: `swanctl --initiate --child LINDS` |
+| Cluster services cannot be reached | `router bgp` | Five cluster peers, about 75 prefixes each |
+| A device gets no address | `router leases TEXT`, `router logs dhcp` | Its lease; full pools show in `router` |
+| A game or the torrent client has no open port | `router host ADDRESS` | Its UPnP mappings. Only hosts in the `allow` lines of `miniupnpd.conf` can map ports |
+| AirPlay or Cast does not find a device on another VLAN | `router logs mdns` | The service type must be in `reflect-filters` in `avahi-daemon.conf` |
+| Questions about the IDS | `router ids` | Drops, alerts, suppressions; the Suricata dashboard |
+| Throughput through the router | `iperf3` between two hosts on different networks | On the router at the same time: `htop`, `perf top`, `dropwatch -l kas` |
+| Anything else | `router logs AREA -f` | Areas: wan, vpn, bgp, dhcp, dns, ids, upnp, mdns, firewall |
+
+The router reports to the cluster's Prometheus: node-exporter (with the
+`router_*` metrics that `router metrics` writes every 30 s), the FRR and
+smokeping exporters and the recursor. The exporters listen on the cluster
+network only (input rule 16). The Router dashboard in Grafana shows them,
+and these alerts go to Discord (LINDS-Kubernetes
+`base/monitoring/router-metrics.yaml`): the backup WAN in use, the LINDS
+tunnel or a BGP peer down, a DHCP pool nearly full, conntrack nearly full,
+DNS SERVFAILs, Suricata silent or dropping packets.
+
 ## Status: VyOS op-mode to here
+
+Most of these answers are a `router` command now (see Troubleshooting).
 
 `vtysh` is the interactive equivalent of VyOS op-mode for anything routing
 (`show ip route`, `show bgp …`); everything else is the daemon's own tool.
