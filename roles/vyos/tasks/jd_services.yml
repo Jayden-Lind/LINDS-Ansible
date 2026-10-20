@@ -1,7 +1,0 @@
----
-# SSH, SNMP and IPv6 router advertisements. LLDP and NTP are shared and live
-# in templates/system.j2.
-
-- name: SSH, SNMP and router advertisements
-  vyos.vyos.vyos_config:
-    lines: "{{ lookup('template', 'jd_services.j2').splitlines() | select | list }}"

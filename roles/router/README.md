@@ -21,7 +21,7 @@ JD's; where LINDS differs, the LINDS section says so.
 | The failover daemon, the WireGuard endpoint re-resolver, miniupnpd's table script | `files/usr/local/sbin/`, unit files in `files/etc/systemd/system/` |
 | The few rendered files (they carry vault secrets) | `templates/`: WireGuard `.netdev` (peer endpoint + key), `swanctl/conf.d/secrets.conf` (EAP users), `ddclient.conf` (Cloudflare token), `wg-reresolve/*.conf` |
 | Certificates / keys | rendered from the vault by `tasks/ipsec.yml` (VyOS's bare-base64 PKI blobs, wrapped as PEM by `filter_plugins/router_filters.py`) |
-| Secrets | `inventory/router.yml` (copied from `inventory/vyos.yml`, same vault password) |
+| Secrets | `inventory/router.yml` (ansible-vault values, inherited from the VyOS routers) |
 | What a site is: its name, which optional parts it has, its tunnels, what the validator expects | `inventory/group_vars/jd_router.yml`, `inventory/group_vars/linds_router.yml` |
 | Task flow | `tasks/main.yml` → one task file per area, in dependency order |
 | Failover daemon tests | `tests/` — `python3 -m unittest discover -s roles/router/tests` |
@@ -694,7 +694,13 @@ The router of the LINDS site: VM 114 on linds-proxmox-01
 | `wan0` | WAN (VyOS `eth1`) | DHCP, DHCPv6 + prefix delegation |
 | `ipsec0` | site-to-site to JD (VyOS `vti0`), BGP to 10.255.0.1 | 10.255.0.2/30 |
 | `wg101` | NordVPN, table 100 | 10.5.0.2/32 |
-| `mgmt0` | build-time management NIC on VLAN 300 | 10.3.1.250/24 |
+
+It was built through a fourth NIC, `mgmt0` on VLAN 300 (10.3.1.250), which
+has been link-down at the hypervisor since the cutover. Its two networkd
+files, its sshd listen address and its entry in `router_expected_interfaces`
+were removed afterwards; "Building it" below describes the build as it was
+done, and a rebuild beside a live router needs them back (the commit that
+removed them shows what they were).
 
 ### What it has that linds-vyos-01 did not
 
@@ -988,10 +994,10 @@ is that list as checks.
 
 Once it has run for as long as it takes to trust it:
 
-1. **LINDS-Ansible**, branch `router/linds-after-cutover`: `ansible_host`
-   becomes 192.168.6.1, and the management NIC's files, its sshd listen
-   address and its entry in `router_expected_interfaces` go. Merge it and
-   run the playbook.
+1. **LINDS-Ansible**: `ansible_host` set to 192.168.6.1, and the management
+   NIC's files, its sshd listen address and its entry in
+   `router_expected_interfaces` removed. Done by the commit that wrote this
+   sentence; run the playbook once after merging it.
 2. **LINDS-Terraform**, branch `proxmox/linds-router-after-cutover`: the three
    `disconnected` flags written as the cutover left them, and
    `prevent_destroy`. Terraform ignores the link states of this VM once it
@@ -999,9 +1005,11 @@ Once it has run for as long as it takes to trust it:
    changes nothing on the VM.
 3. **Delete linds-vyos-01**: `qm destroy 101 --purge` on linds-proxmox-01. It
    was made by hand and is in no Terraform state.
-4. **LINDS-Ansible**, branch `router/remove-vyos`: `roles/vyos`, its playbook
-   and inventory, and the `vyos.vyos` collection, which nothing uses once
-   both routers are Debian.
+4. **LINDS-Ansible**: `roles/vyos`, its playbook and inventory, and the
+   `vyos.vyos` collection removed, since nothing uses them once both routers
+   are Debian. Done by the commit that wrote this sentence. What the role
+   was is in the history (`git log -- roles/vyos`), and
+   `docs/healthcheck-2026-08-10.md` still describes jd-vyos-01 as it ran.
 
 ## IPsec certificate rotation
 
@@ -1012,7 +1020,7 @@ shows what is loaded and when it expires.
 | File | Vault var(s) | Subject | Used by | Expires |
 |---|---|---|---|---|
 | `x509ca/LINDS-CA.pem` | `files/linds-ca.cer` (vault-encrypted file) | `CN=linds-CA` | both connections verify peers against it; every host trusts it via `roles/common` | 2029-12-01 |
-| `x509/IPSEC.pem` + `private/IPSEC.pem` | `pub_key`, `priv_key` | `C=AU, ST=Victoria, L=Langwarrin, O=LINDS-IPSEC, CN=LINDS-IPSEC` | `LINDS` site-to-site. **One cert, both ends**: LINDS VyOS carries the same vault values | 2053-08-26 |
+| `x509/IPSEC.pem` + `private/IPSEC.pem` | `pub_key`, `priv_key` | `C=AU, ST=Victoria, L=Langwarrin, O=LINDS-IPSEC, CN=LINDS-IPSEC` | `LINDS` site-to-site. **One cert, both ends**: both routers take it from the same vault values | 2053-08-26 |
 | `x509/ipsec_remote.pem` + `private/ipsec_remote.pem` | `ipsec_remote_pub`, `ipsec_remote_priv` | `CN=jd-pfsense.linds.com.au`, SAN `jd-pfsense.linds.com.au`, `thezneaks.duckdns.org` | `LINDS_MOBILE` road warriors | **2027-08-21** |
 
 The vault values are VyOS PKI blobs (bare base64 DER, one line). `to_pem`
@@ -1042,9 +1050,7 @@ its own subject):
        openssl pkey -in ipsec_remote.key -outform DER | base64 -w0   # -> ipsec_remote_priv
        ansible-vault encrypt_string --name ipsec_remote_pub "$(...)"
 
-   Replace the values in `inventory/router.yml` (`router` group vars). The
-   VyOS groups carry copies of the same variables; update them too if VyOS
-   is still a rollback target, otherwise let them go.
+   Replace the values in `inventory/router.yml` (`router` group vars).
 4. `ansible-playbook playbooks/router.yml`. The role writes the PEMs, prunes
    anything else in the credential directories, and the handler runs
    `swanctl --load-all --clear` so the old key is gone from charon.
@@ -1057,9 +1063,9 @@ its own subject):
 
 **Site-to-site specifics.** `remote.id` on both ends pins the DN, so the
 subject must not change. Authentication is "signed by LINDS-CA with that DN",
-not "this exact cert", so the two ends can rotate one at a time: rotate here,
-LINDS keeps presenting its old (still valid) cert until its own `set pki
-certificate IPSEC …` is updated from the same vault values.
+not "this exact cert", so the two ends can rotate one at a time: run the
+playbook with `--limit` for one router, and the other keeps presenting the
+old (still valid) cert until its own run.
 
 **CA rotation (2029).** A new CA breaks every client that only trusts the old
 one, so order matters: install the new CA everywhere first (client profiles,
