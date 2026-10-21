@@ -122,7 +122,7 @@ layout above), and the notes are JD's.
 | DHCP | Kea, from ISC's repository (services `isc-kea-dhcp4-server`, `isc-kea-dhcp-ddns-server`) | `etc/kea/` | DDNS into AD DNS |
 | DNS forwarder | pdns-recursor, from repo.powerdns.com | `etc/powerdns/recursor.yml` | Upstream Quad9 (over DNS over TLS at JD), 15-minute cache floor: see below |
 | NTP / SNMP / LLDP / DDNS | chrony, snmpd, lldpd (from its author's OBS repository), ddclient | `etc/chrony/`, `etc/snmp/`, `etc/default/` | |
-| mDNS reflector | avahi-daemon | `etc/avahi/avahi-daemon.conf` | Repeats mDNS between `lan0`, `lan0.52` and `lan0.58` so devices on one can be found from the others; at JD only the service types in `reflect-filters`; publishes nothing itself |
+| mDNS reflector | avahi-daemon | `etc/avahi/avahi-daemon.conf` | Repeats mDNS between `lan0`, `lan0.52` and `lan0.58` so devices on one can be found from the others; publishes nothing itself |
 | IDS | Suricata 8 + suricata-update, from trixie-backports | `etc/suricata/` | One worker thread on `lan0`; WAN traffic and DNS only (BPF filter); TLS flows bypassed after the handshake; EVE → rsyslog imfile → Alloy → Loki; weekly rule refresh reloads in place |
 | Troubleshooting and metrics | `router` (a script), node-exporter, frr-exporter, smokeping-prober | `usr/local/sbin/router`, `etc/default/prometheus-*`, `etc/prometheus/smokeping_prober.yml` | See "Troubleshooting" below; the exporters listen on the cluster network only |
 | Kernel | linux-image-cloud-amd64 from trixie-backports (7.x, `router_kernel_backports`), sysctl, modules, grub | `etc/sysctl.d/`, `etc/modules-load.d/`, `etc/default/grub.d/` | `ignore_routes_with_linkdown` keeps a link-down build reachable; `ip_nonlocal_bind` lets daemons bind `.1` addresses before the LAN link is up |
@@ -200,9 +200,8 @@ layout above), and the notes are JD's.
   a reflector, since 2026-10-09). mDNS never crosses a router, so a phone on
   the main LAN could not find the Shield on VLAN 58 (it was missing from the
   YouTube app's cast list) although every cast port on it was reachable from
-  there. avahi repeats each question heard on one of `lan0`, `lan0.52`,
-  `lan0.58` onto the other two, and the answers for the service types in
-  `reflect-filters` (below). It does nothing else: it publishes
+  there. avahi repeats each question and answer heard on one of `lan0`,
+  `lan0.52`, `lan0.58` onto the other two. It does nothing else: it publishes
   nothing of its own, `allow-interfaces` keeps it off the WANs and VLAN 53,
   and it is IPv4 only. Input rule 15 admits the multicast group on those
   three interfaces, ahead of rule 2, so mDNS is now the second thing (after
@@ -217,21 +216,19 @@ layout above), and the notes are JD's.
     come back by unicast to a random port on the router, which the input
     chain does not admit. Phones, browsers and the cast and AirPlay stacks
     ask from 5353.
-  * Only answers for ten service types cross (`reflect-filters`, since
-    2026-10-22): AirPlay and RAOP, Google Cast and Cast groups, Spotify
-    Connect, Apple TV and HomePod control, HomeKit and Matter. A day of
-    capture (2026-10-21) chose them. In that day the main LAN looked for the
-    Denon on VLAN 52 (AirPlay, Spotify Connect) and the Shield on VLAN 58
-    (Cast, Spotify Connect). Nothing on VLAN 52 or 58 looked for anything on
-    the main LAN. What the main LAN's Apple devices, printers and file shares
-    say to each other (about 41,000 records a day onto each VLAN) now stays
-    on the main LAN.
-  * A new kind of device on another network stays invisible until its type
-    is in the list. The config file says how avahi matches the list and how
-    to find a device's type. Test from a LAN host with a query sent from port
-    5353 (see the legacy unicast note above): on 2026-10-22 the Shield and the
-    Denon resolved through 10.0.50.1 (SRV and address), and a test
-    `_workstation._tcp` announcement from the LAN was not repeated.
+  * Every service type crosses, so each of the three networks sees the
+    service names of the other two (Jayden's choice, 2026-10-22, after one
+    day with an allowlist). A new kind of device on another network works
+    without a config change. A day of capture (2026-10-21) showed what is
+    really used across: the main LAN looks for the Denon on VLAN 52 (AirPlay,
+    Spotify Connect) and the Shield on VLAN 58 (Cast, Spotify Connect). The
+    rest, about 41,000 records a day onto each VLAN, is the main LAN's Apple
+    devices, printers and file shares talking to each other.
+    `reflect-filters=` in the config can narrow it; the config file says how
+    avahi applies it.
+  * Test from a LAN host with a question sent from port 5353 (see the legacy
+    unicast note above). On 2026-10-22 the Shield and the Denon resolved
+    through 10.0.50.1 (SRV and address records).
   * The cache is left on: a repeated question is answered from it while the
     device itself stays silent (the config file says how). No recommends at
     install, so libnss-mdns stays out of `/etc/nsswitch.conf`.
@@ -1101,7 +1098,7 @@ deletes it at the end.
 | Cluster services cannot be reached | `router bgp` | Five cluster peers, about 75 prefixes each |
 | A device gets no address | `router leases TEXT`, `router logs dhcp` | Its lease; full pools show in `router` |
 | A game or the torrent client has no open port | `router host ADDRESS` | Its UPnP mappings. Only hosts in the `allow` lines of `miniupnpd.conf` can map ports |
-| AirPlay or Cast does not find a device on another VLAN | `router logs mdns` | The service type must be in `reflect-filters` in `avahi-daemon.conf` |
+| AirPlay or Cast does not find a device on another VLAN | `router logs mdns`, `tcpdump -ni lan0.52 udp port 5353` | The device's network must be in `allow-interfaces` in `avahi-daemon.conf`; the capture shows the device's answers and the router's repeats (from 10.0.52.1, on VLAN 58 from 10.0.58.1) |
 | Questions about the IDS | `router ids` | Drops, alerts, suppressions; the Suricata dashboard |
 | Throughput through the router | `iperf3` between two hosts on different networks | On the router at the same time: `htop`, `perf top`, `dropwatch -l kas` |
 | Anything else | `router logs AREA -f` | Areas: wan, vpn, bgp, dhcp, dns, ids, upnp, mdns, firewall |
