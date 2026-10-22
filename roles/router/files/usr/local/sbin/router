@@ -9,7 +9,7 @@ Managed by LINDS-Ansible: roles/router/files/usr/local/sbin/router.
   router bgp                BGP peers and prefix counts
   router leases [TEXT]      DHCP leases (TEXT filters by address, MAC or name)
   router host ADDR|NAME|MAC everything the router knows about one client
-  router dns NAME [TYPE]    a name through this router's recursor, Quad9 and the DCs
+  router dns NAME [TYPE]    a name through this router (Unbound), Quad9 and the DCs
   router ids                Suricata counters and the last alerts
   router trace ADDR [SEC]   which firewall rules one host's packets go through
   router logs [AREA] [-f] [--since 2h]   the journal of the router's services
@@ -42,7 +42,7 @@ LOG_AREAS = {
     "vpn": ["strongswan"],
     "bgp": ["frr"],
     "dhcp": ["isc-kea-dhcp4-server", "isc-kea-dhcp-ddns-server"],
-    "dns": ["pdns-recursor"],
+    "dns": ["unbound"],
     "ids": ["suricata", "suricata-update"],
     "upnp": ["miniupnpd"],
     "mdns": ["avahi-daemon"],
@@ -283,12 +283,16 @@ def kea_pools():
     return {k: (v.get("assigned", 0), v.get("total", 0)) for k, v in pools.items()}
 
 
-def recursor_stats():
+def dns_stats():
+    """Unbound's counters (unbound-control stats_noreset); {} when it does not answer."""
     stats = {}
-    for line in run(["rec_control", "get-all"]).splitlines():
-        parts = line.split()
-        if len(parts) == 2 and parts[1].lstrip("-").isdigit():
-            stats[parts[0]] = int(parts[1])
+    for line in run(["unbound-control", "stats_noreset"]).splitlines():
+        key, sep, value = line.partition("=")
+        if sep:
+            try:
+                stats[key] = float(value)
+            except ValueError:
+                pass
     return stats
 
 
@@ -394,16 +398,19 @@ def cmd_status(_args):
     else:
         print(f"{'DHCP':10}{bad('Kea does not answer on its control socket')}")
 
-    rec = recursor_stats()
-    if rec:
-        q = rec.get("questions", 0)
-        hits = rec.get("cache-hits", 0) + rec.get("packetcache-hits", 0)
-        sf = rec.get("servfail-answers", 0)
-        line = f"recursor up {ago(rec.get('uptime', 0))}, {q} questions, {hits * 100 // max(q, 1)}% from cache"
+    dns = dns_stats()
+    if dns:
+        q = int(dns.get("total.num.queries", 0))
+        hits = int(dns.get("total.num.cachehits", 0))
+        stale = int(dns.get("total.num.expired", 0))
+        sf = int(dns.get("num.answer.rcode.SERVFAIL", 0))
+        line = f"Unbound up {ago(int(dns.get('time.up', 0)))}, {q} questions, {hits * 100 // max(q, 1)}% from cache"
+        if stale:
+            line += f" ({stale * 100 // max(q, 1)}% expired, refreshed behind)"
         line += ", SERVFAIL " + (bad if q and sf * 100 / q > 5 else str)(f"{sf * 100 / max(q, 1):.1f}%")
         print(f"{'DNS':10}{line}")
     else:
-        print(f"{'DNS':10}{bad('the recursor does not answer')}")
+        print(f"{'DNS':10}{bad('Unbound does not answer on its control socket')}")
 
     sc = suricata_counters()
     if sc:
@@ -592,12 +599,15 @@ def cmd_dns(args):
         out = run(["dig", "+time=3", "+tries=1", "+noall", "+answer", "+comments", "+stats",
                    args.name, qtype, f"@{server}"], timeout=10)
         status = re.search(r"status: (\w+)", out)
+        ede = re.search(r"EDE: \d+ \(([^)]*)\)", out)
         qtime = re.search(r"Query time: (\d+ msec)", out)
         answers = [line.split(None, 4)[-1] for line in out.splitlines()
                    if line and not line.startswith(";") and len(line.split()) >= 5]
         print(f"  {label:12} {server:15} {status.group(1) if status else 'no answer':9} "
-              f"{qtime.group(1) if qtime else '':9} {', '.join(answers[:4])}")
-    print(dim(f"  the router caches answers for at least 15 min: rec_control wipe-cache {args.name}"))
+              f"{qtime.group(1) if qtime else '':9} {', '.join(answers[:4])}"
+              + (dim(f"  [{ede.group(1)}]") if ede else ""))
+    print(dim("  the router keeps an answer for its TTL, then up to a day longer (refreshed behind the"))
+    print(dim(f"  client, [Stale Answer] above). To drop it: unbound-control flush {args.name}"))
 
 
 def cmd_ids(_args):
@@ -740,6 +750,36 @@ def cmd_metrics(args):
            [({"subnet": subnets[i]["subnet"], "interface": subnets[i]["interface"]}, t)
             for i, (a, t) in pools.items() if i in subnets])
     metric("dhcp_up", "1 if Kea answers on its control socket.", [({}, int(bool(subnets)))])
+    dns = dns_stats()
+    metric("dns_up", "1 if Unbound answers on its control socket.", [({}, int(bool(dns)))])
+    if dns:
+        for name, key, help_text in (
+                ("dns_queries_total", "total.num.queries", "Questions from clients."),
+                ("dns_cache_hits_total", "total.num.cachehits", "Answers from the cache, expired ones included."),
+                ("dns_cache_misses_total", "total.num.cachemiss", "Questions that went to a forwarder."),
+                ("dns_expired_total", "total.num.expired", "Answers from expired records, refreshed behind the client."),
+                ("dns_prefetch_total", "total.num.prefetch", "Records refreshed before they expired.")):
+            metric(name, help_text, [({}, int(dns.get(key, 0)))], kind="counter")
+        metric("dns_answers_total", "Answers by response code (nodata: NOERROR without data).",
+               [({"rcode": k.rsplit(".", 1)[1]}, int(v)) for k, v in sorted(dns.items())
+                if k.startswith("num.answer.rcode.")], kind="counter")
+        # Unbound's histogram of the time to answer what was not in the cache:
+        # histogram.<sec>.<usec>.to.<sec>.<usec>=count, as cumulative buckets.
+        bounds = []
+        for k, v in dns.items():
+            m = re.fullmatch(r"histogram\.\d+\.\d+\.to\.(\d+)\.(\d+)", k)
+            if m:
+                bounds.append((int(m.group(1)) + int(m.group(2)) / 1e6, int(v)))
+        if bounds:
+            out.append("# HELP router_dns_lookup_seconds Time to answer a question that was not in the cache.")
+            out.append("# TYPE router_dns_lookup_seconds histogram")
+            total = 0
+            for upper, count in sorted(bounds):
+                total += count
+                out.append(f'router_dns_lookup_seconds_bucket{{le="{upper:g}"}} {total}')
+            out.append(f'router_dns_lookup_seconds_bucket{{le="+Inf"}} {total}')
+            out.append(f"router_dns_lookup_seconds_sum {dns.get('total.recursion.time.avg', 0) * total:.6f}")
+            out.append(f"router_dns_lookup_seconds_count {total}")
     metric("failed_units", "systemd units in the failed state.", [({}, len(failed_units()))])
     text = "\n".join(out) + "\n"
     path = args.file or TEXTFILE

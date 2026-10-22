@@ -35,9 +35,9 @@
     name: rsyslog
     state: restarted
 
-- name: restart pdns-recursor
+- name: restart unbound
   ansible.builtin.systemd_service:
-    name: pdns-recursor
+    name: unbound
     state: restarted
 
 - name: restart kea-dhcp4

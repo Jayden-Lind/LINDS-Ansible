@@ -66,9 +66,6 @@ router_expected_interfaces:
 
 # What else validate.yml checks or prints for this site.
 router_ipsec_connections: [LINDS, LINDS_MOBILE]
-# recursor.yml listens on lan0's link-local by interface index
-# ([fe80::...%2]:53); the run fails if lan0 is no longer index 2.
-router_dns_linklocal_ifindex: 2
 router_routing_tables:
   - {id: 1001, name: wan0}
   - {id: 1002, name: lan0.99}
