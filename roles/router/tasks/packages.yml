@@ -102,8 +102,8 @@
     dest: /etc/apt/preferences.d/router-backports.pref
     mode: '0644'
 
-# The vendors' own repositories, for the newest stable release of FRR, Kea,
-# PowerDNS Recursor and lldpd (each .sources file says which). The signing
+# The vendors' own repositories, for the newest stable release of FRR, Kea
+# and lldpd (each .sources file says which). The signing
 # keys are files in the role, so the trust does not change without a
 # commit. Their versions are higher than Debian's, so apt takes them.
 - name: Vendor repository keys
@@ -111,15 +111,25 @@
     src: "etc/apt/keyrings/{{ item }}"
     dest: "/etc/apt/keyrings/{{ item }}"
     mode: '0644'
-  loop: [frrouting.gpg, isc-kea.asc, powerdns.asc, lldpd-obs.asc]
+  loop: [frrouting.gpg, isc-kea.asc, lldpd-obs.asc]
 
 - name: Vendor repositories
   ansible.builtin.copy:
     src: "etc/apt/sources.list.d/{{ item }}"
     dest: "/etc/apt/sources.list.d/{{ item }}"
     mode: '0644'
-  loop: [frrouting.sources, isc-kea.sources, powerdns-recursor.sources, lldpd.sources]
+  loop: [frrouting.sources, isc-kea.sources, lldpd.sources]
   register: router_apt_vendor_sources
+
+# PowerDNS's repository served pdns-recursor until Unbound (Debian's own)
+# replaced it on 2026-10-22 (dns.yml).
+- name: PowerDNS repository removed
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/powerdns-recursor.sources
+    - /etc/apt/keyrings/powerdns.asc
 
 # The apt tasks below skip the refresh while the cache is less than an hour
 # old. A new source must be read before them.
@@ -161,7 +171,6 @@
       - isc-kea-dhcp4
       - isc-kea-dhcp-ddns
       - isc-kea-hooks
-      - pdns-recursor
       - chrony
       - snmpd
       - lldpd

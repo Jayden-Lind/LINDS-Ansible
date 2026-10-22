@@ -1,0 +1,10 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/default/unbound.
+# Read by /usr/libexec/unbound-helper, which the unit runs before Unbound.
+#
+# The router's own /etc/resolv.conf is a fixed file (files/<site>/etc/
+# resolv.conf): Unbound must not write itself into it.
+RESOLVCONF=false
+# No DNSSEC validation here (module-config in unbound.conf), so there is no
+# root trust anchor to keep up to date. The update would also ask the root
+# servers at every start.
+ROOT_TRUST_ANCHOR_UPDATE=false

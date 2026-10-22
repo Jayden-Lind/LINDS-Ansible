@@ -1,23 +1,67 @@
 ---
-# pdns-recursor, the daemon VyOS's `service dns forwarding` drives. 5.x reads
-# YAML only (recursor.yml); the package's old-style recursor.conf is removed
-# so there is exactly one config file.
+# Unbound, the DNS forwarder for the LAN and the VLANs. The site's
+# files/<router_site>/etc/unbound/unbound.conf says what it does and why.
+# The unit is masked while the package installs so the daemon's first start
+# never runs with Debian's config. It replaced pdns-recursor on 2026-10-22;
+# the last tasks remove that.
 
-- name: pdns-recursor config
-  ansible.builtin.copy:
-    src: "{{ router_site }}/etc/powerdns/recursor.yml"
-    dest: /etc/powerdns/recursor.yml
-    mode: '0644'
-  notify: restart pdns-recursor
+- name: unbound installed?
+  ansible.builtin.command: dpkg-query -W -f '${Status}' unbound
+  register: router_dns_pkg
+  changed_when: false
+  failed_when: false
 
-- name: Old-style recursor.conf retired
-  ansible.builtin.file:
-    path: /etc/powerdns/recursor.conf
-    state: absent
-  notify: restart pdns-recursor
+- name: Keep unbound from starting with Debian's config during install
+  ansible.builtin.command: systemctl mask unbound.service
+  when: "'install ok installed' not in router_dns_pkg.stdout"
 
-- name: pdns-recursor enabled
+- name: unbound package
+  ansible.builtin.apt:
+    name: unbound
+    state: present
+    install_recommends: false
+
+# The router's own /etc/resolv.conf is a fixed file: Unbound must not put
+# itself into it through resolvconf.
+- name: unbound-resolvconf masked
   ansible.builtin.systemd_service:
+    name: unbound-resolvconf
+    masked: true
+
+- name: unbound helper settings
+  ansible.builtin.copy:
+    src: etc/default/unbound
+    dest: /etc/default/unbound
+    mode: '0644'
+  notify: restart unbound
+
+- name: unbound config
+  ansible.builtin.copy:
+    src: "{{ router_site }}/etc/unbound/unbound.conf"
+    dest: /etc/unbound/unbound.conf
+    mode: '0644'
+    validate: /usr/sbin/unbound-checkconf %s
+  notify: restart unbound
+
+- name: Unmask unbound (config in place)
+  ansible.builtin.command: systemctl unmask unbound.service
+  when: "'install ok installed' not in router_dns_pkg.stdout"
+
+# pdns-recursor listened on the same addresses: it goes before unbound
+# starts. Its repository goes in packages.yml.
+- name: pdns-recursor purged (replaced by unbound)
+  ansible.builtin.apt:
     name: pdns-recursor
+    state: absent
+    purge: true
+
+- name: pdns-recursor config gone
+  ansible.builtin.file:
+    path: /etc/powerdns
+    state: absent
+
+- name: unbound enabled
+  ansible.builtin.systemd_service:
+    name: unbound
     enabled: true
     state: started

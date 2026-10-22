@@ -45,7 +45,7 @@ another site's DHCP ranges would be worse than a failed run.
 The split is by one question: would the file be the same on the other
 router? If so it is under `files/etc/` and changing it changes both. The
 per-site ones are the networkd files, `nftables.conf`, `frr.conf`, the two
-kea files, `recursor.yml`, `swanctl.conf` and `strongswan.d/router.conf`,
+kea files, `unbound.conf`, `swanctl.conf` and `strongswan.d/router.conf`,
 `snmpd.conf`, the sshd drop-in, `miniupnpd.conf`, `avahi-daemon.conf`,
 `nic-tuning.service`, `resolv.conf`, and at JD `wan-failover.json`.
 
@@ -102,7 +102,7 @@ name (`packages`, `system`, `network`, `tuning`, `firewall`, `upnp`, `mdns`,
 
 A run ends in `tasks/validate.yml`: every daemon's own config checker
 (`nft -c`, `vtysh -C`, `kea-dhcp4 -t`, `suricata -T`, `sshd -t`,
-`swanctl --list-conns`, `rec_control ping`), an interface check against
+`swanctl --list-conns`, `unbound-control status`), an interface check against
 `router_expected_interfaces`, and `systemctl --failed` must be empty. A green
 run is a box that would route the moment its links come up.
 
@@ -120,7 +120,7 @@ layout above), and the notes are JD's.
 | Dual-WAN failover | `wan-failover` | `etc/wan-failover.json` | Per-WAN default in tables 1001/1002 for the health check (90/100 are the WireGuard tunnels'); hysteresis; carrier check; SNAT conntrack flush on switch |
 | IPsec | strongSwan (swanctl) | `etc/swanctl/swanctl.conf` | `LINDS` site-to-site over `ipsec0`, `LINDS_MOBILE` road-warrior over `ipsec10`; `encap = yes` is a line here, not a template patch |
 | DHCP | Kea, from ISC's repository (services `isc-kea-dhcp4-server`, `isc-kea-dhcp-ddns-server`) | `etc/kea/` | DDNS into AD DNS |
-| DNS forwarder | pdns-recursor, from repo.powerdns.com | `etc/powerdns/recursor.yml` | Upstream Quad9 (over DNS over TLS at JD), 15-minute cache floor: see below |
+| DNS forwarder | Unbound (Debian's) | `etc/unbound/unbound.conf`, `etc/default/unbound` | Upstream Quad9 over DNS over TLS; expired answers served at once and refreshed behind the client: see below |
 | NTP / SNMP / LLDP / DDNS | chrony, snmpd, lldpd (from its author's OBS repository), ddclient | `etc/chrony/`, `etc/snmp/`, `etc/default/` | |
 | mDNS reflector | avahi-daemon | `etc/avahi/avahi-daemon.conf` | Repeats mDNS between `lan0`, `lan0.52`, `lan0.53` and `lan0.58` so devices on one can be found from the others; publishes nothing itself |
 | IDS | Suricata 8 + suricata-update, from trixie-backports | `etc/suricata/` | One worker thread on `lan0`; WAN traffic and DNS only (BPF filter); TLS flows bypassed after the handshake; EVE → rsyslog imfile → Alloy → Loki; weekly rule refresh reloads in place |
@@ -153,17 +153,17 @@ layout above), and the notes are JD's.
   | `wireguard-tools`, `mtr-tiny` | trixie-backports, same pin | Newer `wg` and `mtr` |
   | `frr`, `frr-pythontools` | `deb.frrouting.org`, component `frr-stable` | The newest FRR release, not 10.3 |
   | `isc-kea-dhcp4`, `isc-kea-dhcp-ddns`, `isc-kea-hooks` | ISC's `kea-3-2` repository on Cloudsmith | Kea 3.2, not 2.6 |
-  | `pdns-recursor` | `repo.powerdns.com`, suite `trixie-rec-54` | Recursor 5.4, not 5.2 |
   | `lldpd` | openSUSE Build Service, `home:vbernat` (the lldpd author) | 1.0.22, not 1.0.18 |
 
   The signing keys are in `files/etc/apt/keyrings/`. A new key needs a
   commit. The `lldpd-obs.asc` key expires on 2027-01-05. `frr-stable`
   moves to the next major release when FRR makes one, and an upgrade run
-  then installs it: read the FRR release notes before the run. ISC and
-  PowerDNS make one repository for each stable series. To move to the next
-  series, change the name in `isc-kea.sources` or
-  `powerdns-recursor.sources`. strongSwan, nftables and iproute2 stay on
-  Debian 13: no newer package exists for Debian 13.
+  then installs it: read the FRR release notes before the run. ISC makes
+  one repository for each stable series. To move to the next series, change
+  the name in `isc-kea.sources`. strongSwan, nftables, iproute2 and Unbound
+  stay on Debian 13 (Unbound gets its updates from Debian security). The
+  PowerDNS repository served pdns-recursor until Unbound replaced it on
+  2026-10-22; the role removes it from the box.
 * **ISC's Kea replaces Debian's.** The packages and the services have
   different names (`isc-kea-dhcp4-server`, not `kea-dhcp4-server`). The
   binaries, `/etc/kea`, `/var/lib/kea` and the `_kea` user are the same.
@@ -295,8 +295,8 @@ layout above), and the notes are JD's.
   `DHCP4_LEASE_ALLOC` line for a new lease, and `DHCP4_INIT_REBOOT` plus
   `DHCP4_LEASE_REUSE` for a renewal answered from Kea 3's lease cache (about
   70 lines an hour at JD, 2026-10-20); kea-dhcp-ddns logs at WARN (failed updates
-  still show); pdns-recursor's half-hourly statistics report is off
-  (`rec_control get-all` has the numbers); the apt timers no longer wait for
+  still show); Unbound logs no periodic statistics (`unbound-control
+  stats_noreset` has the numbers); the apt timers no longer wait for
   a network-online that cannot arrive and log a timeout as an error; and
   packets addressed to 127/8 from the wire are dropped in `prerouting_raw`
   before the kernel can log each as a martian (`log_martians` stays on for
@@ -335,59 +335,71 @@ layout above), and the notes are JD's.
     is the same service without the block list (and without DNSSEC).
   * To re-check after changing upstream, resolve the busiest names in the
     DNS log through each candidate and time a TCP handshake to each answer.
-    The measurements are in the comments of `recursor.yml`.
+    The measurements are in the comments of `unbound.conf`.
 * **Both routers send their upstream queries to Quad9 over DNS over TLS
-  (DoT).** The forwarders in each site's `etc/powerdns/recursor.yml` use
-  port 853, and the recursor uses TLS for port 853 (`dot_to_port_853`, on
-  by default). The ISP cannot read the names that the router looks up.
-  Clients do not change: they send plain DNS to the router on port 53. The
+  (DoT).** In each site's `etc/unbound/unbound.conf` the catch-all
+  forward zone has `forward-tls-upstream: yes` and its addresses on port
+  853. The ISP cannot read the names that the router looks up. Clients do
+  not change: they send plain DNS to the router on port 53. The
   measurements below are JD's.
-  * The recursor checks the certificate of the server
-    (`outgoing.tls_configurations`: name `dns.quad9.net`, the system CA
-    store). An attacker who intercepts the connection gets SERVFAIL, not
-    answers. If Quad9 changes the name on its certificate, every name not in
-    the cache fails: look for TLS errors in `journalctl -u pdns-recursor`.
+  * Unbound checks the certificate of the server: `#dns.quad9.net` after
+    each address is the name it must carry, against the system CA store
+    (`tls-system-cert`, loaded once at start). An attacker who intercepts
+    the connection gets SERVFAIL, not answers. Tested 2026-10-22: with a
+    wrong name every lookup was SERVFAIL and the journal said "certificate
+    verify failed". If Quad9 changes the name on its certificate, every name
+    not in the cache fails: look in `journalctl -u unbound` (log-servfail
+    gives each SERVFAIL's reason).
   * On an open connection, a lookup takes the same time as on UDP. A new
-    connection adds about 25-30 ms. The recursor and Quad9 both close an
-    idle connection after about 10 s.
-  * At this query rate, the recursor almost never reuses a connection.
-    Each connection is idle for more than 10 s before the next query
-    comes. Thus a lookup that misses the cache takes about 17 ms more:
-    the median goes from 15 ms to 32 ms. The slow tail and the median
-    wait of all lookups do not change.
-  * One recursor thread and two forwarders would give more reuse. The
-    role does not do this, because the cost above is acceptable.
-  * The internal forwarders (`linds.com.au`, `k8s.linds.com.au`) stay on
-    plain DNS, port 53.
+    connection adds about 25-30 ms, and Quad9 closes an idle connection
+    after about 10 s, so at this query rate most upstream lookups open a new
+    one. With expired answers served from the cache (below), clients seldom
+    wait for one.
+  * The internal forwarders (`linds.com.au`, `k8s.linds.com.au`, the four
+    reverse zones) stay on plain DNS, port 53.
   * DoT does not apply to VLAN 51 and VLAN 52. DHCP gives them Quad9
     directly, so they do not use the router for DNS.
-  * To check: `rec_control get dot-outqueries` increases, and
-    `ss -tn '( dport = :853 )'` shows connections to Quad9.
-* **Names are cached for at least 15 minutes** (`minimum_ttl_override: 900`)
-  and refreshed in the background once half that is used up
-  (`refresh_on_ttl_perc: 50`). A lookup that misses the cache costs a client
-  14 ms; with the old 60 s floor only 46% of the main LAN's lookups were
-  answered from cache, because most names have short TTLs and a forwarder
-  hands them over part-used. Replaying 30 h of real lookups: 58% at 900 s,
-  68% at an hour. The price is that a site which changes address is followed
-  up to 15 minutes late, and so is an internal record: after changing one,
-  `rec_control wipe-cache NAME` (or `'linds.com.au$'` for the subtree).
-  Answers without data (no AAAA, no HTTPS record, NXDOMAIN) are lifted too
-  but stop at `max_negative_ttl`, 300 s. pdns-recursor cannot serve an
-  expired answer while it refreshes (its serve-stale is for upstream failure
-  only); a resolver that can, such as unbound with `serve-expired`, would
-  reach about 92% on the same traffic.
+  * To check: `unbound-control stats_noreset | grep num.query.tcpout`
+    increases, and `ss -tn '( dport = :853 )'` shows connections to Quad9.
+* **Unbound replaced pdns-recursor on 2026-10-22.** Both are good DNS
+  forwarders. Unbound can answer from an expired record at once and refresh
+  it behind the client (`serve-expired`, RFC 8767); pdns-recursor serves
+  stale answers only when upstream fails. Replaying 30 h of the main LAN's
+  real lookups (2026-10-06): 58% answered from cache with a 15-minute floor,
+  about 92% with expired answers served too. A miss costs a client 14 ms,
+  plus 25-30 ms when the DoT connection must be made again.
+  * An expired record is answered with a TTL of 30 s and the EDE "Stale
+    Answer" (`router dns NAME` shows it), for up to a day after it expired.
+    A site that changes address is followed one lookup late. Seen
+    2026-10-22: an expired name answered in 0 ms, fresh one second later.
+  * No TTL floor. With serve-expired it makes no answer faster, and it kept
+    answers past their TTL: when a CDN takes a server out by short TTLs,
+    the old 900 s floor sent clients to it for up to 15 minutes.
+    `prefetch` refreshes a record asked for in the last tenth of its life.
+  * Answers without data (no AAAA, no HTTPS record, NXDOMAIN) live 300 s at
+    most (`cache-max-negative-ttl`).
+  * `prefer-ip4`: Quad9 over IPv4, whose route fails over to the cellular
+    modem. IPv6 has no backup path. `infra-keep-probing` asks the
+    forwarders again soon after a WAN outage.
+  * After changing an internal record: `unbound-control flush NAME`, or
+    `unbound-control flush_zone linds.com.au` for the subtree.
+  * No DNSSEC validation (`module-config: "iterator"`): Quad9 validates.
+    So `etc/default/unbound` turns off the root trust anchor update, and
+    the resolvconf hook (the router's own `resolv.conf` is a fixed file).
+  * Debian confines `/usr/sbin/unbound` with AppArmor: it reads its config
+    under `/etc/unbound` only. A test config elsewhere fails with
+    "Permission denied".
+  * Prometheus: `router metrics` writes Unbound's counters into
+    `router.prom` (`router_dns_*`, from `unbound-control stats_noreset`);
+    `statistics-cumulative` keeps a reader from resetting them.
 * **IPv6 clients get DNS from the RA.** lan0's RA carries RDNSS =
   `_link_local` (fe80::be24:11ff:fe01:1101, EUI-64 of the pinned MAC);
-  pdns-recursor listens on it and input rule 9 admits DNS to fe80::/10 from
-  lan0. The GUA is not used because the ISP prefix changes. Recursor 5.x's
-  YAML validator rejects `%lan0` (the daemon's own parser would take it),
-  so recursor.yml uses `[addr%2]:53` with lan0's ifindex, and validate.yml
-  asserts the index is still 2. A wrong index is not an outage: the bind
-  succeeds via ip_nonlocal_bind and only IPv6 DNS goes quiet, IPv4 stays.
-  `allow_from` must list `fe80::/10`: clients query a link-local listener
-  from their link-local, and a source outside the list is dropped silently
-  (`rec_control get unauthorized-udp` climbs).
+  Unbound listens on it (`interface: fe80::be24:11ff:fe01:1101%lan0`) and
+  input rule 9 admits DNS to fe80::/10 from lan0. The GUA is not used
+  because the ISP prefix changes. `access-control` must allow `fe80::/10`:
+  clients query a link-local listener from their link-local, and Unbound
+  answers REFUSED to a source it does not allow. `ip-freebind` lets
+  Unbound start before an address is up.
 * **Wi-Fi clients' IPv6 depends on which VLANs the access points' switch
   ports carry.** Nothing in this role, but this is where it shows. An
   access point bridges every VLAN its port hands it, tagged or not, through
@@ -768,7 +780,7 @@ from the box. Everything that VyOS did and this router does differently:
   2026-10-13: of 50 common names, Cloudflare sent 10 somewhere over 50 ms
   away where Quad9 never did (nine of Google's at about 120 ms instead of
   5 ms, and outlook.office365.com); the reverse, none. The numbers are in
-  `recursor.yml`.
+  `unbound.conf`.
 * **A network with no source NAT rule is stopped at the WAN.** VyOS had no
   rule for VLAN 110 or for VLAN 80 apart from 10.0.80.4, so their packets
   went to Telstra with a private source address and were lost there. They
@@ -1099,7 +1111,7 @@ deletes it at the end.
 | --- | --- | --- |
 | The internet is down or slow | `router wan` | Which WAN is active, the lease, the failover events. The Router dashboard has the latency and loss history (smokeping, one ping a second to 1.1.1.1, 9.9.9.9 and the other site) |
 | One device has no internet | `router host NAME` (or an address or MAC) | Its lease, DNS name, neighbour entry, flows, UPnP mappings and recent alerts. Then `router trace ADDRESS` shows which firewall rules its packets go through |
-| A name does not resolve | `router dns NAME` | The answers of this router, Quad9 and the DC side by side. A wrong cached answer: `rec_control wipe-cache NAME` |
+| A name does not resolve | `router dns NAME` | The answers of this router, Quad9 and the DC side by side; [Stale Answer] marks one from an expired record. A wrong cached answer: `unbound-control flush NAME` |
 | LINDS cannot be reached | `router vpn`, `router bgp` | The `LINDS` SA and its CHILD_SA, BGP to 10.255.0.2. To dial at once: `swanctl --initiate --child LINDS` |
 | Cluster services cannot be reached | `router bgp` | Five cluster peers, about 75 prefixes each |
 | A device gets no address | `router leases TEXT`, `router logs dhcp` | Its lease; full pools show in `router` |
@@ -1110,8 +1122,8 @@ deletes it at the end.
 | Anything else | `router logs AREA -f` | Areas: wan, vpn, bgp, dhcp, dns, ids, upnp, mdns, firewall |
 
 The router reports to the cluster's Prometheus: node-exporter (with the
-`router_*` metrics that `router metrics` writes every 30 s), the FRR and
-smokeping exporters and the recursor. The exporters listen on the cluster
+`router_*` metrics that `router metrics` writes every 30 s, Unbound's
+counters among them), and the FRR and smokeping exporters. They listen on the cluster
 network only (input rule 16). node-exporter has only the collectors that
 the dashboard and the alerts use (`files/<site>/etc/default/prometheus-node-exporter`).
 The Router dashboard in Grafana (folder Network) shows the data. These
@@ -1121,7 +1133,7 @@ alerts go to Discord (LINDS-Kubernetes `base/monitoring/router-metrics.yaml`):
 * The site tunnel down, a BGP peer down, or no WireGuard handshake for
   15 minutes.
 * A DHCP pool over 90% used, conntrack over 80% full, a failed systemd unit.
-* DNS SERVFAILs, Suricata silent or dropping packets.
+* DNS SERVFAILs, Unbound not answering, Suricata silent or dropping packets.
 * The `router_*` metrics missing or older than 5 minutes.
 
 The cluster's general node alerts (memory, disk, CPU) apply to the router
@@ -1155,8 +1167,8 @@ The "commit" is `ansible-playbook playbooks/router.yml`.
 | `reset vpn ipsec site-to-site peer LINDS` | `swanctl --terminate --ike LINDS; swanctl --initiate --child LINDS` |
 | `show dhcp server leases` | `echo '{"command":"lease4-get-all","service":["dhcp4"]}' \| socat - UNIX-CONNECT:/var/run/kea/kea4-ctrl-socket \| jq -r '.arguments.leases[] \| [."ip-address", ."hw-address", .hostname] \| @tsv'` |
 | `show dhcp server statistics` | same socket, `"command":"statistic-get-all"` |
-| `show dns forwarding statistics` | `rec_control get-all`, `rec_control get cache-entries` |
-| `reset dns forwarding cache` | `rec_control wipe-cache '.$'` (everything) or `'linds.com.au$'` |
+| `show dns forwarding statistics` | `unbound-control stats_noreset` |
+| `reset dns forwarding cache` | `unbound-control flush_zone .` (everything) or `flush_zone linds.com.au` |
 | `show firewall` | `nft list ruleset`; one chain: `nft list chain inet router input` |
 | `show nat source rules` | `nft list chain inet router postrouting_nat` (`prerouting_nat` for port forwards) |
 | UPnP / NAT-PMP mappings | `nft list table inet miniupnpd`; `cat /var/lib/miniupnpd/upnp.leases`; `journalctl -u miniupnpd` |
@@ -1170,5 +1182,5 @@ The "commit" is `ansible-playbook playbooks/router.yml`.
 | `monitor traffic interface wan0` | `tcpdump -ni wan0` |
 | IDS | `suricatasc -c uptime /var/run/suricata/suricata-command.socket`, `-c 'iface-stat wan0'`, `tail -f /var/log/suricata/eve.json \| jq -c 'select(.event_type=="alert")'` |
 | `show system uptime` / `show version` | `uptime`, `uname -r`, `hostnamectl` |
-| `restart dhcp server` etc. | `systemctl restart isc-kea-dhcp4-server` / `pdns-recursor` / `frr` / `strongswan` / `suricata` |
+| `restart dhcp server` etc. | `systemctl restart isc-kea-dhcp4-server` / `unbound` / `frr` / `strongswan` / `suricata` |
 | `show configuration` | the files under `/etc` are the config; the role's `files/etc/` mirrors them |

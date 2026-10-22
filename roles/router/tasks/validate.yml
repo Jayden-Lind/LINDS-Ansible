@@ -59,19 +59,8 @@
     router_ipsec_connections | map('regex_replace', '$', ':')
     | reject('in', router_swanctl_conns.stdout) | list | length > 0
 
-# Only where recursor.yml listens on lan0's link-local, as [addr%N]:53 (the
-# 5.x YAML validator takes only a numeric scope): the site sets
-# router_dns_linklocal_ifindex to that N. A different ifindex is not an
-# outage (IPv4 DNS keeps working) but IPv6 DNS from the RA goes quiet.
-- name: lan0 ifindex is the one recursor.yml's link-local listener names
-  ansible.builtin.command: cat /sys/class/net/lan0/ifindex
-  register: router_lan0_ifindex
-  changed_when: false
-  failed_when: router_lan0_ifindex.stdout | trim != router_dns_linklocal_ifindex | string
-  when: router_dns_linklocal_ifindex is defined
-
-- name: pdns-recursor answers control
-  ansible.builtin.command: rec_control ping
+- name: unbound answers control
+  ansible.builtin.command: unbound-control status
   changed_when: false
 
 - name: Interfaces present
