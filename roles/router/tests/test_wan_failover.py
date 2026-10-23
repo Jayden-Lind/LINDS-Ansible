@@ -80,9 +80,31 @@ class ControllerTests(unittest.TestCase):
     def test_no_carrier_is_never_installed(self):
         ctl = wf.Controller(cands())
         a = ctl.step({"primary": None, "backup": None})
-        self.assertEqual(kinds(a), [])
+        # Withdrawn instead (a no-op if there is no route): a route the
+        # previous run left must not stay on a link without carrier.
+        self.assertEqual(kinds(a), [("del", "primary"), ("del", "backup")])
         self.assertIsNone(ctl.active)
         self.assertEqual(ctl.up_candidates(), [])
+
+    def test_dead_at_start_withdraws_the_leftover_route_after_fall(self):
+        # A restart with a dead backup: the route the previous run installed
+        # goes, after `fall` failed rounds like any other withdraw.
+        ctl = wf.Controller(cands(), rise=3, fall=3)
+        self.assertEqual(kinds(ctl.step({"primary": [True, True], "backup": [False]})), [("add", "primary")])
+        self.assertEqual(kinds(ctl.step({"primary": [True, True], "backup": [False]})), [])
+        self.assertEqual(kinds(ctl.step({"primary": [True, True], "backup": [False]})), [("del", "backup")])
+        self.assertEqual(ctl.active, "primary")
+        # Withdrawn once, not every round after.
+        self.assertEqual(kinds(ctl.step({"primary": [True, True], "backup": [False]})), [])
+
+    def test_one_failed_round_at_start_keeps_the_primary(self):
+        # A single lost round right after a restart never withdraws a route.
+        ctl = wf.Controller(cands(), rise=3, fall=3)
+        seen = kinds(ctl.step({"primary": [False, False], "backup": [True]}))
+        for _ in range(3):
+            seen += kinds(ctl.step({"primary": [True, True], "backup": [True]}))
+        self.assertNotIn(("del", "primary"), seen)
+        self.assertIn(("add", "primary"), seen)
 
     def test_any_vs_all_policy(self):
         c = wf.Candidate("p", "wan0", "gw", 1, ["a", "b"])

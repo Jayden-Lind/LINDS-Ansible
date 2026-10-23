@@ -271,6 +271,22 @@ layout above), and the notes are JD's.
   vlan 52` instead. A capture on `lan0.52` during the 2026-09-06 UniFi
   console outage was read as "return direction lost", which was this
   artefact. When adding another VLAN, prove both directions the same way.
+* **The backup WAN is checked through the cellular modem, not by pinging
+  the modem.** `wan-failover.json` pings 1.1.1.1 and 9.9.9.9 out of
+  `lan0.99` (table 1002), healthy if either answers. Until 2026-10-23 the
+  only target was the modem itself (192.168.0.1). The modem's mobile
+  service stopped with the old NBN plan (about 2026-10-21 22:04, when the
+  modem's IPv6 lease went), but the modem still answered on the LAN, so the
+  backup stayed "healthy". In the modem swap on 2026-10-23 the router failed
+  over to it for 15 minutes and got almost nothing back: the modem answers
+  "network unreachable" to everything beyond it. Now a dead mobile link is
+  never used and `RouterBackupWANDown` says so. The checks use about 6 MB of
+  mobile data a day.
+  * To test the backup without a failover: `ping -I lan0.99 1.1.1.1` and
+    `curl --interface lan0.99 https://1.1.1.1/cdn-cgi/trace` (shows the
+    mobile public address).
+  * A restarted `wan-failover` withdraws the route of a WAN that fails its
+    first `fall` rounds. Before, it left the previous run's route in place.
 * **A private destination never leaves through a WAN.** LINDS, the k8s
   VIPs and the pod and service ranges exist only as BGP routes; with a
   session or the tunnel down they fell through to the default route and went
