@@ -98,6 +98,11 @@
   when: router_failover | bool
   tags: [failover]
 
+- name: No failover daemon on a single-WAN site
+  ansible.builtin.import_tasks: failover_off.yml
+  when: not (router_failover | bool)
+  tags: [failover]
+
 - name: Suricata IDS + EVE shipping
   ansible.builtin.import_tasks: suricata.yml
   when: router_suricata | bool

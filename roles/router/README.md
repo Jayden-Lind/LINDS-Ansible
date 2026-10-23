@@ -56,7 +56,7 @@ What only some sites have is switched in group_vars:
 | `router_upnp` | on | on | on | miniupnpd: UPnP IGD + NAT-PMP/PCP for the main LAN |
 | `router_mdns` | on | on | on | avahi as an mDNS reflector between VLANs |
 | `router_suricata` | on | on | on | Suricata on the LAN trunk, EVE to Loki |
-| `router_failover` | off | on | off | `wan-failover`: needs a second WAN. Without it the default route is the one in the WAN's DHCP lease |
+| `router_failover` | off | off | off | `wan-failover`: needs a second WAN. Without it the default route is the one in the WAN's DHCP lease. On at JD until 2026-10-24 (see "The backup WAN") |
 | `router_road_warrior` | off | on | off | IKEv2 remote access: its server certificate, the EAP users, `ipsec10` |
 
 A part that is off is not installed. Turning one off on a router that has
@@ -271,17 +271,28 @@ layout above), and the notes are JD's.
   vlan 52` instead. A capture on `lan0.52` during the 2026-09-06 UniFi
   console outage was read as "return direction lost", which was this
   artefact. When adding another VLAN, prove both directions the same way.
-* **The backup WAN is checked through the cellular modem, not by pinging
-  the modem.** `wan-failover.json` pings 1.1.1.1 and 9.9.9.9 out of
-  `lan0.99` (table 1002), healthy if either answers. Until 2026-10-23 the
-  only target was the modem itself (192.168.0.1). The modem's mobile
-  service stopped with the old NBN plan (about 2026-10-21 22:04, when the
-  modem's IPv6 lease went), but the modem still answered on the LAN, so the
-  backup stayed "healthy". In the modem swap on 2026-10-23 the router failed
-  over to it for 15 minutes and got almost nothing back: the modem answers
-  "network unreachable" to everything beyond it. Now a dead mobile link is
-  never used and `RouterBackupWANDown` says so. The checks use about 6 MB of
-  mobile data a day.
+* **The backup WAN: off at JD since 2026-10-24.** The cellular modem on
+  VLAN 99 has no mobile service (below), so JD runs with one WAN:
+  `router_failover: false`, no `wan-failover`, and networkd installs the
+  default route from wan0's DHCP lease (`UseGateway=yes`, as at LINDS).
+  `failover_off.yml` removes the daemon, its files and its routes. Still in
+  place for a backup later: VLAN 99 (`lan0.99`; the modem stays reachable at
+  192.168.0.1), table 1002, the NAT and firewall rules for `lan0.99`, and
+  JD's `wan-failover.json`. To bring a working backup back: set
+  `router_failover: true`, revert the PR that turned it off (wan0's
+  `UseGateway=no` and table 1001 for the primary's health check come back
+  with it), and run the playbook.
+  * Why it is off: the modem's mobile service stopped with the old NBN plan
+    (about 2026-10-21 22:04, when the modem's IPv6 lease went). The backup's
+    only health-check target was the modem itself (192.168.0.1), which still
+    answered on the LAN, so the backup stayed "healthy". In the NBN modem
+    swap on 2026-10-23 the router failed over to it for 15 minutes and got
+    almost nothing back: the modem answers "network unreachable" to
+    everything beyond it.
+  * The checks were then changed (2026-10-23) to ping 1.1.1.1 and 9.9.9.9
+    out of `lan0.99` (table 1002), healthy if either answers: a dead mobile
+    link is never used, and `RouterBackupWANDown` says so. About 6 MB of
+    mobile data a day.
   * To test the backup without a failover: `ping -I lan0.99 1.1.1.1` and
     `curl --interface lan0.99 https://1.1.1.1/cdn-cgi/trace` (shows the
     mobile public address).
