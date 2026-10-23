@@ -1,15 +1,16 @@
-# Managed by LINDS-Ansible: roles/router/files/etc/systemd/network/30-wan0.network. Primary WAN.
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/network/30-wan0.network. The WAN.
 #
-# The DHCP lease supplies only the address: no gateway, no DNS, no NTP. The
-# default route is wan-failover's, and the ISP lease carries no router option
-# anyway (see router_wan_gateway in group_vars). KeepConfiguration=dhcp keeps
+# The only WAN since 2026-10-24 (router_failover is off: the cellular backup
+# has no service). The default route is the one in the DHCP lease
+# (1.159.127.254 on 2026-10-24) and networkd installs it, as at LINDS. The
+# lease supplies no DNS and no NTP that are used. KeepConfiguration=dhcp keeps
 # the address through a renewal or a networkd restart instead of tearing it
-# down first — the "small outage on every renew" VyOS's dhclient produced.
+# down first, the "small outage on every renew" VyOS's dhclient produced.
 #
-# Table 1001 always holds this WAN's own default route (onlink: the modem
-# proxy-ARPs for anything). The oif rule sends sockets bound to wan0 — the
-# failover health check — through it, so the check works with no route in
-# main and no /32 pinning of the targets.
+# With failover the default route was wan-failover's (UseGateway=no), and
+# table 1001 plus an oif rule carried the health check's pings (a gateway
+# written here, 121.221.64.1, that the old modem proxy-ARPed for). Revert the
+# PR that turned failover off to get both back.
 [Match]
 Name=wan0
 
@@ -29,7 +30,7 @@ LLDP=no
 EmitLLDP=no
 
 [DHCPv4]
-UseGateway=no
+UseGateway=yes
 UseDNS=no
 UseNTP=no
 UseHostname=no
@@ -51,12 +52,3 @@ UseNTP=no
 WithoutRA=solicit
 PrefixDelegationHint=::/56
 
-[Route]
-Gateway=121.221.64.1
-GatewayOnLink=yes
-Table=1001
-
-[RoutingPolicyRule]
-OutgoingInterface=wan0
-Table=1001
-Priority=100

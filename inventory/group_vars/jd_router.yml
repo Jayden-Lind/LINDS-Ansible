@@ -12,9 +12,13 @@ router_hostname: jd-router-01
 # The directory under roles/router/files/ that holds this site's files.
 router_site: jd
 
-# A second WAN (the cellular modem on VLAN 99) and remote access for phones
-# and laptops; UPnP, the mDNS reflector and Suricata are on by default.
-router_failover: true
+# Remote access for phones and laptops; UPnP, the mDNS reflector and
+# Suricata are on by default. No failover since 2026-10-24: the cellular
+# modem on VLAN 99 lost its mobile service with the old NBN plan, so there
+# is no second WAN (README, "The backup WAN"). With a working backup: set
+# this to true and revert the PR that turned it off (wan0's default route
+# and table 1001 come back with it).
+router_failover: false
 router_road_warrior: true
 
 # Kernel from trixie-backports (7.x) rather than stable's 6.12. The role adds
@@ -67,7 +71,6 @@ router_expected_interfaces:
 # What else validate.yml checks or prints for this site.
 router_ipsec_connections: [LINDS, LINDS_MOBILE]
 router_routing_tables:
-  - {id: 1001, name: wan0}
   - {id: 1002, name: lan0.99}
   - {id: 90, name: wg10}
   - {id: 100, name: wg101}

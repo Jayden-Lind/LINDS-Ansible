@@ -1,0 +1,37 @@
+---
+# A site without a second WAN (router_failover off) takes its default route
+# from the WAN's DHCP lease (30-wan0.network). This removes wan-failover
+# where an earlier run installed it (JD until 2026-10-24); on a site that
+# never had it, nothing here changes.
+
+- name: wan-failover installed?
+  ansible.builtin.stat:
+    path: /etc/systemd/system/wan-failover.service
+  register: router_failover_unit
+
+- name: wan-failover stopped and disabled
+  ansible.builtin.systemd_service:
+    name: wan-failover
+    state: stopped
+    enabled: false
+  when: router_failover_unit.stat.exists
+
+- name: wan-failover files removed
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/wan-failover.service
+    - /etc/wan-failover.json
+    - /usr/local/sbin/wan-failover
+  notify: daemon-reload
+
+# The daemon does not withdraw its routes when it stops. networkd's own
+# default from the lease (metric 1024) is already in place by now
+# (network.yml runs first); these are wan-failover's (proto static).
+- name: wan-failover's default routes removed
+  ansible.builtin.command: ip route del default proto static metric {{ item }}
+  loop: [1, 10]
+  register: router_failover_routes
+  changed_when: router_failover_routes.rc == 0
+  failed_when: false
