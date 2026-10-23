@@ -20,7 +20,8 @@
             "onlink": true,
             "policy": "any-available",
             "targets": [
-                "192.168.0.1"
+                "1.1.1.1",
+                "9.9.9.9"
             ]
         }
     ],

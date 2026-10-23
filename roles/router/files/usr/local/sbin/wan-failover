@@ -75,7 +75,9 @@ class Candidate:
 
 @dataclass
 class Health:
-    up: bool = False
+    # None: not known yet. A restarted daemon does not know whether the
+    # previous run left this candidate's route installed.
+    up: bool | None = None
     ok: int = 0
     fail: int = 0
 
@@ -107,9 +109,10 @@ class Controller:
             h = self.health[c.name]
             obs = observations.get(c.name)
             if obs is None:
-                # No carrier: down immediately, no hysteresis.
+                # No carrier: down immediately, no hysteresis. Also when not
+                # known yet: a route the previous run left must not stay.
                 h.ok = h.fail = 0
-                if h.up:
+                if h.up is not False:
                     h.up = False
                     actions.append(("del", c))
                 continue
@@ -123,7 +126,10 @@ class Controller:
             if not h.up and good and h.ok >= rise:
                 h.up = True
                 actions.append(("add", c))
-            elif h.up and not good and h.fail >= self.fall:
+            elif h.up is not False and not good and h.fail >= self.fall:
+                # Also a candidate not known yet that keeps failing: a restart
+                # with a dead WAN withdraws the route the previous run left
+                # (seen 2026-10-23 when the backup's checks were changed).
                 h.up = False
                 actions.append(("del", c))
 
