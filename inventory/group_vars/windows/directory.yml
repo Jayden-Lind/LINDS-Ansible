@@ -101,16 +101,6 @@ windows_directory_groups:
     scope: global
     category: security
     description: Vault admin policy
-  - name: k8s-zabbix-admins
-    ou: OU=Kubernetes
-    scope: global
-    category: security
-    description: Zabbix Super admin
-  - name: k8s-zabbix-users
-    ou: OU=Kubernetes
-    scope: global
-    category: security
-    description: Zabbix User
   - name: Redirected Folders
     ou: OU=Groups,OU=Linds - Users
     scope: global
