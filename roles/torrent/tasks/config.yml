@@ -7,27 +7,52 @@
 
 # Compare the content only. qBittorrent saves the file with its own mode
 # (0644), so a mode check would stop the service on every run.
+# diff: false here and below: the file comes from the vault (it holds the web
+# UI password hash), and --diff, which the deploy tool uses, would print it.
 - name: Check whether the qBittorrent config needs updating
   become: true
   ansible.builtin.copy:
     src: "{{ torrent_config_src }}"
     dest: "{{ torrent_config_dir }}/qBittorrent.conf"
   check_mode: true
+  diff: false
   register: torrent_config_check
+
+# qBittorrent writes categories.json with four-space indents and sorted keys,
+# as to_nice_json does, so a file it has rewritten still compares equal.
+- name: Check whether the categories need updating
+  become: true
+  ansible.builtin.copy:
+    content: "{{ torrent_categories | to_nice_json(indent=4) }}\n"
+    dest: "{{ torrent_config_dir }}/categories.json"
+  check_mode: true
+  register: torrent_categories_check
+  when: torrent_categories | length > 0
 
 - name: Stop qBittorrent before rewriting its config
   become: true
   ansible.builtin.service:
     name: "{{ torrent_service_name }}"
     state: stopped
-  when: torrent_config_check is changed
+  when: torrent_config_check is changed or torrent_categories_check is changed
 
 - name: Deploy qBittorrent config
   become: true
   ansible.builtin.copy:
     src: "{{ torrent_config_src }}"
     dest: "{{ torrent_config_dir }}/qBittorrent.conf"
-    owner: root
-    group: root
+    owner: "{{ torrent_user }}"
+    group: "{{ torrent_user }}"
     mode: "0600"
+  diff: false
   when: torrent_config_check is changed
+
+- name: Deploy the categories
+  become: true
+  ansible.builtin.copy:
+    content: "{{ torrent_categories | to_nice_json(indent=4) }}\n"
+    dest: "{{ torrent_config_dir }}/categories.json"
+    owner: "{{ torrent_user }}"
+    group: "{{ torrent_user }}"
+    mode: "0644"
+  when: torrent_categories_check is changed

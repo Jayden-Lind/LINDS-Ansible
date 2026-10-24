@@ -2,7 +2,18 @@
 # The host name of the TrueNAS. Empty: the role does not change it.
 truenas_hostname: ""
 
-# NFS shares: [{path, networks, maproot_user, maproot_group}].
+# Local groups and users: [{name, gid}] and [{name, uid, group, comment}].
+# Users get no password, no login shell and no SMB access: they exist to own
+# files and to be an NFS share's mapall user.
+truenas_groups: []
+truenas_users: []
+
+# Folders to make: [{path, owner, group, mode}]. For plain folders inside a
+# dataset, not datasets.
+truenas_directories: []
+
+# NFS shares: [{path, networks, maproot_user, maproot_group, mapall_user,
+# mapall_group}]. maproot_* and mapall_* exclude each other.
 truenas_nfs_shares: []
 
 # A remote syslog server, host:port. Empty: the role does not change it.

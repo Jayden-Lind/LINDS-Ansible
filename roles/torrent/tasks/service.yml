@@ -13,6 +13,18 @@
     enabled: false
   when: "'qbittorrent.service' in ansible_facts.services"
 
+# A host that moved to an unprivileged torrent_user still has the root unit.
+# It must not run beside the new one: both would take the same ports.
+- name: Stop and disable the root unit
+  become: true
+  ansible.builtin.service:
+    name: qbittorrent-nox@root.service
+    state: stopped
+    enabled: false
+  when:
+    - torrent_user != 'root'
+    - "'qbittorrent-nox@root.service' in ansible_facts.services"
+
 - name: Enable and start qBittorrent
   become: true
   ansible.builtin.service:

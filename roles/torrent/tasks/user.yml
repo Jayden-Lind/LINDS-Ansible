@@ -1,0 +1,76 @@
+---
+# For hosts whose torrent_user is not root: a system account for qBittorrent,
+# and, the first time, its profile moved over from root's home.
+- name: Make the qBittorrent account
+  become: true
+  ansible.builtin.user:
+    name: "{{ torrent_user }}"
+    system: true
+    home: "{{ torrent_home }}"
+    create_home: true
+    shell: /usr/sbin/nologin
+    comment: qBittorrent
+
+- name: Look for a profile in the account's home
+  become: true
+  ansible.builtin.stat:
+    path: "{{ torrent_home }}/.local/share/qBittorrent"
+  register: torrent_profile_home
+
+- name: Look for root's profile
+  become: true
+  ansible.builtin.stat:
+    path: /root/.local/share/qBittorrent
+  register: torrent_profile_root
+
+# The profile holds the settings, the categories and the resume data of every
+# torrent (BT_backup). It is copied with the root service stopped, so that
+# nothing changes halfway. The copy in /root stays as a fallback.
+- name: Move the profile from root
+  when:
+    - not torrent_profile_home.stat.exists
+    - torrent_profile_root.stat.exists
+  block:
+    - name: Stop the root service
+      become: true
+      ansible.builtin.service:
+        name: qbittorrent-nox@root.service
+        state: stopped
+        enabled: false
+
+    - name: Make the profile's parent directories
+      become: true
+      ansible.builtin.file:
+        path: "{{ torrent_home }}/{{ item }}"
+        state: directory
+        owner: "{{ torrent_user }}"
+        group: "{{ torrent_user }}"
+        mode: "0755"
+      loop:
+        - .config
+        - .local
+        - .local/share
+
+    - name: Copy the profile
+      become: true
+      ansible.builtin.command:
+        argv:
+          - cp
+          - -a
+          - "/root/{{ item }}"
+          - "{{ torrent_home }}/{{ item | dirname }}/"
+      loop:
+        - .config/qBittorrent
+        - .local/share/qBittorrent
+      changed_when: true
+
+    - name: Give the profile to the account
+      become: true
+      ansible.builtin.file:
+        path: "{{ torrent_home }}/{{ item }}"
+        owner: "{{ torrent_user }}"
+        group: "{{ torrent_user }}"
+        recurse: true
+      loop:
+        - .config/qBittorrent
+        - .local/share/qBittorrent

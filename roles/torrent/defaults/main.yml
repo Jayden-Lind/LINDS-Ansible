@@ -10,9 +10,23 @@ torrent_packages_redhat:
   - cifs-utils
   - nfs-utils
 
-torrent_service_name: qbittorrent-nox@root.service
+# The account qBittorrent runs as. A torrent client takes whatever its peers
+# send it, so it should not be root; root stays the default so that a host
+# moves only when its group says so (inventory/torrent.yml). For another
+# account the role makes a system user and moves the profile over from root
+# once (tasks/user.yml).
+torrent_user: root
 
-torrent_config_dir: /root/.config/qBittorrent
+# Holds the profile: ~/.config/qBittorrent and ~/.local/share/qBittorrent.
+torrent_home: "{{ '/root' if torrent_user == 'root' else '/var/lib/' + torrent_user }}"
+
+torrent_service_name: "qbittorrent-nox@{{ torrent_user }}.service"
+
+torrent_config_dir: "{{ torrent_home }}/.config/qBittorrent"
+
+# The categories, as in qBittorrent's categories.json: {name: {save_path}}.
+# Empty: the role leaves the file alone.
+torrent_categories: {}
 
 torrent_sysctl_file: /etc/sysctl.d/99-torrent.conf
 

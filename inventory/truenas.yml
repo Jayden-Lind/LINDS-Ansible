@@ -10,14 +10,39 @@ truenas:
       vars:
         ansible_user: root
         truenas_hostname: linds-truenas-01.linds.com.au
+        # The owner of everything on the media share. uid and gid 1000 are
+        # what Radarr, Sonarr and Bazarr run as in Kubernetes (PUID).
+        # 2026-10-24: a "media" user existed, unused, with uid 8675309.
+        # TrueNAS cannot change a uid, so it was deleted by hand and the role
+        # made it again with 1000.
+        truenas_groups:
+          - name: media
+            gid: 1000
+        truenas_users:
+          - name: media
+            uid: 1000
+            group: media
+            comment: Media User
+        # qBittorrent's category folders (inventory/torrent.yml). A plain
+        # folder, not a dataset: a hardlink cannot cross datasets. No Plex
+        # library and no Sonarr or Radarr root folder is in it.
+        truenas_directories:
+          - path: /mnt/ZFS_NAS/downloads
+            owner: media
+            group: media
         # The NFS export that Plex, the LINDS torrent host and Kubernetes use.
+        # Every client acts as media (mapall), root included. Before, root was
+        # root (maproot): qBittorrent, running as root, left root-owned 755
+        # folders that Radarr (uid 1000) could neither move nor delete from,
+        # and the kernel refused to hardlink root's files for it
+        # (fs.protected_hardlinks), so every import was a full copy.
         truenas_nfs_shares:
           - path: /mnt/ZFS_NAS
             networks:
               - 10.3.1.0/24
               - 10.0.53.0/24
               - 10.0.36.0/24
-            maproot_user: root
-            maproot_group: wheel
+            mapall_user: media
+            mapall_group: media
         # alloy-podlogs LoadBalancer in the k8s cluster, RFC5424 UDP listener
         truenas_syslog_server: 172.16.1.23:1514
