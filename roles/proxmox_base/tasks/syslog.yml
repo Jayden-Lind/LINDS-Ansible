@@ -1,0 +1,22 @@
+---
+# rsyslog sends every log line to Alloy (172.16.1.23) in the cluster. Alloy
+# writes the lines to Loki.
+
+- name: Write the rsyslog line that sends the logs to Alloy
+  ansible.builtin.copy:
+    dest: /etc/rsyslog.d/90-remote.conf
+    content: |
+      {{ proxmox_base_rsyslog_remote_line }}
+    owner: root
+    group: root
+    mode: "0644"
+  when: proxmox_base_rsyslog_remote_line | length > 0
+  notify: Restart rsyslog
+
+# This file sends a second copy of every line to UDP port 1515. Alloy listens
+# on port 1515 with TCP only, so the copies are lost.
+- name: Remove the second forwarder
+  ansible.builtin.file:
+    path: /etc/rsyslog.d/remote-logging.conf
+    state: absent
+  notify: Restart rsyslog

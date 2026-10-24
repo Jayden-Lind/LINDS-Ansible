@@ -13,8 +13,9 @@ Each part has a tag.
 | `packages` | Installs `nfs-kernel-server`, `open-iscsi`, `targetcli-fb` and `sanoid`, and loads the iSCSI target kernel modules. |
 | `zfs` | Writes the ZFS module parameters to `/etc/modprobe.d/zfs.conf`, updates the initramfs, and sets the runtime parameters. Sets the ZFS properties in `proxmox_zfs_datasets`. |
 | `drive-cache` | Installs a udev rule that turns on the write cache of the SATA drives. |
+| `io-scheduler` | Installs a udev rule that sets the I/O scheduler: none for SSDs and NVMe disks, `mq-deadline` for HDDs. |
 | `nfs` | Keeps `nfs-server` enabled and running. |
-| `iscsi` | Makes the restore of the iSCSI targets at boot wait for the zvol devices, and keeps `rtslib-fb-targetctl` enabled. |
+| `iscsi` | Makes the restore of the iSCSI targets at boot wait for the zvol devices, and keeps `rtslib-fb-targetctl` enabled. Makes the empty directory `/etc/target` that the target kernel module opens when it loads. |
 | `sanoid` | Writes `/etc/sanoid/sanoid.conf`, installs the snapshot gate and starts `sanoid.timer`. Sets `au.com.linds:sanoid=off` on each dataset in `proxmox_sanoid_optout`. |
 | `lxc` | Makes and starts the containers in `proxmox_lxc_containers`. The list is empty: LINDS-Terraform owns the containers. |
 | `fan-control` | Installs `fan-control.sh` and starts `fan-control.service` (Lenovo SR655, through the BMC). |

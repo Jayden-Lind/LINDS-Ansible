@@ -1,0 +1,12 @@
+# Managed by LINDS-Ansible: roles/proxmox_base/files/crond.service.
+# ipmiutil_wdt runs "systemctl restart crond.service" after it changes
+# /etc/cron.d/wdt. On Debian the cron unit is cron.service, and cron reads
+# /etc/cron.d again each minute. This unit does nothing, so that the restart
+# succeeds. It has no default dependencies, so it can also run at shutdown.
+[Unit]
+Description=No-op for ipmiutil_wdt: cron reads /etc/cron.d by itself
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/bin/true

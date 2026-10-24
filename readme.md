@@ -49,6 +49,7 @@ It stops for that playbook until the change is merged.
 | [minecraft](playbooks/minecraft.md) | The Minecraft host |
 | [plex](playbooks/plex.md) | Plex Media Server and its media mounts |
 | [proxmox](playbooks/proxmox.md) | The JD Proxmox host (read the WARNING first) |
+| [proxmox_base](playbooks/proxmox_base.md) | Base settings for both Proxmox hosts: logs, unused services |
 | [router](playbooks/router.md) | The Debian routers (always with `--limit`) |
 | [storage_health](playbooks/storage_health.md) | Disk and pool health checks on the Proxmox hosts |
 | [torrent](playbooks/torrent.md) | The qBittorrent hosts |

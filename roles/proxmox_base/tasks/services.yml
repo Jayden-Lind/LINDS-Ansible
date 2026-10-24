@@ -1,0 +1,14 @@
+---
+# nfs-blkmap is the client daemon for pNFS block layouts. The hosts do not use
+# pNFS block layouts. At each boot the daemon logs an error, because the
+# blocklayout kernel module is not loaded.
+
+- name: Read the services
+  ansible.builtin.service_facts:
+
+- name: Stop and disable nfs-blkmap
+  ansible.builtin.systemd_service:
+    name: nfs-blkmap.service
+    enabled: false
+    state: stopped
+  when: "'nfs-blkmap.service' in ansible_facts.services"

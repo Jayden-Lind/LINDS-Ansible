@@ -1,0 +1,10 @@
+---
+# Base settings for the Proxmox hosts at both sites (roles/proxmox_base, which
+# has the README). It is safe to run in full, on both hosts, at any time. It
+# restarts rsyslog when its files change, and it touches no VM and no
+# storage.
+- name: Base settings for the Proxmox hosts
+  hosts: proxmox_base
+  remote_user: root
+  roles:
+    - proxmox_base

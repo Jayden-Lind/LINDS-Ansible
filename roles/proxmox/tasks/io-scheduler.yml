@@ -1,0 +1,17 @@
+---
+# I/O scheduler (/etc/udev/rules.d/60-ioscheduler.rules).
+#
+# SSDs and NVMe disks get no scheduler, and HDDs keep mq-deadline. The rule
+# acts on every add or change event, so it applies at boot and when a disk
+# is added again.
+
+- name: Install the I/O scheduler udev rule
+  ansible.builtin.copy:
+    src: 60-ioscheduler.rules
+    dest: /etc/udev/rules.d/60-ioscheduler.rules
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload udev rules
+    - Re-run udev rules on the disks

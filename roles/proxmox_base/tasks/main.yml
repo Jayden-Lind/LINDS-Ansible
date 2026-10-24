@@ -1,0 +1,13 @@
+---
+# Each part has a tag, so that one part can run alone (--tags syslog).
+- name: Send the logs to Alloy
+  ansible.builtin.import_tasks: syslog.yml
+  tags: syslog
+
+- name: Stop the services that the hosts do not use
+  ansible.builtin.import_tasks: services.yml
+  tags: services
+
+- name: Let the ipmiutil watchdog service restart cron
+  ansible.builtin.import_tasks: ipmi-watchdog.yml
+  tags: ipmi-watchdog
