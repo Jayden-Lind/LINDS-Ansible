@@ -7,10 +7,16 @@
   ansible.builtin.include_tasks: install-redhat.yml
   when: ansible_facts.os_family == 'RedHat'
 
+- name: Make the qBittorrent account
+  ansible.builtin.include_tasks: user.yml
+  when: torrent_user != 'root'
+
 - name: Create config directory
   ansible.builtin.file:
-    path: "{{ torrent_config_dir | default('/root/.config/qBittorrent') }}"
+    path: "{{ torrent_config_dir }}"
     state: directory
+    owner: "{{ torrent_user }}"
+    group: "{{ torrent_user }}"
     mode: "0755"
 
 - name: Include JD

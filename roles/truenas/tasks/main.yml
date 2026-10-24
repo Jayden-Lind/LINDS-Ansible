@@ -8,12 +8,53 @@
     name: "{{ truenas_hostname }}"
   when: truenas_hostname | length > 0
 
+- name: Make the groups
+  arensb.truenas.group:
+    name: "{{ item.name }}"
+    gid: "{{ item.gid | default(omit) }}"
+  loop: "{{ truenas_groups }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# smb and create_group default to true in the module; both are wrong for an
+# account that only owns files. --check cannot make a user whose group the
+# same run would make: that is an error in a check run only.
+- name: Make the users
+  arensb.truenas.user:
+    name: "{{ item.name }}"
+    uid: "{{ item.uid | default(omit) }}"
+    group: "{{ item.group }}"
+    create_group: false
+    comment: "{{ item.comment | default(omit) }}"
+    password_disabled: true
+    smb: false
+    home: /var/empty
+    shell: /usr/sbin/nologin
+  loop: "{{ truenas_users }}"
+  loop_control:
+    label: "{{ item.name }}"
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Make the folders
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(omit) }}"
+    group: "{{ item.group | default(omit) }}"
+    mode: "{{ item.mode | default('0755') }}"
+  loop: "{{ truenas_directories }}"
+  loop_control:
+    label: "{{ item.path }}"
+  ignore_errors: "{{ ansible_check_mode }}"
+
 - name: Share the datasets with NFS
   arensb.truenas.sharing_nfs:
     path: "{{ item.path }}"
     networks: "{{ item.networks | default(omit) }}"
     maproot_user: "{{ item.maproot_user | default(omit) }}"
     maproot_group: "{{ item.maproot_group | default(omit) }}"
+    mapall_user: "{{ item.mapall_user | default(omit) }}"
+    mapall_group: "{{ item.mapall_group | default(omit) }}"
   loop: "{{ truenas_nfs_shares }}"
   loop_control:
     label: "{{ item.path }}"
