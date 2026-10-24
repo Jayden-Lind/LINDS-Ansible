@@ -1,0 +1,6 @@
+---
+# The paths of the Alloy installation. The installer sets them; they are not
+# settings.
+windows_logs_installer: C:\Windows\Temp\alloy-installer-{{ windows_logs_alloy_version }}.exe
+windows_logs_config: C:\Program Files\GrafanaLabs\Alloy\config.alloy
+windows_logs_data: C:\ProgramData\GrafanaLabs\Alloy\data

@@ -1,0 +1,34 @@
+---
+# Send the event logs to Loki with Grafana Alloy. See README.md.
+
+# The Alloy release, as its GitHub tag, and the SHA-256 of its Windows
+# installer (alloy-installer-windows-amd64.exe). Change both together.
+windows_logs_alloy_version: v1.21.2
+windows_logs_alloy_installer_sha256: 2fea06c9e597acab6f79470b1fb247165d13d6faf17b645c967526619974bdc6
+
+# The Loki push API of the Alloy in the cluster (LINDS-Kubernetes
+# applications/monitoring-loki.yaml, port 3100 of the LoadBalancer).
+windows_logs_push_url: http://172.16.1.23:3100/loki/api/v1/push
+
+# The event logs to send. The role skips a log that the server does not have.
+# "query" is an XPath filter. Without it, Alloy sends every event of the log.
+windows_logs_channels:
+  - name: Application
+  - name: System
+  - name: Directory Service
+  - name: DNS Server
+  - name: DFS Replication
+  - name: Active Directory Web Services
+  # The full Security log is 15,000 to 110,000 events a day for each server.
+  # Send the failures (keyword Audit Failure), and the changes to accounts,
+  # groups, the audit policy and the log itself.
+  - name: Security
+    query: >-
+      *[System[band(Keywords,4503599627370496) or EventID=1102 or
+      EventID=4719 or EventID=4720 or EventID=4722 or EventID=4724 or
+      EventID=4725 or EventID=4726 or EventID=4728 or EventID=4732 or
+      EventID=4740 or EventID=4756 or EventID=4767 or EventID=4794]]
+  # Defender's errors and warnings, and the action on each threat (1117).
+  # The other events are status reports, about 100 a day.
+  - name: Microsoft-Windows-Windows Defender/Operational
+    query: "*[System[(Level>=1 and Level<=3) or EventID=1117]]"

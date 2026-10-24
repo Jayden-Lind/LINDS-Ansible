@@ -1,0 +1,6 @@
+---
+- name: Restart Alloy
+  ansible.windows.win_service:
+    name: Alloy
+    state: restarted
+  when: windows_logs_installed.exists or not ansible_check_mode
