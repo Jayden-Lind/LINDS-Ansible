@@ -20,3 +20,4 @@ windows_directory_initial_passwords: {}
 # Not set: the role does not change the setting of the domain.
 # windows_directory_password_policy:
 # windows_directory_machine_account_quota:
+# windows_directory_ds_heuristics:

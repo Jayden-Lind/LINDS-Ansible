@@ -15,7 +15,8 @@ group membership, GPO links and the password policy.
    `windows_directory_gpo_links` exact, in the given order. It removes a link
    that is not in the list. `playbooks/windows.yml` runs it after the role
    `windows_gpo`, because a GPO can name a group that this role makes.
-7. It sets the password policy and the machine account quota, if they are set.
+7. It sets the password policy, the machine account quota and `dSHeuristics`,
+   if they are set.
 8. It lists the OUs, groups and users that exist but are not in the files.
 
 ## Requirements
@@ -40,6 +41,7 @@ policy). Edit the vault file with `ansible-vault edit`.
 | `windows_directory_initial_passwords` | `{}` | User to first password. Used only for a new user. |
 | `windows_directory_password_policy` | not set | The default password policy of the domain. |
 | `windows_directory_machine_account_quota` | not set | `ms-DS-MachineAccountQuota`. |
+| `windows_directory_ds_heuristics` | not set | `dSHeuristics` of the forest. See "dSHeuristics" below. |
 
 ## How to use it
 
@@ -51,7 +53,32 @@ policy). Edit the vault file with `ansible-vault edit`.
 To add a person to a group, add the name under the group in
 `windows_directory_members`.
 
+## dSHeuristics
+
+`dSHeuristics` is one string for the whole forest. Each character is one
+setting, and `0` is the default. Characters 10 and 20 must be `1` and `2`
+when the string is longer than them.
+
+The inventory sets `00000000010000000002000000011`. Characters 28 and 29 at `1`
+enforce the permission checks of KB5008383 (CVE-2021-42291):
+
+- Character 28: an LDAP add fails if it sets an attribute that the user cannot
+  write.
+- Character 29: an LDAP add or modify fails if it uses the implicit owner
+  rights to change the security descriptor.
+
+Domain administrators are not affected. Without the setting, the domain
+controllers only log these requests (events 3047, 3048 and 3049), and log
+events 3051 and 3054 at each start. With it, they log 3050 and 3053 at each
+start, and a blocked request logs 3044, 3045 or 3046.
+
 ## Safety
+
+**CAUTION:** If a program that is not run by a domain administrator stops
+making or changing AD objects, look for events 3044, 3045 and 3046 in the
+`Directory Service` log. To go back to audit mode, set characters 28 and 29 to
+`0` and run the role.
+
 
 **WARNING:** Membership is exact for the listed groups. The next run removes a
 member that someone added in a console. List a group in

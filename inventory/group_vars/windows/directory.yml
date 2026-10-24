@@ -121,3 +121,7 @@ windows_directory_groups:
     scope: global
     category: security
     description: null
+
+# Enforce the AD permission checks of KB5008383 (characters 28 and 29). See
+# "dSHeuristics" in roles/windows_directory/README.md.
+windows_directory_ds_heuristics: "00000000010000000002000000011"

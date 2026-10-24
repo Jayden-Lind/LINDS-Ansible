@@ -86,6 +86,17 @@
     state: present
   when: windows_directory_machine_account_quota is defined
 
+# dSHeuristics applies to the whole forest. See the README.
+- name: Set dSHeuristics
+  microsoft.ad.object:
+    identity: CN=Directory Service,CN=Windows NT,CN=Services,CN=Configuration,{{ windows_directory_base }}
+    type: nTDSService
+    attributes:
+      set:
+        dSHeuristics: "{{ windows_directory_ds_heuristics }}"
+    state: present
+  when: windows_directory_ds_heuristics is defined
+
 # Whatever Windows itself made is marked critical, and is not in the code.
 - name: Read the users, groups and OUs of the domain
   microsoft.ad.object_info:
