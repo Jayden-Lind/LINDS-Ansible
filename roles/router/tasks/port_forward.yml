@@ -1,0 +1,74 @@
+---
+# k8s-port-forward: forwards WAN ports to the Kubernetes LoadBalancer
+# Services that ask for it with the annotation public.linds.com.au/ports.
+# The daemon is files/usr/local/sbin/k8s-port-forward (tests in
+# tests/test_k8s_port_forward.py). It owns `table ip k8s_port_forward`;
+# /etc/nftables.conf replaces only `table inet router`, so a firewall reload
+# keeps the forwards.
+#
+# The token is k8s_port_forward_token (vault, inventory/router.yml). It can
+# only read Services; LINDS-Kubernetes base/router/port-forward-reader.yaml
+# makes it.
+
+- name: k8s-port-forward config directory
+  ansible.builtin.file:
+    path: /etc/k8s-port-forward
+    state: directory
+    mode: '0750'
+
+- name: k8s-port-forward token (from the vault)
+  ansible.builtin.copy:
+    content: "{{ k8s_port_forward_token | trim }}\n"
+    dest: /etc/k8s-port-forward/token
+    mode: '0600'
+  no_log: true
+  notify: restart k8s-port-forward
+
+- name: k8s-port-forward cluster CA and config
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "/etc/k8s-port-forward/{{ item.name }}"
+    mode: '0644'
+  loop:
+    - {name: ca.crt, src: "{{ router_site }}/etc/k8s-port-forward/ca.crt"}
+  loop_control:
+    label: "{{ item.name }}"
+  notify: restart k8s-port-forward
+
+- name: k8s-port-forward settings
+  ansible.builtin.template:
+    src: k8s-port-forward.json.j2
+    dest: /etc/k8s-port-forward/config.json
+    mode: '0644'
+  notify: restart k8s-port-forward
+
+- name: k8s-port-forward daemon
+  ansible.builtin.copy:
+    src: usr/local/sbin/k8s-port-forward
+    dest: /usr/local/sbin/k8s-port-forward
+    mode: '0755'
+  notify: restart k8s-port-forward
+
+- name: k8s-port-forward unit
+  ansible.builtin.copy:
+    src: etc/systemd/system/k8s-port-forward.service
+    dest: /etc/systemd/system/k8s-port-forward.service
+    mode: '0644'
+  notify:
+    - daemon-reload
+    - restart k8s-port-forward
+
+- name: k8s-port-forward unit installed?
+  ansible.builtin.stat:
+    path: /etc/systemd/system/k8s-port-forward.service
+  register: router_k8s_port_forward_unit
+
+# In check mode on a router that does not have the unit yet, there is
+# nothing to enable.
+- name: k8s-port-forward enabled
+  ansible.builtin.systemd_service:
+    name: k8s-port-forward
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode or router_k8s_port_forward_unit.stat.exists

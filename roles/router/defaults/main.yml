@@ -22,6 +22,21 @@ router_suricata: true # Suricata IDS on the LAN trunk, EVE to Loki
 router_failover: false # wan-failover: needs a second WAN to fail over to
 router_road_warrior: false # IKEv2 remote access (LINDS_MOBILE): its own
 # certificate, the EAP users, an XFRM interface
+router_k8s_port_forward: false # k8s-port-forward: WAN ports for the Kubernetes
+# Services that ask for them (tasks/port_forward.yml). It needs the settings
+# below and a token in the vault (k8s_port_forward_token).
+
+# k8s-port-forward settings. The daemon reads them from
+# /etc/k8s-port-forward/config.json (templates/k8s-port-forward.json.j2).
+# The site gives the API address and the LoadBalancer pool; only addresses in
+# the pool can get a forward. The reserved ports are the ones the router
+# answers on its WAN address itself (IKE and NAT-T).
+router_k8s_port_forward_api: ""
+router_k8s_port_forward_backend_cidrs: []
+router_k8s_port_forward_wan_interface: wan0
+router_k8s_port_forward_reserved_ports: {tcp: [], udp: [500, 4500]}
+router_k8s_port_forward_max_forwards: 128
+router_k8s_port_forward_interval: 20
 
 # Connections `swanctl --list-conns` must show (tasks/validate.yml).
 router_ipsec_connections: [LINDS]

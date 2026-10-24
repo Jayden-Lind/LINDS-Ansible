@@ -57,6 +57,11 @@
   when: router_upnp | bool
   tags: [upnp]
 
+- name: Port forwards for Kubernetes Services
+  ansible.builtin.import_tasks: port_forward.yml
+  when: router_k8s_port_forward | bool
+  tags: [port_forward]
+
 - name: mDNS reflector
   ansible.builtin.import_tasks: mdns.yml
   when: router_mdns | bool

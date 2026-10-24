@@ -11,6 +11,7 @@ Managed by LINDS-Ansible: roles/router/files/usr/local/sbin/router.
   router host ADDR|NAME|MAC everything the router knows about one client
   router dns NAME [TYPE]    a name through this router (Unbound), Quad9 and the DCs
   router ids                Suricata counters and the last alerts
+  router forwards           port forwards: Kubernetes Services, static rules, UPnP
   router trace ADDR [SEC]   which firewall rules one host's packets go through
   router logs [AREA] [-f] [--since 2h]   the journal of the router's services
   router metrics [FILE]     Prometheus text metrics (the router-metrics timer)
@@ -35,6 +36,9 @@ EVE_LOG = "/var/log/suricata/eve.json"
 LEASE_DIR = "/run/systemd/netif/leases"
 TEXTFILE = "/var/lib/prometheus/node-exporter/router.prom"
 TRACE_TABLE = "router_trace"
+FORWARD_STATE = "/var/lib/k8s-port-forward/state.json"
+FORWARD_TABLE = "k8s_port_forward"
+FORWARD_METRICS = "/var/lib/prometheus/node-exporter/k8s_port_forward.prom"
 
 # `router logs AREA` -> systemd units.
 LOG_AREAS = {
@@ -45,6 +49,7 @@ LOG_AREAS = {
     "dns": ["unbound"],
     "ids": ["suricata", "suricata-update"],
     "upnp": ["miniupnpd"],
+    "forwards": ["k8s-port-forward"],
     "mdns": ["avahi-daemon"],
     "firewall": ["nftables"],
 }
@@ -335,6 +340,92 @@ def uptime_seconds():
 
 # ----- commands -----------------------------------------------------------------
 
+
+def unit_active(unit):
+    return run(["systemctl", "is-active", unit]).strip() == "active"
+
+
+def nft_tables():
+    data = run_json(["nft", "-j", "list", "tables"]) or {}
+    return {(t["table"]["family"], t["table"]["name"]) for t in data.get("nftables", []) if "table" in t}
+
+
+def k8s_forwards():
+    """What k8s-port-forward applied, the requests it refused, and the
+    per-forward packet counters, or None if the daemon is not set up."""
+    try:
+        with open(FORWARD_STATE) as f:
+            state = json.load(f)
+    except (OSError, ValueError):
+        return None
+    counters = {}
+    data = run_json(["nft", "-j", "list", "map", "ip", FORWARD_TABLE, "forwards"]) or {}
+    for item in data.get("nftables", []):
+        for elem in (item.get("map") or {}).get("elem", []):
+            key = elem[0].get("elem", {}) if isinstance(elem, list) else {}
+            parts = (key.get("val") or {}).get("concat") or []
+            if len(parts) == 2:
+                counters[(str(parts[0]), int(parts[1]))] = (key.get("counter") or {}).get("packets", 0)
+    state["counters"] = counters
+    return state
+
+
+def nat_rules(family, table, chain):
+    """The DNAT rules of one chain, as nft prints them."""
+    out = run(["nft", "list", "chain", family, table, chain])
+    return [line.strip() for line in out.splitlines() if " dnat " in line]
+
+
+def cmd_forwards(_args):
+    tables = nft_tables()
+    state = k8s_forwards()
+    print("Kubernetes Services (public.linds.com.au/ports, k8s-port-forward)")
+    if state is None:
+        print(dim("  k8s-port-forward is not set up on this router"))
+    else:
+        if not unit_active("k8s-port-forward"):
+            print("  " + bad("k8s-port-forward is not running"))
+        if ("ip", FORWARD_TABLE) not in tables:
+            print("  " + bad(f"table ip {FORWARD_TABLE} is missing: no Service is forwarded"))
+        for f in state.get("forwards", []):
+            n = state["counters"].get((f["proto"], f["wan_port"]), 0)
+            policy = f.get("traffic_policy", "?")
+            note = "" if policy == "Local" else dim("  (externalTrafficPolicy Cluster: the app sees a node address)")
+            print(f"  {f['wan_port']:>5}/{f['proto']:3} -> {f['backend_ip'] + ':' + str(f['backend_port']):21} "
+                  f"{n:>7} new connections  {f['namespace']}/{f['service']}{note}")
+        for r in state.get("rejected", []):
+            print("  " + bad(f"not forwarded: {r['request']} for {r['namespace']}/{r['service']}: {r['reason']}"))
+        api = {}
+        try:
+            with open(FORWARD_METRICS) as f:
+                for line in f:
+                    if line.startswith(("router_port_forward_api_up ", "router_port_forward_last_success")):
+                        key, value = line.split()
+                        api[key] = float(value)
+        except (OSError, ValueError):
+            pass
+        last = api.get("router_port_forward_last_success_timestamp_seconds", 0)
+        if api.get("router_port_forward_api_up") == 1:
+            print(dim(f"  Kubernetes API answered {ago(time.time() - last)} ago; forwards last changed "
+                      f"{state.get('updated', '?')}; log: router logs forwards"))
+        else:
+            print("  " + bad("the Kubernetes API does not answer" + (f" (last answer {ago(time.time() - last)} ago)"
+                                                                    if last else "")
+                             + ": the forwards stay as they are. router logs forwards"))
+    print("Static rules (/etc/nftables.conf, chain prerouting_nat)")
+    for line in nat_rules("inet", "router", "prerouting_nat") or [dim("none")]:
+        print("  " + line)
+    print("UPnP / NAT-PMP / PCP (miniupnpd)")
+    if not unit_active("miniupnpd"):
+        print(dim("  miniupnpd is not running"))
+    elif ("inet", "miniupnpd") not in tables:
+        print("  " + bad("miniupnpd runs, but its table inet miniupnpd is missing: every mapping fails. "
+                         "Restart it: systemctl restart miniupnpd"))
+    else:
+        for line in nat_rules("inet", "miniupnpd", "prerouting_miniupnpd") or [dim("no mappings")]:
+            print("  " + line)
+
+
 def cmd_status(_args):
     now = time.time()
     load = os.getloadavg()[0]
@@ -421,6 +512,22 @@ def cmd_status(_args):
               + f", {det.get('alert', 0)} alerts ({det.get('alerts_suppressed', 0)} suppressed)")
     else:
         print(f"{'IDS':10}{dim('Suricata does not answer (not running here, or starting)')}")
+
+    tables = nft_tables()
+    state = k8s_forwards()
+    fw = []
+    if state is not None:
+        if not unit_active("k8s-port-forward") or ("ip", FORWARD_TABLE) not in tables:
+            fw.append(bad("k8s-port-forward down or its table missing"))
+        else:
+            fw.append(f"{len(state.get('forwards', []))} to Kubernetes")
+        if state.get("rejected"):
+            fw.append(bad(f"{len(state['rejected'])} refused"))
+    fw.append(f"{len(nat_rules('inet', 'router', 'prerouting_nat'))} static")
+    if unit_active("miniupnpd"):
+        fw.append(f"UPnP {len(nat_rules('inet', 'miniupnpd', 'prerouting_miniupnpd'))}"
+                  if ("inet", "miniupnpd") in tables else bad("UPnP table missing"))
+    print(f"{'Forwards':10}{', '.join(fw)}")
 
     used, maximum = conntrack_usage()
     print(f"{'Conntrack':10}{used} of {maximum}" + (bad(" (over 80%)") if maximum and used > maximum * 0.8 else ""))
@@ -811,6 +918,7 @@ def main():
     p.add_argument("type", nargs="?")
     p.set_defaults(func=cmd_dns)
     sub.add_parser("ids").set_defaults(func=cmd_ids)
+    sub.add_parser("forwards").set_defaults(func=cmd_forwards)
     p = sub.add_parser("trace")
     p.add_argument("target")
     p.add_argument("seconds", nargs="?", type=int, default=15)
