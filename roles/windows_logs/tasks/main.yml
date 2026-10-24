@@ -14,9 +14,11 @@
   register: windows_logs_present
   check_mode: false
 
+# The installer is a 32-bit program, so Windows keeps its uninstall key in the
+# 32-bit view of the registry.
 - name: Read the installed version of Alloy
   ansible.windows.win_reg_stat:
-    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Alloy
+    path: HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Alloy
     name: DisplayVersion
   register: windows_logs_installed
 
