@@ -1,0 +1,34 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/system/k8s-port-forward.service
+[Unit]
+Description=Forward WAN ports to Kubernetes Services (public.linds.com.au/ports)
+Documentation=file:/usr/local/sbin/k8s-port-forward
+After=nftables.service systemd-networkd.service
+# A restart of nftables flushes the whole ruleset (ExecStop), this table too:
+# restart with it, and load the forwards again.
+PartOf=nftables.service
+Wants=nftables.service
+
+[Service]
+ExecStart=/usr/local/sbin/k8s-port-forward /etc/k8s-port-forward/config.json
+Restart=always
+RestartSec=10
+StateDirectory=k8s-port-forward
+# It only lists Services over HTTPS and runs nft. Root for nft, with every
+# other capability taken away.
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/prometheus/node-exporter
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

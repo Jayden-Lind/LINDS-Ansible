@@ -20,6 +20,12 @@ router_site: jd
 # and table 1001 come back with it).
 router_failover: false
 router_road_warrior: true
+# k8s-port-forward: the cluster's API server and its LoadBalancer pool
+# (Cilium LB-IPAM, LINDS-Terraform proxmox/cilium.tf). The token is
+# k8s_port_forward_token in inventory/router.yml.
+router_k8s_port_forward: true
+router_k8s_port_forward_api: https://10.0.53.200:6443
+router_k8s_port_forward_backend_cidrs: [172.16.1.0/24]
 
 # Kernel from trixie-backports (7.x) rather than stable's 6.12. The role adds
 # the backports source, installs linux-image-cloud-amd64 from it and reboots

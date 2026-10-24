@@ -18,13 +18,13 @@ JD's; where LINDS differs, the LINDS section says so.
 |---|---|
 | A daemon config that is one site's, as the file it is on the box | `files/<site>/etc/…`: `files/jd/etc/`, `files/linds/etc/` (below that, the path on the box: `files/jd/etc/nftables.conf` → `/etc/nftables.conf`) |
 | What every router gets unchanged | `files/etc/…`: sysctl, kernel modules, chrony, lldpd, FRR's `daemons`, Suricata, rsyslog, apt and unattended-upgrades, journald, the unit files |
-| The failover daemon, the WireGuard endpoint re-resolver, miniupnpd's table script | `files/usr/local/sbin/`, unit files in `files/etc/systemd/system/` |
+| The failover daemon, the WireGuard endpoint re-resolver, miniupnpd's table script, the Kubernetes port-forward daemon | `files/usr/local/sbin/`, unit files in `files/etc/systemd/system/` |
 | The few rendered files (they carry vault secrets) | `templates/`: WireGuard `.netdev` (peer endpoint + key), `swanctl/conf.d/secrets.conf` (EAP users), `ddclient.conf` (Cloudflare token), `wg-reresolve/*.conf` |
 | Certificates / keys | rendered from the vault by `tasks/ipsec.yml` (VyOS's bare-base64 PKI blobs, wrapped as PEM by `filter_plugins/router_filters.py`) |
 | Secrets | `inventory/router.yml` (copied from `inventory/vyos.yml`, same vault password) |
 | What a site is: its name, which optional parts it has, its tunnels, what the validator expects | `inventory/group_vars/jd_router.yml`, `inventory/group_vars/linds_router.yml` |
 | Task flow | `tasks/main.yml` → one task file per area, in dependency order |
-| Failover daemon tests | `tests/` — `python3 -m unittest discover -s roles/router/tests` |
+| Failover and port-forward daemon tests | `tests/` — `python3 -m unittest discover -s roles/router/tests` |
 | What the LINDS ruleset does to packets, in throwaway network namespaces | `tests/linds-ruleset-netns.sh` — `sudo unshare -n bash roles/router/tests/linds-ruleset-netns.sh roles/router/files/linds/etc/nftables.conf` |
 | The swap from VyOS at LINDS, as a script for the hypervisor | `cutover/linds-router-cutover` (not installed by the role) |
 
@@ -58,6 +58,7 @@ What only some sites have is switched in group_vars:
 | `router_suricata` | on | on | on | Suricata on the LAN trunk, EVE to Loki |
 | `router_failover` | off | off | off | `wan-failover`: needs a second WAN. Without it the default route is the one in the WAN's DHCP lease. On at JD until 2026-10-24 (see "The backup WAN") |
 | `router_road_warrior` | off | on | off | IKEv2 remote access: its server certificate, the EAP users, `ipsec10` |
+| `router_k8s_port_forward` | off | on | off | `k8s-port-forward`: WAN port forwards for the Kubernetes Services that ask for them (see "Port forwards") |
 
 A part that is off is not installed. Turning one off on a router that has
 it does not uninstall it, with one exception: the remote-access certificate,
@@ -98,7 +99,7 @@ kernel and the reboot that follows it happen only in an upgrade run
 (`router_apt_upgrade`, off by default). Every task file has a tag of its own
 name (`packages`, `system`, `network`, `tuning`, `firewall`, `upnp`, `mdns`,
 `logging`, `dns`, `dhcp`, `services`, `ipsec`, `wireguard`, `routing`,
-`failover`, `suricata`); `validate` is tagged `always`.
+`failover`, `suricata`, `port_forward`); `validate` is tagged `always`.
 
 A run ends in `tasks/validate.yml`: every daemon's own config checker
 (`nft -c`, `vtysh -C`, `kea-dhcp4 -t`, `suricata -T`, `sshd -t`,
@@ -116,6 +117,7 @@ layout above), and the notes are JD's.
 |---|---|---|---|
 | Interfaces, VLANs, WAN DHCP/PD, RA, WireGuard, XFRM | systemd-networkd | `etc/systemd/network/` | `.link` names NICs by MAC (`mgmt0`/`lan0`/`wan0`); the WAN keeps its lease through renews (`KeepConfiguration=dhcp`); PD `/56` → `lan0` (sla 0) and `lan0.52` (sla 1) |
 | Firewall + NAT | nftables | `etc/nftables.conf` | One `inet` table, rule comments carry the VyOS rule numbers; the `output` chain has the build-time mgmt guard |
+| Port forwards to Kubernetes | `k8s-port-forward` (a script) | `etc/k8s-port-forward/ca.crt`, `templates/k8s-port-forward.json.j2` | Owns `table ip k8s_port_forward`; see "Port forwards" |
 | Static + BGP | FRR (`bgpd`, `staticd`), from deb.frrouting.org | `etc/frr/frr.conf` | Same dialect as VyOS's `protocols`; `systemctl reload frr` diffs |
 | Dual-WAN failover | `wan-failover` | `etc/wan-failover.json` | Per-WAN default in tables 1001/1002 for the health check (90/100 are the WireGuard tunnels'); hysteresis; carrier check; SNAT conntrack flush on switch |
 | IPsec | strongSwan (swanctl) | `etc/swanctl/swanctl.conf` | `LINDS` site-to-site over `ipsec0`, `LINDS_MOBILE` road-warrior over `ipsec10`; `encap = yes` is a line here, not a template patch |
@@ -126,6 +128,74 @@ layout above), and the notes are JD's.
 | IDS | Suricata 8 + suricata-update, from trixie-backports | `etc/suricata/` | One worker thread on `lan0`; WAN traffic and DNS only (BPF filter); TLS flows bypassed after the handshake; EVE → rsyslog imfile → Alloy → Loki; weekly rule refresh reloads in place |
 | Troubleshooting and metrics | `router` (a script), node-exporter, frr-exporter, smokeping-prober | `usr/local/sbin/router`, `etc/default/prometheus-*`, `etc/prometheus/smokeping_prober.yml` | See "Troubleshooting" below; the exporters listen on the cluster network only |
 | Kernel | linux-image-cloud-amd64 from trixie-backports (7.x, `router_kernel_backports`), sysctl, modules, grub | `etc/sysctl.d/`, `etc/modules-load.d/`, `etc/default/grub.d/` | `ignore_routes_with_linkdown` keeps a link-down build reachable; `ip_nonlocal_bind` lets daemons bind `.1` addresses before the LAN link is up |
+
+## Port forwards
+
+The router forwards a WAN port only to a Kubernetes Service that asks for
+it. `nftables.conf` has no forward of its own.
+
+How a forward is made:
+
+1. A LoadBalancer Service has the annotation `public.linds.com.au/ports`,
+   for example `"2456-2457/udp"` (LINDS-Kubernetes
+   `docs/publish-a-service.md`).
+2. `k8s-port-forward` lists the LoadBalancer Services every 20 seconds. It
+   uses a token that can only read Services (`k8s_port_forward_token` in
+   `inventory/router.yml`).
+3. It writes each port into the map `forwards` of `table ip
+   k8s_port_forward`, in one transaction. The chain of that table does the
+   DNAT, before `table inet router` and miniupnpd (priority `dstnat - 10`).
+4. In the forward chain, the rule "the WAN opens only forwarded ports" drops
+   every other new IPv4 connection from the WAN.
+
+The daemon refuses a request, and `router forwards` shows the reason, when:
+
+* the Service's address is not in `router_k8s_port_forward_backend_cidrs`
+  (`172.16.1.0/24` at JD);
+* the Service does not have that port and protocol;
+* the WAN port is in `router_k8s_port_forward_reserved_ports` (500/udp and
+  4500/udp: IKE and NAT-T for the IPsec tunnels);
+* an older Service has the same WAN port and protocol.
+
+To see the forwards:
+
+* `router forwards`: each forward with its count of new connections, each
+  refused request, the static rules and the UPnP mappings.
+* `router logs forwards`: the log of the daemon.
+* Alerts (LINDS-Kubernetes `base/monitoring/router-metrics.yaml`):
+  `RouterPortForwardAPIDown`, `RouterPortForwardRefused`,
+  `RouterPortForwardStale`.
+
+If the Kubernetes API does not answer, the forwards stay as they are. At
+start, the daemon loads the last list from
+`/var/lib/k8s-port-forward/state.json`. Thus the forwards come back after a
+reboot, also when the cluster is down.
+
+**CAUTION:** `nft flush ruleset` and `systemctl restart nftables` (its stop
+step is a flush) remove every table: also `table ip k8s_port_forward` and
+`table inet miniupnpd`. `k8s-port-forward` loads its table again in 20
+seconds. miniupnpd does not: run `systemctl restart miniupnpd`, or every
+UPnP and PCP mapping fails. To load a changed ruleset, use `systemctl
+reload nftables`. It replaces `table inet router` only.
+
+To forward a port to a host outside Kubernetes, add a DNAT rule to the chain
+`prerouting_nat` in `files/jd/etc/nftables.conf`. The chain has an example.
+
+To rotate the token:
+
+1. Delete the Secret `kube-system/router-port-forward-token`. Argo CD makes it
+   again, with a new token.
+2. Encrypt the new token:
+   `kubectl -n kube-system get secret router-port-forward-token -o jsonpath='{.data.token}' | base64 -d | ansible-vault encrypt_string --stdin-name k8s_port_forward_token`
+3. Replace `k8s_port_forward_token` in `inventory/router.yml` with the
+   output.
+4. Run `ansible-playbook playbooks/router.yml --limit jd-router-01 --tags port_forward`.
+
+**IPv6:** the router does not filter forwarded IPv6. This is on purpose:
+games and the torrent client take inbound IPv6. Thus each host on the main
+LAN with a global IPv6 address can be reached from the internet on each port
+that it listens on. The cluster has no IPv6, so none of the above applies to
+it.
 
 ## Conventions and sharp edges
 
@@ -1143,10 +1213,11 @@ deletes it at the end.
 | Cluster services cannot be reached | `router bgp` | Five cluster peers, about 75 prefixes each |
 | A device gets no address | `router leases TEXT`, `router logs dhcp` | Its lease; full pools show in `router` |
 | A game or the torrent client has no open port | `router host ADDRESS` | Its UPnP mappings. Only hosts in the `allow` lines of `miniupnpd.conf` can map ports |
+| A published Kubernetes Service cannot be reached from the internet | `router forwards` | Its forward and count of new connections, or the reason the router refuses it. Then the Service's network policy (`hubble observe --namespace NS --verdict DROPPED`) |
 | AirPlay or Cast does not find a device on another VLAN | `router logs mdns`, `tcpdump -ni lan0.52 udp port 5353` | The device's network must be in `allow-interfaces` in `avahi-daemon.conf`; the capture shows the device's answers and the router's repeats (from 10.0.52.1, on VLAN 58 from 10.0.58.1) |
 | Questions about the IDS | `router ids` | Drops, alerts, suppressions; the Suricata dashboard |
 | Throughput through the router | `iperf3` between two hosts on different networks | On the router at the same time: `htop`, `perf top`, `dropwatch -l kas` |
-| Anything else | `router logs AREA -f` | Areas: wan, vpn, bgp, dhcp, dns, ids, upnp, mdns, firewall |
+| Anything else | `router logs AREA -f` | Areas: wan, vpn, bgp, dhcp, dns, ids, upnp, mdns, firewall, forwards |
 
 The router reports to the cluster's Prometheus: node-exporter (with the
 `router_*` metrics that `router metrics` writes every 30 s, Unbound's
@@ -1162,6 +1233,8 @@ alerts go to Discord (LINDS-Kubernetes `base/monitoring/router-metrics.yaml`):
 * A DHCP pool over 90% used, conntrack over 80% full, a failed systemd unit.
 * DNS SERVFAILs, Unbound not answering, Suricata silent or dropping packets.
 * The `router_*` metrics missing or older than 5 minutes.
+* `k8s-port-forward` unable to list Services, refusing a request, or not
+  running.
 
 The cluster's general node alerts (memory, disk, CPU) apply to the router
 too.

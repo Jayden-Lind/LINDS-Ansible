@@ -1,0 +1,12 @@
+{{ {
+  "api": router_k8s_port_forward_api,
+  "ca_file": "/etc/k8s-port-forward/ca.crt",
+  "token_file": "/etc/k8s-port-forward/token",
+  "wan_interface": router_k8s_port_forward_wan_interface,
+  "backend_cidrs": router_k8s_port_forward_backend_cidrs,
+  "reserved_ports": router_k8s_port_forward_reserved_ports,
+  "max_forwards": router_k8s_port_forward_max_forwards,
+  "interval": router_k8s_port_forward_interval,
+  "state_file": "/var/lib/k8s-port-forward/state.json",
+  "metrics_file": "/var/lib/prometheus/node-exporter/k8s_port_forward.prom"
+} | to_nice_json(indent=2) }}

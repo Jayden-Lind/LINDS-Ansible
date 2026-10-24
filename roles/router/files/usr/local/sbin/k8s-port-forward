@@ -1,0 +1,447 @@
+#!/usr/bin/env python3
+"""k8s-port-forward: forward WAN ports to Kubernetes LoadBalancer Services.
+
+Managed by LINDS-Ansible: roles/router/files/usr/local/sbin/k8s-port-forward.
+
+A Service asks for a forward with one annotation. The value is a list of
+PORT/PROTO items, separated by commas:
+
+    public.linds.com.au/ports: "443/tcp"              one port
+    public.linds.com.au/ports: "2456-2457/udp"        a range
+    public.linds.com.au/ports: "25565/tcp,25565/udp"  two protocols
+    public.linds.com.au/ports: "8443:443/tcp"         WAN port 8443 to Service port 443
+
+Each port must be a port of the Service, with the same protocol. The router
+sends the packets to the Service's LoadBalancer address and port; Cilium does
+the rest. Nothing else on the Service is read, except
+spec.externalTrafficPolicy, which goes into the metrics.
+
+The daemon lists the cluster's LoadBalancer Services every `interval`
+seconds with a read-only token. It checks each request and makes the
+nftables table `ip k8s_port_forward` agree with the requests that pass. It
+replaces the table in one transaction, so a change is all or nothing.
+Connections that are already open keep their NAT mapping (it is in
+conntrack), so a change never cuts a live session.
+
+A request that fails a check is not forwarded. The other requests still
+apply. The checks:
+  * The Service has a LoadBalancer address inside `backend_cidrs`.
+  * The protocol is tcp or udp, and the Service has that port and protocol.
+  * The WAN port is not in `reserved_ports` (the router's own services).
+  * No older Service has the same WAN port and protocol.
+  * The total stays at `max_forwards` ports or fewer.
+
+If the API cannot be reached, the table stays as it is. At start, before the
+first good answer from the API, the daemon loads the last good list from
+`state_file`, so the forwards come back after a reboot even with the cluster
+down. Stopping the daemon leaves the table in place; to remove every
+forward, stop it and run `nft delete table ip k8s_port_forward`.
+
+The chain runs at priority dstnat - 10, before the static rules in
+/etc/nftables.conf and before miniupnpd, so a Service keeps its port when a
+UPnP client asks for the same one.
+
+Status: `router forwards`. Metrics: router_port_forward_* in the textfile
+`metrics_file` (node-exporter). Tests: roles/router/tests/test_k8s_port_forward.py.
+"""
+from __future__ import annotations
+
+import ipaddress
+import json
+import logging
+import os
+import re
+import signal
+import ssl
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.parse
+import urllib.request
+from dataclasses import asdict, dataclass
+
+log = logging.getLogger("k8s-port-forward")
+
+ANNOTATION = "public.linds.com.au/ports"
+TABLE = "k8s_port_forward"
+MAP = "forwards"
+PROTOCOLS = ("tcp", "udp")
+# Ports one item may expand to. A typo such as "1-65535/udp" must fail, not
+# forward everything.
+MAX_RANGE = 64
+
+DEFAULTS = {
+    "api": "https://10.0.53.200:6443",
+    "ca_file": "/etc/k8s-port-forward/ca.crt",
+    "token_file": "/etc/k8s-port-forward/token",
+    "wan_interface": "wan0",
+    "backend_cidrs": ["172.16.1.0/24"],
+    # IKE and NAT-T must reach charon on this router; a DNAT on them would
+    # break the IPsec road warriors and the site-to-site tunnel.
+    "reserved_ports": {"tcp": [], "udp": [500, 4500]},
+    "max_forwards": 128,
+    "interval": 20,
+    "state_file": "/var/lib/k8s-port-forward/state.json",
+    "metrics_file": "/var/lib/prometheus/node-exporter/k8s_port_forward.prom",
+    "nft": "/usr/sbin/nft",
+}
+
+
+@dataclass(frozen=True, order=True)
+class Forward:
+    proto: str
+    wan_port: int
+    backend_ip: str
+    backend_port: int
+    namespace: str
+    service: str
+    traffic_policy: str = "Cluster"
+
+    @property
+    def key(self) -> tuple[str, int]:
+        return (self.proto, self.wan_port)
+
+
+@dataclass(frozen=True, order=True)
+class Rejection:
+    namespace: str
+    service: str
+    request: str
+    reason: str
+
+
+def parse_ports(value: str) -> list[tuple[int, int, str]]:
+    """'8443:443/tcp,2456-2457/udp' -> [(wan, service, proto), ...]."""
+    items = [i.strip() for i in value.split(",") if i.strip()]
+    if not items:
+        raise ValueError("no ports given")
+    out = []
+    for item in items:
+        m = re.fullmatch(r"(\d+)(?:-(\d+))?(?::(\d+))?/(\w+)", item)
+        if not m:
+            raise ValueError(f"'{item}' is not PORT[-END][:SERVICE_PORT]/PROTO")
+        first, last, target, proto = m.group(1), m.group(2), m.group(3), m.group(4).lower()
+        if proto not in PROTOCOLS:
+            raise ValueError(f"'{item}': protocol must be tcp or udp")
+        if last and target:
+            raise ValueError(f"'{item}': a range cannot be mapped to another port")
+        first = int(first)
+        last = int(last) if last else first
+        if not 1 <= first <= last <= 65535:
+            raise ValueError(f"'{item}': ports must be 1-65535, low to high")
+        if last - first + 1 > MAX_RANGE:
+            raise ValueError(f"'{item}': more than {MAX_RANGE} ports in one range")
+        if target:
+            target = int(target)
+            if not 1 <= target <= 65535:
+                raise ValueError(f"'{item}': service port must be 1-65535")
+            out.append((first, target, proto))
+        else:
+            out.extend((p, p, proto) for p in range(first, last + 1))
+    return out
+
+
+def _created(svc: dict) -> str:
+    return svc.get("metadata", {}).get("creationTimestamp") or "9999"
+
+
+def desired(services: list[dict], cfg: dict) -> tuple[list[Forward], list[Rejection]]:
+    """The forwards the Services ask for, and the requests that fail a check.
+
+    Older Services win a WAN port; the order is creationTimestamp, then
+    namespace and name, so the result does not depend on the API's order.
+    """
+    nets = [ipaddress.ip_network(n) for n in cfg["backend_cidrs"]]
+    reserved = {(p, int(n)) for p, ports in cfg["reserved_ports"].items() for n in ports}
+    taken: dict[tuple[str, int], Forward] = {}
+    rejected: list[Rejection] = []
+    asked = [s for s in services if ANNOTATION in (s.get("metadata", {}).get("annotations") or {})]
+    asked.sort(key=lambda s: (_created(s), s["metadata"].get("namespace", ""), s["metadata"]["name"]))
+    for svc in asked:
+        meta, spec = svc["metadata"], svc.get("spec", {})
+        ns, name = meta.get("namespace", ""), meta["name"]
+        request = meta["annotations"][ANNOTATION]
+
+        def reject(reason: str, req: str = request) -> None:
+            rejected.append(Rejection(ns, name, req, reason))
+
+        try:
+            wanted = parse_ports(request)
+        except ValueError as exc:
+            reject(str(exc))
+            continue
+        if spec.get("type") != "LoadBalancer":
+            reject("not a LoadBalancer Service")
+            continue
+        ingress = (svc.get("status", {}).get("loadBalancer", {}).get("ingress") or [])
+        ips = [i["ip"] for i in ingress if i.get("ip") and ":" not in i["ip"]]
+        if not ips:
+            reject("no LoadBalancer address yet")
+            continue
+        ip = ips[0]
+        if not any(ipaddress.ip_address(ip) in n for n in nets):
+            reject(f"address {ip} is outside {', '.join(cfg['backend_cidrs'])}")
+            continue
+        svc_ports = {((p.get("protocol") or "TCP").lower(), int(p["port"])) for p in spec.get("ports", [])}
+        policy = spec.get("externalTrafficPolicy") or "Cluster"
+        for wan, port, proto in wanted:
+            req = f"{wan}:{port}/{proto}" if wan != port else f"{wan}/{proto}"
+            if (proto, port) not in svc_ports:
+                reject(f"the Service has no {port}/{proto}", req)
+            elif (proto, wan) in reserved:
+                reject(f"WAN port {wan}/{proto} is reserved for the router", req)
+            elif (proto, wan) in taken:
+                o = taken[(proto, wan)]
+                reject(f"WAN port {wan}/{proto} is taken by {o.namespace}/{o.service}", req)
+            elif len(taken) >= cfg["max_forwards"]:
+                reject(f"more than max_forwards ({cfg['max_forwards']}) ports", req)
+            else:
+                taken[(proto, wan)] = Forward(proto, wan, ip, port, ns, name, policy)
+    return sorted(taken.values()), sorted(rejected)
+
+
+def render(forwards: list[Forward], cfg: dict) -> str:
+    """The whole table, as one `nft -f` transaction."""
+    elements = ", ".join(f"{f.proto} . {f.wan_port} : {f.backend_ip} . {f.backend_port}" for f in forwards)
+    lines = [
+        f"table ip {TABLE}",
+        f"delete table ip {TABLE}",
+        f"table ip {TABLE} {{",
+        '\tcomment "Managed by k8s-port-forward (LINDS-Ansible roles/router). Do not edit."',
+        f"\tmap {MAP} {{",
+        "\t\ttype inet_proto . inet_service : ipv4_addr . inet_service",
+        "\t\tcounter",
+    ]
+    if forwards:
+        lines.append(f"\t\telements = {{ {elements} }}")
+    lines += [
+        "\t}",
+        "\tchain prerouting {",
+        "\t\ttype nat hook prerouting priority dstnat - 10; policy accept;",
+        f'\t\tiifname "{cfg["wan_interface"]}" fib daddr type local '
+        f"dnat ip addr . port to meta l4proto . th dport map @{MAP}",
+        "\t}",
+        "}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _label(value: object) -> str:
+    return str(value).replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+
+
+def metrics(forwards: list[Forward], rejected: list[Rejection], api_up: bool,
+            last_success: float, counters: dict[tuple[str, int], tuple[int, int]]) -> str:
+    out = [
+        "# HELP router_port_forward_info A WAN port the router forwards to a Kubernetes Service.",
+        "# TYPE router_port_forward_info gauge",
+    ]
+    for f in forwards:
+        out.append(
+            f'router_port_forward_info{{proto="{f.proto}",port="{f.wan_port}",namespace="{_label(f.namespace)}",'
+            f'service="{_label(f.service)}",backend="{f.backend_ip}:{f.backend_port}",'
+            f'traffic_policy="{_label(f.traffic_policy)}"}} 1')
+    out += [
+        "# HELP router_port_forward_packets_total Packets that opened a connection through the forward.",
+        "# TYPE router_port_forward_packets_total counter",
+    ]
+    for f in forwards:
+        packets, _ = counters.get(f.key, (0, 0))
+        out.append(f'router_port_forward_packets_total{{proto="{f.proto}",port="{f.wan_port}"}} {packets}')
+    out += [
+        "# HELP router_port_forward_rejected A port a Service asks for that the router does not forward.",
+        "# TYPE router_port_forward_rejected gauge",
+    ]
+    for r in rejected:
+        out.append(
+            f'router_port_forward_rejected{{namespace="{_label(r.namespace)}",service="{_label(r.service)}",'
+            f'request="{_label(r.request)}",reason="{_label(r.reason)}"}} 1')
+    out += [
+        "# HELP router_port_forward_api_up 1 if the last list of Services from the Kubernetes API worked.",
+        "# TYPE router_port_forward_api_up gauge",
+        f"router_port_forward_api_up {1 if api_up else 0}",
+        "# HELP router_port_forward_last_success_timestamp_seconds Time of the last good list of Services.",
+        "# TYPE router_port_forward_last_success_timestamp_seconds gauge",
+        f"router_port_forward_last_success_timestamp_seconds {last_success:.0f}",
+    ]
+    return "\n".join(out) + "\n"
+
+
+def write_atomic(path: str, text: str, mode: int = 0o644) -> None:
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".tmp-")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(text)
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        os.unlink(tmp)
+        raise
+
+
+class Runner:
+    def __init__(self, cfg: dict):
+        self.cfg = cfg
+        self.applied: list[Forward] | None = None
+        self.rejected: list[Rejection] = []
+        self.last_success = 0.0
+        self.api_up = False
+        self.failures = 0
+        self.nft_error: str | None = None
+
+    # ----- Kubernetes API -----------------------------------------------
+    def list_services(self) -> list[dict]:
+        query = urllib.parse.urlencode({"fieldSelector": "spec.type=LoadBalancer"})
+        req = urllib.request.Request(f"{self.cfg['api']}/api/v1/services?{query}")
+        with open(self.cfg["token_file"]) as fh:
+            req.add_header("Authorization", "Bearer " + fh.read().strip())
+        ctx = ssl.create_default_context(cafile=self.cfg["ca_file"])
+        with urllib.request.urlopen(req, context=ctx, timeout=15) as resp:
+            return json.load(resp).get("items", [])
+
+    # ----- nftables -----------------------------------------------------
+    def apply(self, forwards: list[Forward]) -> None:
+        subprocess.run([self.cfg["nft"], "-f", "-"], input=render(forwards, self.cfg),
+                       text=True, check=True, capture_output=True)
+
+    def table_present(self) -> bool:
+        return subprocess.run([self.cfg["nft"], "list", "table", "ip", TABLE],
+                              capture_output=True).returncode == 0
+
+    def counters(self) -> dict[tuple[str, int], tuple[int, int]]:
+        try:
+            out = subprocess.run([self.cfg["nft"], "-j", "list", "map", "ip", TABLE, MAP],
+                                 text=True, check=True, capture_output=True).stdout
+        except (subprocess.CalledProcessError, OSError):
+            return {}
+        found = {}
+        for item in json.loads(out).get("nftables", []):
+            for elem in (item.get("map") or {}).get("elem", []):
+                # [{"elem": {"val": {"concat": ["tcp", 443]}, "counter": {...}}}, value]
+                key = elem[0].get("elem", {}) if isinstance(elem, list) else {}
+                parts = (key.get("val") or {}).get("concat") or []
+                cnt = key.get("counter") or {}
+                if len(parts) == 2:
+                    found[(str(parts[0]), int(parts[1]))] = (cnt.get("packets", 0), cnt.get("bytes", 0))
+        return found
+
+    # ----- state --------------------------------------------------------
+    def load_state(self) -> list[Forward] | None:
+        try:
+            with open(self.cfg["state_file"]) as fh:
+                return [Forward(**f) for f in json.load(fh)["forwards"]]
+        except FileNotFoundError:
+            return None
+        except (ValueError, KeyError, TypeError) as exc:
+            log.warning("ignoring unreadable %s: %s", self.cfg["state_file"], exc)
+            return None
+
+    def save_state(self, forwards: list[Forward]) -> None:
+        write_atomic(self.cfg["state_file"], json.dumps(
+            {"updated": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+             "forwards": [asdict(f) for f in forwards],
+             "rejected": [asdict(r) for r in self.rejected]}, indent=1) + "\n")
+
+    # ----- one round ----------------------------------------------------
+    def start(self) -> None:
+        saved = self.load_state()
+        if saved is None:
+            return
+        try:
+            self.apply(saved)
+        except subprocess.CalledProcessError as exc:
+            log.error("nft refused the saved forwards from %s: %s", self.cfg["state_file"],
+                      (exc.stderr or "").strip())
+            return
+        self.applied = saved
+        log.info("restored %d forward(s) from %s", len(saved), self.cfg["state_file"])
+
+    def step(self) -> None:
+        # `systemctl restart nftables` (its ExecStop is `nft flush ruleset`)
+        # or any other flush removes the table with the rest. Put it back
+        # from memory, API or not.
+        if self.applied is not None and not self.table_present():
+            log.warning("table ip %s is gone (ruleset flushed?), loading %d forward(s) again",
+                        TABLE, len(self.applied))
+            try:
+                self.apply(self.applied)
+            except subprocess.CalledProcessError as exc:
+                log.error("nft refused the forwards: %s", (exc.stderr or "").strip())
+        try:
+            services = self.list_services()
+        except Exception as exc:  # noqa: BLE001 - any failure keeps the table as it is
+            self.api_up = False
+            self.failures += 1
+            if self.failures in (1, 3) or self.failures % 90 == 0:
+                log.warning("cannot list Services (%d in a row), keeping the current forwards: %s",
+                            self.failures, exc)
+        else:
+            if self.failures:
+                log.info("Kubernetes API answers again after %d failure(s)", self.failures)
+            self.api_up, self.failures, self.last_success = True, 0, time.time()
+            self.reconcile(*desired(services, self.cfg))
+        write_atomic(self.cfg["metrics_file"], metrics(
+            self.applied or [], self.rejected, self.api_up, self.last_success, self.counters()))
+
+    def reconcile(self, forwards: list[Forward], rejected: list[Rejection]) -> None:
+        for r in sorted(set(rejected) - set(self.rejected)):
+            log.warning("not forwarding %s for %s/%s: %s", r.request, r.namespace, r.service, r.reason)
+        self.rejected = rejected
+        if forwards == self.applied:
+            if not os.path.exists(self.cfg["state_file"]):
+                self.save_state(forwards)
+            return
+        try:
+            self.apply(forwards)
+        except subprocess.CalledProcessError as exc:
+            # Keep the old table and try again next round. Say why once,
+            # not every round.
+            error = (exc.stderr or "").strip()
+            if error != self.nft_error:
+                log.error("nft refused the forwards, keeping the old table: %s", error)
+                self.nft_error = error
+            return
+        self.nft_error = None
+        old = set(self.applied or [])
+        for f in sorted(set(forwards) - old):
+            log.info("forward %s/%d -> %s:%d (%s/%s, externalTrafficPolicy %s)", f.proto, f.wan_port,
+                     f.backend_ip, f.backend_port, f.namespace, f.service, f.traffic_policy)
+        for f in sorted(old - set(forwards)):
+            log.info("removed %s/%d -> %s:%d (%s/%s)", f.proto, f.wan_port, f.backend_ip,
+                     f.backend_port, f.namespace, f.service)
+        self.applied = forwards
+        self.save_state(forwards)
+
+
+def load_config(path: str) -> dict:
+    cfg = dict(DEFAULTS)
+    with open(path) as fh:
+        cfg.update(json.load(fh))
+    for proto in cfg["reserved_ports"]:
+        if proto not in PROTOCOLS:
+            raise ValueError(f"reserved_ports: unknown protocol {proto}")
+    return cfg
+
+
+def main() -> int:
+    logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
+    path = sys.argv[1] if len(sys.argv) > 1 else "/etc/k8s-port-forward/config.json"
+    cfg = load_config(path)
+    runner = Runner(cfg)
+    stop = []
+    signal.signal(signal.SIGTERM, lambda *_: stop.append(1))
+    signal.signal(signal.SIGINT, lambda *_: stop.append(1))
+    runner.start()
+    while not stop:
+        runner.step()
+        deadline = time.monotonic() + cfg["interval"]
+        while not stop and time.monotonic() < deadline:
+            time.sleep(0.5)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
