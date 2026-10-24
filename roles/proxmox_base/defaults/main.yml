@@ -1,0 +1,9 @@
+---
+# Base settings for the Proxmox hosts at both sites. README.md says what each
+# part does. If a host needs a different value, set it in
+# inventory/proxmox_base.yml.
+
+# The rsyslog line that sends all logs to Alloy in the cluster: UDP port 1514,
+# RFC 5424 format. It is the same line as common_rsyslog_remote_line in the
+# role common. If the value is empty, the role does not write the file.
+proxmox_base_rsyslog_remote_line: "*.* @(o)172.16.1.23:1514;RSYSLOG_SyslogProtocol23Format"

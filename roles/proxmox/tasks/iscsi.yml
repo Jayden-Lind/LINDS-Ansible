@@ -6,6 +6,18 @@
     owner: root
     group: root
 
+# When target_core_mod loads at boot, it opens /etc/target. If the directory
+# is missing, the kernel logs "db_root: cannot open: /etc/target" as an error.
+# The directory stays empty: rtslib-fb-targetctl then changes the database
+# directory to /etc/rtslib-fb-target, as it does without /etc/target.
+- name: Make the directory that the iSCSI target module opens at load
+  ansible.builtin.file:
+    path: /etc/target
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 # The role does not write saveconfig.json. democratic-csi (the Kubernetes
 # storage driver) makes the iSCSI targets and saves the file. A copy from
 # this repository would replace those targets.

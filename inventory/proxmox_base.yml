@@ -1,0 +1,12 @@
+---
+# The Proxmox hosts at both sites, for roles/proxmox_base.
+#
+# A group of its own, like storage_health. The group `proxmox` gets the JD
+# storage role, and linds-proxmox-01 must never get that.
+proxmox_base:
+  hosts:
+    # jd-proxmox-02, under the name that inventory/proxmox.yml gives it.
+    jd-proxmox-01.linds.com.au:
+      ansible_host: 10.0.50.246
+    linds-proxmox-01:
+      ansible_host: 192.168.6.205

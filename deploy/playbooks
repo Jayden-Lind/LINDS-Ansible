@@ -8,6 +8,7 @@
 # Do not add a playbook that makes or removes a server, or that needs input.
 
 storage_health  playbooks/storage_health.yml
+proxmox_base    playbooks/proxmox_base.yml
 proxmox         playbooks/proxmox.yml
 truenas         playbooks/truenas.yml
 plex            playbooks/plex.yml

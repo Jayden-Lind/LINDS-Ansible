@@ -12,6 +12,10 @@
   ansible.builtin.import_tasks: drive-cache.yml
   tags: drive-cache
 
+- name: Set the I/O scheduler of each disk
+  ansible.builtin.import_tasks: io-scheduler.yml
+  tags: io-scheduler
+
 - name: Enforce ZFS dataset properties
   ansible.builtin.import_tasks: zfs.yml
   tags: zfs

@@ -1,0 +1,22 @@
+---
+# ipmiutil_wdt.service arms the BMC watchdog: a hard reset after 150 seconds.
+# It writes /etc/cron.d/wdt, which resets the timer each minute. Then it runs
+# "systemctl restart crond.service", at start and at stop.
+#
+# Debian calls the cron unit cron.service, so the restart fails and logs an
+# error at each boot and shutdown. Cron does not need the restart: it reads
+# /etc/cron.d again each minute. The unit below does nothing, so that the
+# restart succeeds.
+
+- name: Read the services
+  ansible.builtin.service_facts:
+
+- name: Install a crond.service that does nothing
+  ansible.builtin.copy:
+    src: crond.service
+    dest: /etc/systemd/system/crond.service
+    owner: root
+    group: root
+    mode: "0644"
+  when: "'ipmiutil_wdt.service' in ansible_facts.services"
+  notify: Reload systemd
