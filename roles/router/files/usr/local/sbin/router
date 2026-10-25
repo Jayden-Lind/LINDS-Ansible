@@ -714,7 +714,7 @@ def cmd_dns(args):
               f"{qtime.group(1) if qtime else '':9} {', '.join(answers[:4])}"
               + (dim(f"  [{ede.group(1)}]") if ede else ""))
     print(dim("  the router keeps an answer for its TTL, then up to a day longer (refreshed behind the"))
-    print(dim(f"  client, [Stale Answer] above). To drop it: unbound-control flush {args.name}"))
+    print(dim(f"  client, sent with a TTL of 30 s). To drop it: unbound-control flush {args.name}"))
 
 
 def cmd_ids(_args):
