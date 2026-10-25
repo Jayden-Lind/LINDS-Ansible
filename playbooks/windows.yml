@@ -6,8 +6,8 @@
 #   ansible-playbook playbooks/windows.yml                  # apply
 #
 #   --limit <fqdn>   one server only (the domain settings are then skipped)
-#   --tags <tag>     one part only: baseline, dc, ca, fileserver, topology,
-#                    recovery, dfsr, gpo or directory
+#   --tags <tag>     one part only: baseline, logs, dc, ca, fileserver,
+#                    topology, recovery, dfsr, gpo or directory
 #
 # To build or to remove a server, see docs/windows/README.md.
 # Read playbooks/windows.md before you use it.
@@ -22,6 +22,11 @@
       ansible.builtin.import_role:
         name: windows_baseline
       tags: baseline
+
+    - name: Send the event logs to Loki
+      ansible.builtin.import_role:
+        name: windows_logs
+      tags: logs
 
     - name: Set the DNS forwarders and the resolvers of a domain controller
       ansible.builtin.import_role:

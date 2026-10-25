@@ -1,0 +1,33 @@
+// Written by LINDS-Ansible, role windows_logs. A change made here is lost at
+// the next run of playbooks/windows.yml.
+//
+// Alloy reads the event logs below and sends each event as one JSON line to
+// the Alloy in the cluster, which sends it to Loki. Each log keeps its
+// position in a bookmark in the data directory.
+
+logging {
+  level = "warn"
+}
+{% for channel in windows_logs_channels if channel.name in windows_logs_present.output %}
+
+loki.source.windowsevent {{ channel.name | lower | regex_replace('[^a-z0-9]+', '_') | to_json }} {
+  eventlog_name          = {{ channel.name | to_json }}
+  xpath_query            = {{ channel.query | default('*') | to_json }}
+  use_incoming_timestamp = true
+  labels                 = {
+    job      = "windows",
+    hostname = {{ inventory_hostname_short | to_json }},
+  }
+  forward_to = [loki.write.cluster.receiver]
+}
+{% endfor %}
+
+// If the cluster does not answer, retry until it does. When the queue in
+// memory is full, Alloy stops reading, and the events wait in the event log.
+// The default (10 retries, about 9 minutes) drops them.
+loki.write "cluster" {
+  endpoint {
+    url                 = {{ windows_logs_push_url | to_json }}
+    max_backoff_retries = 0
+  }
+}

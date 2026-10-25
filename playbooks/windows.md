@@ -9,6 +9,7 @@ It has two plays:
 | Play | Runs on | Tag | Role | What it sets |
 | --- | --- | --- | --- | --- |
 | Each server | `windows_managed`, one at a time | `baseline` | `windows_baseline` | Firewall, Defender, SMB1, Print Spooler, event logs, Remote Desktop, CPU mitigations, network adapter offloads |
+| | | `logs` | `windows_logs` | Grafana Alloy, which sends the event logs to Loki |
 | | | `dc` | `windows_domain_controller` | The DNS forwarders and the resolvers of a domain controller |
 | | | `ca` | `windows_ca` | The certification authority and its published templates |
 | | | `fileserver` | `windows_fileserver` | Data volumes, SMB shares, NFS exports, shadow copies |

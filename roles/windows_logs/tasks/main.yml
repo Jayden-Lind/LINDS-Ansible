@@ -1,0 +1,74 @@
+---
+# Install Grafana Alloy, and make it send the event logs to Loki.
+
+- name: Find the event logs that the server has
+  ansible.windows.win_powershell:
+    parameters:
+      Names: "{{ windows_logs_channels | map(attribute='name') | list }}"
+    script: |
+      param([string[]]$Names)
+      $Ansible.Changed = $false
+      foreach ($name in $Names) {
+        if (Get-WinEvent -ListLog $name -ErrorAction SilentlyContinue) { $name }
+      }
+  register: windows_logs_present
+  check_mode: false
+
+# The installer is a 32-bit program, so Windows keeps its uninstall key in the
+# 32-bit view of the registry.
+- name: Read the installed version of Alloy
+  ansible.windows.win_reg_stat:
+    path: HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Alloy
+    name: DisplayVersion
+  register: windows_logs_installed
+
+- name: Install or upgrade Alloy
+  when: windows_logs_installed.value | default('') != windows_logs_alloy_version
+  block:
+    - name: Download the Alloy installer
+      ansible.windows.win_get_url:
+        url: https://github.com/grafana/alloy/releases/download/{{ windows_logs_alloy_version }}/alloy-installer-windows-amd64.exe
+        dest: "{{ windows_logs_installer }}"
+        checksum: "{{ windows_logs_alloy_installer_sha256 }}"
+        checksum_algorithm: sha256
+
+    # The installer keeps an existing config.alloy and the service arguments.
+    - name: Run the Alloy installer
+      ansible.windows.win_package:
+        path: "{{ windows_logs_installer }}"
+        arguments: /S /DISABLEREPORTING=yes /DISABLEPROFILING=yes
+        state: present
+      notify: Restart Alloy
+
+    - name: Remove the Alloy installer
+      ansible.windows.win_file:
+        path: "{{ windows_logs_installer }}"
+        state: absent
+
+# The installer writes these arguments only at the first installation.
+- name: Set the arguments of the Alloy service
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\GrafanaLabs\Alloy
+    name: Arguments
+    type: multistring
+    data:
+      - run
+      - "{{ windows_logs_config }}"
+      - --storage.path={{ windows_logs_data }}
+      - --disable-reporting
+      - --server.http.enable-pprof=false
+  notify: Restart Alloy
+
+- name: Write the Alloy configuration
+  ansible.windows.win_template:
+    src: config.alloy.j2
+    dest: "{{ windows_logs_config }}"
+  notify: Restart Alloy
+
+# In check mode on a new server, the service does not exist yet.
+- name: Start Alloy, and start it at boot
+  ansible.windows.win_service:
+    name: Alloy
+    state: started
+    start_mode: delayed
+  when: windows_logs_installed.exists or not ansible_check_mode
