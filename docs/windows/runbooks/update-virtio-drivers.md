@@ -15,8 +15,8 @@ wrong data under load.
 
 ## Before you start
 
-- Get a Kerberos ticket on `jd-jump-01` (`make kinit`). The commands below use
-  `scripts/winrun.py`.
+- Get a Kerberos ticket on `jd-jump-01`: `kinit -f Administrator@LINDS.COM.AU`.
+  Then run the PowerShell steps with `scripts/winrun.py <fqdn> <script>`.
 - Update one server at a time. Update the file server last: its shares stop
   for about one minute.
 - If the deploy of `windows.yml` is on, pause it:
