@@ -56,6 +56,7 @@ with `-e bootstrap_address=<address>`.
 | Replace a file server that is not a domain controller | retire, then build | [runbooks/replace-a-file-server.md](runbooks/replace-a-file-server.md) |
 | Add a replicated folder | edit the inventory, then `ansible-playbook playbooks/windows.yml` | [runbooks/replication.md](runbooks/replication.md) |
 | See or change who can open the NAS folders | `ansible-playbook playbooks/windows-nas-access.yml` | [runbooks/nas-permissions.md](runbooks/nas-permissions.md) |
+| Update the VirtIO drivers and the guest agent | installer from the virtio-win ISO, one restart | [runbooks/update-virtio-drivers.md](runbooks/update-virtio-drivers.md) |
 
 ## Where the settings are
 
@@ -128,6 +129,7 @@ with `-e bootstrap_address=<address>`.
 | [wrong-clock.md](runbooks/wrong-clock.md) | A server starts with the wrong time |
 | [certificate-enrolment.md](runbooks/certificate-enrolment.md) | Computers cannot enrol certificates |
 | [entra-connect.md](runbooks/entra-connect.md) | Sync the domain to Entra again |
+| [update-virtio-drivers.md](runbooks/update-virtio-drivers.md) | A new VirtIO driver version is out, or a clone has old drivers |
 
 ## Known problems
 
