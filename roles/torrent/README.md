@@ -88,3 +88,10 @@ the role changes the file while qBittorrent is stopped. If the old folder is
 a library, the files go out of the library. On 2026-10-25 a change moved 442
 torrents out of `Movies` and `TVShows`. The files were linked back in at their
 old paths.
+
+**NOTE:** qBittorrent keeps its list of tags in its configuration file
+(`Session\Tags`). qbit_manage and the `in-library` tag change that list, so
+the file on the host differs from the file in the role. The next run then
+stops qBittorrent and writes the file in the role, without the list. This is
+safe: the torrents keep their tags, the categories do not change (no data
+moves), and qbit_manage adds its tags again on its next run.

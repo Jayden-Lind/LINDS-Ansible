@@ -20,7 +20,14 @@ torrent:
         # /mnt/nas, as this host does, and hardlink what they import.
         # A change here moves the data of every torrent in the category when
         # qBittorrent starts again (automatic torrent management).
+        # legacy: old torrents whose files Radarr and Sonarr did not import
+        # (spare copies and other releases of a title, moved here on
+        # 2026-10-25). Radarr and Sonarr do not watch this category, so they
+        # never try to import these over the files they manage. qbit_manage
+        # (LINDS-Kubernetes) removes them once no library file links to them.
         torrent_categories:
+          legacy:
+            save_path: /mnt/nas/downloads/legacy
           radarr:
             save_path: /mnt/nas/downloads/radarr
           tv-sonarr:
