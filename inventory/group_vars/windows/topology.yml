@@ -14,6 +14,11 @@ ad_subnets:
   - { name: "10.3.1.0/24", site: LINDS, description: "LINDS servers" }
   - { name: "192.168.6.0/24", site: LINDS, description: "LINDS LAN" }
   - { name: "10.0.80.0/24", site: LINDS, description: "LINDS cameras / IoT" }
+  # IPv6: the /56 that Telstra delegates to each site's router (DHCPv6-PD).
+  # The servers and PCs use these addresses for AD too. If a prefix changes,
+  # change it here.
+  - { name: "2001:8003:dc6f:6300::/56", site: JD, description: "JD IPv6, Telstra prefix delegation" }
+  - { name: "2001:8003:5017:a000::/56", site: LINDS, description: "LINDS IPv6, Telstra prefix delegation" }
 
 ad_site_link:
   name: LINDS-SITELINK
