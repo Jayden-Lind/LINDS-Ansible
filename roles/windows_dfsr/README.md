@@ -58,8 +58,10 @@ caused 33,513 name conflicts and about 380,000 files moved aside.
 `DfsrPrivate\PreExisting`. They do not replicate. Make sure that the folder
 is empty on all members except the primary.
 
-**CAUTION:** Make the staging quota at least the total size of the 32 largest
-files of the folder. A smaller quota makes replication slow.
+**CAUTION:** For a full sync, make the staging quota at least the total size
+of the 32 largest files of the folder. A smaller quota makes a full sync slow.
+For normal replication a smaller quota is enough, and it keeps less staging
+data on the volume (`docs/windows/runbooks/replication.md`).
 
 **NOTE:** The role only increases the Conflict and Deleted quota. A decrease
 deletes the oldest entries immediately.

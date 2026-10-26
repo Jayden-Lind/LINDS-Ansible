@@ -26,14 +26,39 @@ first content path. This is the only correct use of the primary flag.
 
 `immich` and `server` were added this way on 17 October 2026.
 
+## Staging quotas
+
+`replication.yml` has the quotas for normal replication: 32 GiB, and 128 GiB
+for `holiday videos` and `server`. A full sync needs more. Microsoft
+recommends at least the total size of the 32 largest files of each folder.
+
+| Folder | Full-sync quota (MB) | Why |
+| --- | --- | --- |
+| `holiday videos` | 500000 | The 32 largest files are 475 GiB together. |
+| `server` | 262144 | Three Veeam backups of 33 to 66 GiB. |
+| `Jayden`, `Photos` | 200000 | Large raw files. |
+| `immich` | 49152 | The 32 largest files are 45 GiB together. |
+| The others | 102400 | |
+
+Set these quotas before a member joins again, or before a change to the
+permissions of a large folder (`nas-permissions.md`). Set the normal quotas
+again when the backlog is empty. DFS Replication then deletes the oldest
+staging copies until each folder is below 60 % of its quota.
+
+**CAUTION:** Staging is on the data volume. At LINDS that is the thin pool
+`NAS`. A full sync with these quotas can keep about 1 TB of staging copies
+there.
+
 ## Join a member again (after a rebuild)
 
-1. The retirement removes the member from the group.
-2. `windows_fileserver` removes the old replication data from the volume.
-3. `ansible-playbook playbooks/windows.yml` adds the member again. It is not
+1. Set the full-sync staging quotas (see [Staging quotas](#staging-quotas)).
+2. The retirement removes the member from the group.
+3. `windows_fileserver` removes the old replication data from the volume.
+4. `ansible-playbook playbooks/windows.yml` adds the member again. It is not
    primary.
-4. The member stages and hashes every file, and compares it with the partner.
+5. The member stages and hashes every file, and compares it with the partner.
    It copies only files that are different.
+6. When the backlog is empty, set the normal staging quotas again.
 
 **CAUTION:** This takes a long time and uses space. For 4.7 TiB at LINDS it
 took 33 hours. The staging copies grew the LINDS thin pool from 52.6% to

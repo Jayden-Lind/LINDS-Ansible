@@ -103,15 +103,18 @@ Procedure:
    shadow copies of `D:`.
 2. Disable the scheduled task `shadow-copy-E` on `linds-dc`.
 3. Free the space that the shadow copies kept ([thin-storage.md](thin-storage.md)).
-4. Change the folders in `fileserver.yml`, and apply them as for a small
+4. Set the full-sync staging quotas
+   ([replication.md](replication.md#staging-quotas)).
+5. Change the folders in `fileserver.yml`, and apply them as for a small
    folder.
-5. Monitor the pool every hour. If it reaches 80 %, stop DFS Replication on
+6. Monitor the pool every hour. If it reaches 80 %, stop DFS Replication on
    `linds-dc` (`Stop-Service DFSR`), and find what holds the space.
-6. When the backlog is empty, enable `shadow-copy-E` again.
+7. When the backlog is empty, enable `shadow-copy-E` again, and set the normal
+   staging quotas again.
 
 **WARNING:** If the pool `NAS` becomes full, new blocks of `E:` silently
 become zeros. Never let it reach 100 %.
 
-**NOTE:** `linds-dc` writes about 40 MB/s. A change to all NAS folders (5.2 TB)
-takes about 4 days. While the backlog is large, new files reach `linds-dc`
+**NOTE:** `linds-dc` finishes 5 to 12 MB/s of files: its disks are four hard
+disks in RAID 5. A change to all NAS folders took 6.6 days in October 2026. While the backlog is large, new files reach `linds-dc`
 only after the files that are in the backlog before them.
