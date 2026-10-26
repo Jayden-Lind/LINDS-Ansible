@@ -41,3 +41,18 @@
   when:
     - common_ubuntu_hwe_enabled | bool
     - ansible_facts.distribution == 'Ubuntu'
+
+# cloud-init 26 moved its files to the cloud-init-base package. The old file
+# /etc/logrotate.d/cloud-init stays as an obsolete conffile. It names the
+# same log as /etc/logrotate.d/cloud-init-base, so logrotate fails every
+# night with "duplicate log entry for /var/log/cloud-init.log".
+- name: Find the logrotate file of cloud-init-base
+  ansible.builtin.stat:
+    path: /etc/logrotate.d/cloud-init-base
+  register: common_cloud_init_base_logrotate
+
+- name: Remove the obsolete logrotate file of cloud-init
+  ansible.builtin.file:
+    path: /etc/logrotate.d/cloud-init
+    state: absent
+  when: common_cloud_init_base_logrotate.stat.exists

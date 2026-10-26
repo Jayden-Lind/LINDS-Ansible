@@ -39,6 +39,9 @@ On Debian-family hosts:
 15. Sets `GRUB_CMDLINE_LINUX_DEFAULT` in `/etc/default/grub`. If the line
     changes, it runs `update-grub`.
 16. On Ubuntu, installs the HWE kernel package `common_ubuntu_hwe_package`.
+17. If `/etc/logrotate.d/cloud-init-base` exists, removes
+    `/etc/logrotate.d/cloud-init`. The old file names the same log, and
+    logrotate stops with an error.
 
 ## Requirements
 
