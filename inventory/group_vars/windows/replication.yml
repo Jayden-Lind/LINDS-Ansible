@@ -30,15 +30,17 @@ dfsr_connections:
   - { source: JD-FS-01, destination: LINDS-DC }
   - { source: LINDS-DC, destination: JD-FS-01 }
 
-# The folders hold raw photos and video, so the staging quota is far above the
-# 4 GB default.
-dfsr_staging_quota_mb: 102400
+# The staging quota of each folder, for normal replication. The staging copies
+# stay on the data volume up to the quota, and with two members nothing reads
+# them again. holiday videos and server have single files of 30 to 66 GiB.
+#
+# CAUTION: Before a member joins again, or before a permission change on a
+# large folder, set the full-sync quotas from
+# docs/windows/runbooks/replication.md. With these quotas a full sync is slow.
+dfsr_staging_quota_mb: 32768
 dfsr_staging_quota_overrides_mb:
-  holiday videos: 500000   # the 32 largest files are 475 GiB together
-  immich: 49152    # the 32 largest files are 45 GiB together
-  Jayden: 200000
-  Photos: 200000
-  server: 262144   # three Veeam backups of 33-66 GiB; the whole folder is 248 GiB
+  holiday videos: 131072
+  server: 131072
 
 dfsr_conflict_quota_mb: 204800
 dfsr_rdc_enabled: true
