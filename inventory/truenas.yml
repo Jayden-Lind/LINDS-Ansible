@@ -9,7 +9,10 @@ truenas:
           ansible_host: 10.3.1.50
       vars:
         ansible_user: root
-        truenas_hostname: linds-truenas-01.linds.com.au
+        # The short name. TrueNAS adds the domain (linds.com.au, set on the
+        # host). The full name here gave linds-truenas-01.linds.com.au.linds.com.au,
+        # and NFSv4 could not map user names to that domain.
+        truenas_hostname: linds-truenas-01
         # The owner of everything on the media share. uid and gid 1000 are
         # what Radarr, Sonarr and Bazarr run as in Kubernetes (PUID).
         # 2026-10-24: a "media" user existed, unused, with uid 8675309.
