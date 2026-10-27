@@ -5,6 +5,10 @@ hosts. [`linds-ansible-deploy`](linds-ansible-deploy) runs on `jd-jump-01`
 from a systemd user timer. It looks for a new commit on `main` every five
 minutes.
 
+Before you merge, each pull request shows what the merge does: a second timer
+runs the same checks on the pull request and writes the result on it. See
+[Previews of pull requests](#previews-of-pull-requests).
+
 ## What it does
 
 For a new commit on `main`, the deploy does these steps for each entry in
@@ -100,6 +104,38 @@ The logs of every run would be public. The timer only runs what is on
 `main`. It needs nothing from GitHub but a fetch, and its logs stay on the
 box.
 
+## Previews of pull requests
+
+Every five minutes, `linds-ansible-deploy --previews` looks at the open pull
+requests. It previews a pull request from a branch of this repository. It
+never previews a pull request from a fork.
+
+For each pull request, it does these steps:
+
+1. It gets the commit that GitHub makes for a merge into `main`. If the pull
+   request has a conflict with `main`, it sets the status
+   `preview/ansible` to error and stops.
+2. It finds the entries of `deploy/playbooks` whose files the pull request
+   changes, with the same rules as the deploy.
+3. It runs the playbook of each of these entries with `--check --diff`, on
+   the merge commit.
+4. It sets the commit status `preview/<name>` for each entry: what a merge
+   applies, "No change", or why the deploy would stop.
+5. It writes one comment on the pull request with a table of the entries. A
+   later preview changes the same comment.
+
+The preview runs again when the pull request or `main` changes. It names
+hosts and tasks only. The repository is public, and the output of `--diff`
+can hold secrets, so that output stays in `logs/` on `jd-jump-01`.
+
+A pull request that changes `windows.yml` needs a Kerberos ticket, as the
+deploy does. If there is no ticket, the status of `windows` is pending. When
+a ticket exists, the next poll checks it.
+
+**NOTE:** A preview runs the code of the pull request in check mode. A task
+with `check_mode: false` runs for real. Previews run only for branches of
+this repository, so only code that you or Renovate push runs.
+
 ## Install
 
 On `jd-jump-01`, as `jayden` (user lingering is already on):
@@ -107,12 +143,16 @@ On `jd-jump-01`, as `jayden` (user lingering is already on):
 ```shell
 git clone https://github.com/Jayden-Lind/LINDS-Ansible.git ~/.local/state/linds-ansible-deploy/repo
 mkdir -p ~/.config/systemd/user
-cp ~/.local/state/linds-ansible-deploy/repo/deploy/systemd/linds-ansible-deploy.{service,timer} ~/.config/systemd/user/
+cp ~/.local/state/linds-ansible-deploy/repo/deploy/systemd/linds-ansible-{deploy,preview}.{service,timer} ~/.config/systemd/user/
 systemctl --user daemon-reload
 
 ~/.local/state/linds-ansible-deploy/repo/deploy/linds-ansible-deploy --dry-run   # read what it would do
 systemctl --user enable --now linds-ansible-deploy.timer
+systemctl --user enable --now linds-ansible-preview.timer
 ```
+
+The deploy and the previews use the same lock. One waits while the other
+runs.
 
 The vault password comes from `~/LINDS-Ansible/vault_password`. To use a
 different file, set `LINDS_ANSIBLE_DEPLOY_VAULT_PASSWORD` in the service.
@@ -133,7 +173,10 @@ The commands are in `~/.local/state/linds-ansible-deploy/repo/deploy/`.
 | Try a failed entry again | `linds-ansible-deploy --retry`, optionally with `--only <name>` |
 | Pause the deploy | `touch ~/.local/state/linds-ansible-deploy/paused`. Remove the file to continue. |
 | Pause one entry, for example `windows` | `touch ~/.local/state/linds-ansible-deploy/paused.windows`. Its commit status is pending. Remove the file, then run `--retry`. |
+| Preview the pull requests now | `systemctl --user start linds-ansible-preview.service` |
+| Preview all pull requests again | `linds-ansible-deploy --previews --retry` |
 | Read the log | `journalctl --user -t linds-ansible-deploy` |
+| Read the log of the previews | `journalctl --user -t linds-ansible-preview` |
 | Read the output of a run | `~/.local/state/linds-ansible-deploy/logs/`, kept for 30 days |
 
 ## The state folder
@@ -145,6 +188,8 @@ The commands are in `~/.local/state/linds-ansible-deploy/repo/deploy/`.
 | `repo/` | The clone. The timer runs the script from it. |
 | `previous/` | A worktree for the check from the commit that the deploy applied last |
 | `dry-run/` | A worktree for `--dry-run` |
+| `preview/` | A worktree for the previews of pull requests |
+| `previews.json` | For each open pull request: the merge commit that it previewed, and the result |
 | `env/` | The Ansible environments, one for each set of requirements |
 | `logs/` | The output of each run of a playbook, and its summary |
 | `seen.json` | The last commit of `main` that the deploy did |

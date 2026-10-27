@@ -1,0 +1,10 @@
+[Unit]
+Description=Look for LINDS-Ansible pull requests to preview every five minutes
+
+[Timer]
+OnBootSec=5min
+# Counted from the end of the last run, so a long preview never overlaps the next.
+OnUnitInactiveSec=5min
+
+[Install]
+WantedBy=timers.target

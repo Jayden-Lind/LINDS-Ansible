@@ -11,6 +11,7 @@
 #   linds-ansible-deploy --dry-run --ref REF  the same for another branch or commit
 #   linds-ansible-deploy --retry              try the last commit of main again
 #   linds-ansible-deploy --only NAME          only this entry of deploy/playbooks
+#   linds-ansible-deploy --previews           preview each open pull request on it
 #
 # Touch paused in the state folder to stop the deploy, or paused.NAME to stop
 # one entry. A dry run does not look at these files.
@@ -128,13 +129,13 @@ def now_utc(minutes=0):
 
 # --- GitHub and Alertmanager -------------------------------------------------
 
-def github_status(sha, context, state, description):
+def github_status(sha, context, state, description, kind="deploy"):
     r = subprocess.run(
         ["gh", "api", "--method", "POST", f"repos/{GITHUB_REPO}/statuses/{sha}", "-f", f"state={state}",
-         "-f", f"context=deploy/{context}", "-f", f"description={description[:140]}"],
+         "-f", f"context={kind}/{context}", "-f", f"description={description[:140]}"],
         capture_output=True, text=True)
     if r.returncode != 0:
-        log(f"warning: could not set the commit status deploy/{context} on GitHub")
+        log(f"warning: could not set the commit status {kind}/{context} on GitHub")
 
 
 # The alert goes to Alertmanager, which sends it to Discord. While the failure
@@ -275,12 +276,12 @@ class Result:
     log: Path
 
 
-def run_playbook(env, tree, entry, sha, check, extra_env):
+def run_playbook(env, tree, entry, sha, check, extra_env, tag=""):
     """One run of the playbook of ENTRY from TREE. The full output goes to a
     file in LOGS; the summary comes from callback_plugins/deploy_summary.py."""
     LOGS.mkdir(exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    logfile = LOGS / f"{stamp}-{short(sha)}-{entry.name}-{'check' if check else 'apply'}.log"
+    logfile = LOGS / f"{stamp}-{short(sha)}-{entry.name}-{tag}{'check' if check else 'apply'}.log"
     summary = logfile.with_suffix(".json")
     cmd = [env / "venv/bin/ansible-playbook", entry.playbook, *entry.args, "--diff"] + (["--check"] if check else [])
     e = ansible_env(env, tree, {**extra_env, "LINDS_ANSIBLE_DEPLOY_SUMMARY": str(summary)})
@@ -590,6 +591,171 @@ def deploy(sha, args):
         write_json("failed.json", failed)
 
 
+# --- previews of pull requests -------------------------------------------------
+
+# Each open pull request from a branch of this repository gets a preview: the
+# check of each entry whose files it changes, on the commit that a merge would
+# make. The preview is one comment on the pull request and a commit status
+# preview/<entry>. It names tasks and hosts only. The repository is public,
+# and the output of --diff can hold secrets, so that output stays in LOGS.
+PREVIEW = STATE / "preview"  # a worktree at the merge commit of a pull request
+MARKER = "<!-- linds-ansible-preview -->"
+
+
+def gh_api(path, method="GET", body=None):
+    r = subprocess.run(["gh", "api", "--method", method, path] + (["--input", "-"] if body is not None else []),
+                       input=None if body is None else json.dumps(body), capture_output=True, text=True)
+    if r.returncode != 0:
+        raise Stop(f"gh api {method} {path} failed: {(r.stderr or r.stdout).strip()[-300:]}")
+    return json.loads(r.stdout) if r.stdout.strip() else None
+
+
+def ticket_available():
+    return KEYTAB.exists() or subprocess.run(["klist", "-s"]).returncode == 0
+
+
+def cell(text):
+    return str(text).replace("|", "\\|").replace("\n", " ")
+
+
+def preview_entry(env, entry, n, target, needs_kerberos):
+    """The check of one entry at TARGET: a commit status state and a text."""
+    try:
+        extra = kerberos() if needs_kerberos else {}
+    except NoTicket:
+        return {"state": "pending", "text": "Waits for a Kerberos ticket on jd-jump-01 (kinit)", "ticket": True}
+    r = run_playbook(env, PREVIEW, entry, target, True, extra, tag=f"pr{n}-")
+    if r.problem:
+        return {"state": "error", "text": f"The check failed: {r.problem}"}
+    if not r.changed:
+        return {"state": "success", "text": "No change"}
+    reboot = [c for c in r.changed if c["action"] in REBOOTS]
+    if reboot:
+        return {"state": "failure", "text": f"The deploy stops: the change reboots {reboot[0]['host']} "
+                                            f"({reboot[0]['task']}). Apply it by hand."}
+    return {"state": "success", "text": f"Applies {tasks_text(r.changed, 10)}"}
+
+
+def deploy_notes(names):
+    """What stops a merge from being applied now."""
+    notes = []
+    if subprocess.run(["systemctl", "--user", "is-enabled", "--quiet", "linds-ansible-deploy.timer"]).returncode:
+        notes.append("**NOTE:** The deploy timer is off on jd-jump-01. A merge applies nothing until it is on.")
+    if (STATE / "paused").exists():
+        notes.append("**NOTE:** The deploy is paused. A merge applies nothing until you remove the file `paused`.")
+    failed = read_json("failed.json")
+    for name in names:
+        if (STATE / f"paused.{name}").exists():
+            notes.append(f"**NOTE:** The entry `{name}` is paused. A merge does not apply it.")
+        if name in failed:
+            notes.append(f"**NOTE:** The deploy of `{name}` is stopped now: {cell(failed[name]['why'])}")
+    return notes
+
+
+def render_preview(target, main_sha, results):
+    lines = [MARKER,
+             "**Deploy preview:** what a merge of this pull request does to the hosts. Checked on jd-jump-01 at "
+             f"{datetime.datetime.now():%Y-%m-%d %H:%M}, on `{short(target)}`: this pull request merged into "
+             f"`main` at `{short(main_sha)}`.", ""]
+    if results:
+        lines += ["| Entry | Hosts | If you merge |", "| --- | --- | --- |"]
+        lines += [f"| `{k}` | {cell(v.get('hosts', ''))} | {cell(v['text'])} |" for k, v in results.items()]
+    else:
+        lines.append("No playbook in `deploy/playbooks` uses the files that this pull request changes. "
+                     "A merge changes no host.")
+    notes = deploy_notes(results)
+    if notes:
+        lines += [""] + notes
+    lines += ["", "The checks use `--check --diff`. The full output is in `~/.local/state/linds-ansible-deploy/logs/` "
+                  "on jd-jump-01. The preview runs again when the pull request or `main` changes. "
+                  "See `deploy/README.md`."]
+    return "\n".join(lines)
+
+
+def post_comment(n, body):
+    """Puts BODY in the preview comment of pull request N: a new comment the
+    first time, then the same comment again."""
+    ids = sh("gh", "api", "--paginate", f"repos/{GITHUB_REPO}/issues/{n}/comments",
+             "--jq", f'.[] | select(.body | startswith("{MARKER}")) | .id').split()
+    if ids:
+        gh_api(f"repos/{GITHUB_REPO}/issues/comments/{ids[0]}", "PATCH", {"body": body})
+    else:
+        gh_api(f"repos/{GITHUB_REPO}/issues/{n}/comments", "POST", {"body": body})
+
+
+def preview_pull(n, head, target, main_sha, before, rerun):
+    """Checks the entries whose files pull request N changes, on TARGET (the
+    pull request merged into main). With RERUN, only those entries."""
+    worktree(PREVIEW, target)
+    env = ensure_env(PREVIEW)
+    groups = inventory_groups(env, PREVIEW)
+    changed = git("diff", "--no-renames", "--name-only", main_sha, target).splitlines()
+    results = dict(before.get("entries", {})) if rerun else {}
+    for entry in read_entries(PREVIEW):
+        if rerun and entry.name not in rerun:
+            continue
+        try:
+            hosts = hosts_of(env, PREVIEW, entry)
+            host_groups = set().union(*(groups.get(h, {"all"}) for h in hosts))
+            if not files_for(PREVIEW, entry, changed, hosts, host_groups):
+                continue
+            log(f"#{n} {entry.name}: check of {short(target)} ({entry.spec})")
+            res = preview_entry(env, entry, n, target, "windows" in host_groups)
+            res["hosts"] = ", ".join(sorted(h.removesuffix(".linds.com.au") for h in hosts))
+        except Stop as e:
+            res = {"state": "error", "text": f"The check failed: {e}", "hosts": ""}
+        log(f"#{n} {entry.name}: {res['text']}")
+        results[entry.name] = res
+        github_status(head, entry.name, res["state"], res["text"], kind="preview")
+    if not rerun and before.get("head") == head:
+        # An entry that an earlier preview of this commit listed, and that the
+        # pull request no longer changes.
+        for name in set(before.get("entries", {})) - set(results):
+            github_status(head, name, "success", "No change now", kind="preview")
+    if not results:
+        github_status(head, "ansible", "success", "No playbook uses the files that change", kind="preview")
+    post_comment(n, render_preview(target, main_sha, results))
+    return {"sha": target, "head": head, "entries": results,
+            "waiting": sorted(k for k, v in results.items() if v.get("ticket"))}
+
+
+def previews(main_sha, args):
+    state = read_json("previews.json")
+    pulls = [p for p in gh_api(f"repos/{GITHUB_REPO}/pulls?state=open&per_page=100")
+             if (p.get("head") or {}).get("repo") and p["head"]["repo"]["full_name"] == GITHUB_REPO]
+    for gone in set(state) - {str(p["number"]) for p in pulls}:
+        state.pop(gone)
+    for p in pulls:
+        n = str(p["number"])
+        try:
+            pr = gh_api(f"repos/{GITHUB_REPO}/pulls/{n}")
+            head, before = pr["head"]["sha"], state.get(n, {})
+            if pr["mergeable"] is None:
+                continue  # GitHub still makes the merge commit; the next poll sees it
+            if not pr["mergeable"]:
+                if before.get("head") != head or not before.get("conflict"):
+                    log(f"#{n}: conflicts with main; no preview")
+                    github_status(head, "ansible", "error", "Conflicts with main: no preview", kind="preview")
+                    state[n] = {"head": head, "conflict": True}
+                continue
+            target, rerun = pr["merge_commit_sha"], None
+            if before.get("sha") == target and not args.retry:
+                rerun = before.get("waiting")
+                if not rerun or not ticket_available():
+                    continue
+            git("fetch", "--quiet", "origin", f"+refs/pull/{n}/merge:refs/previews/{n}")
+            if git("rev-parse", f"refs/previews/{n}") != target:
+                continue  # GitHub has not moved the merge ref yet
+            log(f"Preview of #{n} {pr['title']}")
+            state[n] = preview_pull(n, head, target, main_sha, before, rerun)
+        except Exception as e:
+            if not isinstance(e, Stop):
+                traceback.print_exc()
+            log(f"#{n}: the preview failed: {e}")
+        write_json("previews.json", state)
+    write_json("previews.json", state)
+
+
 def other_playbooks():
     """The process IDs of the ansible-playbook runs on this box."""
     pids = []
@@ -616,9 +782,12 @@ def main():
     p.add_argument("--ref", help="with --dry-run: a branch or commit instead of origin/main")
     p.add_argument("--retry", action="store_true", help="try the last commit of main again")
     p.add_argument("--only", action="append", metavar="NAME", help="only this entry of deploy/playbooks")
+    p.add_argument("--previews", action="store_true", help="preview each open pull request on it")
     args = p.parse_args()
     if args.ref and not args.dry_run:
         p.error("--ref is for dry runs only: the deploy only applies main")
+    if args.previews and (args.dry_run or args.only):
+        p.error("--previews does not go with --dry-run or --only")
 
     STATE.mkdir(parents=True, exist_ok=True)
     STATE.chmod(0o700)
@@ -631,7 +800,13 @@ def main():
         except BlockingIOError:
             log("A deploy is already running.")
             return 0
-        if not args.dry_run:
+        if args.previews:
+            busy = other_playbooks()
+            if busy:
+                log(f"ansible-playbook is running on this box (PID {', '.join(map(str, busy))}). "
+                    "The preview waits for the next poll.")
+                return 0
+        elif not args.dry_run:
             if (STATE / "paused").exists():
                 log(f"Paused: {STATE / 'paused'} exists.")
                 return 0
@@ -659,7 +834,7 @@ def main():
             log(f"No such branch or commit: {ref}")
             return 2
         if not args.dry_run:
-            if read_json("seen.json").get("sha") == sha and not args.retry:
+            if not args.previews and read_json("seen.json").get("sha") == sha and not args.retry:
                 failed = read_json("failed.json")
                 waiting = sorted(n for n, f in failed.items() if f.get("ticket") and f.get("sha") == sha)
                 if not waiting or not (KEYTAB.exists() or subprocess.run(["klist", "-s"]).returncode == 0):
@@ -677,11 +852,23 @@ def main():
                 return 1
             if script.read_bytes() != SOURCE:
                 os.set_inheritable(lock, True)
-                argv = (["--retry"] if args.retry else []) + [a for n in args.only or [] for a in ("--only", n)]
+                argv = (["--previews"] if args.previews else []) + (["--retry"] if args.retry else []) + \
+                    [a for n in args.only or [] for a in ("--only", n)]
                 os.execve(sys.executable, [sys.executable, str(script), *argv],
                           {**os.environ, "LINDS_ANSIBLE_DEPLOY_SHA": sha})
         else:
             worktree(DRY_RUN, sha)
+
+    if args.previews:
+        try:
+            previews(sha, args)
+        except Exception as e:
+            if not isinstance(e, Stop):
+                traceback.print_exc()
+            log(f"The previews failed: {e}")
+            return 1
+        prune_logs()
+        return 0
 
     try:
         deploy(sha, args)
