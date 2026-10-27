@@ -90,8 +90,13 @@ torrents out of `Movies` and `TVShows`. The files were linked back in at their
 old paths.
 
 **NOTE:** qBittorrent keeps its list of tags in its configuration file
-(`Session\Tags`). qbit_manage and the `in-library` tag change that list, so
-the file on the host differs from the file in the role. The next run then
-stops qBittorrent and writes the file in the role, without the list. This is
-safe: the torrents keep their tags, the categories do not change (no data
-moves), and qbit_manage adds its tags again on its next run.
+(`Session\Tags`). qbit_manage and the `in-library` tag change that list. The
+file in the role holds the list that qbit_manage makes now. If qbit_manage
+adds a tag, the file on the host differs from the file in the role:
+
+- The deploy on merge stops for `torrent` and does not write the file. Copy
+  the file from the host to the role again (see the CAUTION above).
+- A run by hand stops qBittorrent and writes the file in the role, without
+  the new tag. This is safe: the torrents keep their tags, the categories do
+  not change (no data moves), and qbit_manage adds its tags again on its next
+  run.
