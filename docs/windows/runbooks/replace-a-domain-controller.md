@@ -97,6 +97,9 @@ start it.
 **WARNING:** The LINDS-Backup VM (104) uses the same disk for its Backblaze
 runs. Stop VM 113 before you start VM 104, and the reverse.
 
+**CAUTION:** Change the options of the shared disk on VM 104 or VM 113 only
+while that VM is stopped. On a running VM, Proxmox can unplug the disk.
+
 ## Other machines
 
 Other machines with their own Kerberos ticket cache keep a ticket for the old

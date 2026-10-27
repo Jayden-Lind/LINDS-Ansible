@@ -45,7 +45,9 @@ windows:
           # The VM, and the data disk that outlives it. The disk belongs to
           # VM 102, the server this one replaces, which is kept switched off;
           # 104 is the LINDS-Backup VM, which mounts the same disk for its
-          # Backblaze runs. Only one of the three may ever be running.
+          # Backblaze runs (as scsi1, with discard=on, so that its deletes
+          # reach the thin pool). 104 is not in Terraform or in this
+          # inventory. Only one of the three may ever be running.
           windows_vm:
             hypervisor: linds-proxmox-01
             id: 113
