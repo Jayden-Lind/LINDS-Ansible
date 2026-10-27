@@ -1,0 +1,13 @@
+[Unit]
+Description=Preview what a merge of each open LINDS-Ansible pull request does (deploy/README.md)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/state/linds-ansible-deploy/repo/deploy/linds-ansible-deploy --previews
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+SyslogIdentifier=linds-ansible-preview
+# A pull request that changes windows.yml takes a check of about 15 minutes.
+TimeoutStartSec=4h
+# Ansible needs well under this. The limit keeps an OOM kill inside this unit.
+MemoryMax=3G
+Nice=10
