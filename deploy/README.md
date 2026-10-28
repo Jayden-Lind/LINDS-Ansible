@@ -54,7 +54,7 @@ deploy.
   outside the repository, the deploy stops for each merge that changes that
   playbook. When the change is merged, the hosts match again and the deploy
   continues.
-- **Run the other playbooks.** `vyos.yml`, `wsl.yml`, `minecraft.yml` and the
+- **Run the other playbooks.** `wsl.yml`, `minecraft.yml` and the
   `windows-*.yml` playbooks make or remove servers, ask for input, or are for
   a host that is off. Run them by hand.
 - **Deploy `linds-router-01`.** Add an entry for it after the cutover.

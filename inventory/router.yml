@@ -1,16 +1,16 @@
 ---
 # The Debian 13 routers (roles/router): jd-router-01, which replaced
-# jd-vyos-01, and linds-router-01, which replaces linds-vyos-01.
+# jd-vyos-01, and linds-router-01, which replaced linds-vyos-01.
 #
-# The vault values below are copied verbatim from inventory/vyos.yml (same
-# vault password, so they decrypt as-is) so the two inventories stay
-# independent until VyOS is decommissioned; delete them there afterwards.
+# The vault values below came from the VyOS routers' inventory (deleted with
+# roles/vyos once neither site ran VyOS) and are still in the shape VyOS's
+# PKI store wanted: certificates and keys as bare base64 DER.
 # Site data lives in group_vars/jd_router.yml and group_vars/linds_router.yml.
 router:
   vars:
     ansible_user: jayden
     ansible_python_interpreter: /usr/bin/python3
-    # ----- Shared with the vyos group -----
+    # ----- Shared by both routers -----
     # pub_key/priv_key: IPsec site-to-site cert + key (VyOS PKI alias IPSEC).
     #   One certificate, both ends of the tunnel.
     # ipsec_remote_*: IPsec remote-access server cert + key (alias ipsec_remote).
@@ -406,7 +406,7 @@ router:
           # Management leg (net0, VLAN 53) during the build; switch to
           # 10.0.50.1 at cutover — see roles/router/README.md.
           ansible_host: 10.0.50.1
-          # ----- Per-site secrets (copied from the 10.0.50.1 host in vyos.yml) -----
+          # ----- Per-site secrets (jd-vyos-01's) -----
           # dyn_host: the Cloudflare record ddclient keeps pointed at the WAN,
           #   A and AAAA both. Road warriors reach IKE over v6 on it, so the
           #   AAAA stays - see roles/router/templates/ddclient.conf.j2.
@@ -553,13 +553,11 @@ router:
     linds_router:
       hosts:
         linds-router-01:
-          # The management leg (net0, VLAN 300) while the router is built
-          # beside linds-vyos-01; 192.168.6.1 once it is the router - see
-          # roles/router/README.md, "Building and cutting over linds-router-01".
-          ansible_host: 10.3.1.250
-          # ----- Per-site secrets (copied from the 192.168.6.1 host in vyos.yml;
-          # each one compared, by hash, with what linds-vyos-01 was running on
-          # 2026-10-13) -----
+          # It was built through a management NIC at 10.3.1.250 (VLAN 300)
+          # beside linds-vyos-01; this is its address as the router.
+          ansible_host: 192.168.6.1
+          # ----- Per-site secrets (linds-vyos-01's; each one compared, by hash,
+          # with what that router was running on 2026-10-13) -----
           # dyn_host: the Cloudflare record ddclient keeps pointed at the WAN,
           #   A and AAAA both (VyOS: ip-version both). jd-router-01 finds this
           #   end of the tunnel by it.
