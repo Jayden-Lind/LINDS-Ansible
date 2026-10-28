@@ -1,0 +1,79 @@
+---
+# Vend a certificate from the cluster and install it on the device.
+#
+# The work runs in three steps: decide whether a new certificate is needed and
+# if so make one (on the control node), install it (on or against the device),
+# and prove the device now serves it. A device that already serves a good
+# certificate from the cluster is left alone, so the playbook is safe to re-run
+# and to run on a timer.
+
+- name: Check the kind is one this role knows
+  ansible.builtin.assert:
+    that: cluster_cert_kind in ['proxmox', 'truenas', 'unifi', 'redfish']
+    fail_msg: "cluster_cert_kind '{{ cluster_cert_kind }}' is not supported."
+    quiet: true
+
+- name: Decide whether this host can be done yet
+  ansible.builtin.set_fact:
+    cluster_cert_skip: >-
+      {{ cluster_cert_kind == 'redfish'
+         and (cluster_cert_redfish_user | length == 0
+              or cluster_cert_redfish_password | length == 0) }}
+
+- name: Report a host that is waiting for a login
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: skipped, no Redfish login set yet."
+  when: cluster_cert_skip | bool
+
+- name: Vend and install
+  when: not (cluster_cert_skip | bool)
+  block:
+    - name: Make a scratch directory on the control node
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: "cluster-cert-{{ inventory_hostname }}-"
+        path: /dev/shm
+      register: cluster_cert_tmp
+      delegate_to: localhost
+      changed_when: false
+
+    - name: Vend a certificate, unless the current one is still good
+      ansible.builtin.command:
+        argv:
+          - "{{ role_path }}/files/vend.sh"
+          - "{{ cluster_cert_tmp.path }}"
+          - "{{ cluster_cert_common_name }}"
+          - "{{ cluster_cert_dns_names | join(',') }}"
+          - "{{ cluster_cert_ip_addresses | join(',') }}"
+          - "{{ cluster_cert_duration }}"
+          - "{{ cluster_cert_issuer }}"
+          - "{{ cluster_cert_namespace }}"
+          - "{{ cluster_cert_renew_before_days | string }}"
+          - "{{ cluster_cert_endpoint_host }}:{{ cluster_cert_endpoint_port }}"
+      delegate_to: localhost
+      register: cluster_cert_vend
+      changed_when: "'VENDED' in cluster_cert_vend.stdout"
+      failed_when: cluster_cert_vend.rc not in [0, 10]
+
+    - name: Install and prove the new certificate
+      when: cluster_cert_vend.rc == 0
+      block:
+        - name: Install the certificate on the device
+          ansible.builtin.include_tasks: "install_{{ cluster_cert_kind }}.yml"
+
+        - name: Prove the device now serves the new certificate
+          ansible.builtin.include_tasks: verify.yml
+
+    - name: Report that the current certificate was kept
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: certificate current, nothing to do."
+      when: cluster_cert_vend.rc == 10
+
+  always:
+    - name: Remove the scratch directory
+      ansible.builtin.file:
+        path: "{{ cluster_cert_tmp.path | default('') }}"
+        state: absent
+      delegate_to: localhost
+      when: cluster_cert_tmp.path is defined
+      changed_when: false

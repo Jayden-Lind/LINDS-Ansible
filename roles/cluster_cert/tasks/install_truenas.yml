@@ -1,0 +1,54 @@
+---
+# Install the certificate on TrueNAS SCALE through its middleware client
+# (midclt): import the key and certificate, make it the web interface
+# certificate, then restart the interface. The old imported certificates are
+# left in place; TrueNAS does not delete one that is in use.
+#
+# certificate.create is a job, so it is called with "-j". The request is passed
+# as one JSON argument, built with to_json, so newlines and quotes need no
+# shell escaping. no_log keeps the key out of the log.
+
+- name: Build the import request
+  ansible.builtin.set_fact:
+    cluster_cert_truenas_name: "cluster_{{ ansible_date_time.epoch }}"
+    cluster_cert_truenas_request:
+      name: "cluster_{{ ansible_date_time.epoch }}"
+      create_type: CERTIFICATE_CREATE_IMPORTED
+      certificate: "{{ lookup('ansible.builtin.file', cluster_cert_tmp.path ~ '/serve.crt') }}"
+      privatekey: "{{ lookup('ansible.builtin.file', cluster_cert_tmp.path ~ '/tls.key') }}"
+  no_log: true
+
+- name: Import the certificate
+  ansible.builtin.command:
+    argv:
+      - midclt
+      - call
+      - "-j"
+      - certificate.create
+      - "{{ cluster_cert_truenas_request | to_json }}"
+  changed_when: true
+  no_log: true
+
+- name: Read back the id of the imported certificate
+  ansible.builtin.command:
+    argv:
+      - midclt
+      - call
+      - certificate.query
+      - '[["name", "=", "{{ cluster_cert_truenas_name }}"]]'
+  register: cluster_cert_truenas_query
+  changed_when: false
+
+- name: Make it the web interface certificate
+  ansible.builtin.command:
+    argv:
+      - midclt
+      - call
+      - system.general.update
+      - "{{ {'ui_certificate': (cluster_cert_truenas_query.stdout | from_json)[0].id} | to_json }}"
+  changed_when: true
+
+- name: Restart the web interface
+  ansible.builtin.command:
+    argv: [midclt, call, system.general.ui_restart]
+  changed_when: true

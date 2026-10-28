@@ -1,0 +1,42 @@
+---
+# Install the certificate on a Proxmox VE node. pvenode copies the files into
+# /etc/pve/local/pveproxy-ssl.{pem,key} and restarts the web proxy, which drops
+# the web interface for a few seconds. SSH, the API token path and running
+# guests are not touched.
+
+- name: Make a scratch directory on the node
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: cluster-cert-
+    path: /dev/shm
+  register: cluster_cert_node_tmp
+  changed_when: false
+
+- name: Copy the certificate and key to the node
+  ansible.builtin.copy:
+    src: "{{ cluster_cert_tmp.path }}/{{ item.src }}"
+    dest: "{{ cluster_cert_node_tmp.path }}/{{ item.dest }}"
+    mode: "0600"
+  loop:
+    - { src: serve.crt, dest: cert.pem }
+    - { src: tls.key, dest: key.pem }
+
+- name: Set the node certificate and restart the web proxy
+  ansible.builtin.command:
+    argv:
+      - pvenode
+      - cert
+      - set
+      - "{{ cluster_cert_node_tmp.path }}/cert.pem"
+      - "{{ cluster_cert_node_tmp.path }}/key.pem"
+      - --force
+      - "1"
+      - --restart
+      - "1"
+  changed_when: true
+
+- name: Remove the scratch directory
+  ansible.builtin.file:
+    path: "{{ cluster_cert_node_tmp.path }}"
+    state: absent
+  changed_when: false

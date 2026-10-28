@@ -1,0 +1,37 @@
+---
+# The ClusterIssuer in the cluster that signs the certificate, and the
+# namespace the signing requests are made in. See the cluster repository
+# (device-certs/).
+cluster_cert_issuer: linds-ca
+cluster_cert_namespace: device-certs
+
+# How long a vended certificate is valid, and how long before it expires a
+# re-run replaces it. A re-run inside the window leaves a good certificate
+# alone.
+cluster_cert_duration: 8760h
+cluster_cert_renew_before_days: 30
+
+# The kind of device, which decides how the certificate is installed. One of:
+# proxmox, truenas, unifi, redfish.
+cluster_cert_kind: proxmox
+
+# The name and the subject alternative names that go in the certificate. The
+# common name defaults to the inventory host name; set the rest per host.
+cluster_cert_common_name: "{{ inventory_hostname }}"
+cluster_cert_dns_names: ["{{ cluster_cert_common_name }}"]
+cluster_cert_ip_addresses: []
+# The TLS endpoint that is read to decide whether a new certificate is needed,
+# and read again afterwards to prove the new one is being served. Defaults to
+# the host's address on the kind's usual port.
+cluster_cert_endpoint_host: "{{ ansible_host | default(inventory_hostname) }}"
+cluster_cert_endpoint_port: "{{ cluster_cert_default_ports[cluster_cert_kind] }}"
+cluster_cert_default_ports:
+  proxmox: "8006"
+  truenas: "443"
+  unifi: "443"
+  redfish: "443"
+
+# Redfish (iDRAC, BMC) login. Left empty on purpose: a redfish host is skipped
+# until these are set, in the vault, per host.
+cluster_cert_redfish_user: ""
+cluster_cert_redfish_password: ""

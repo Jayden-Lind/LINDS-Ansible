@@ -1,0 +1,19 @@
+---
+# Give each device a TLS certificate signed by the cluster certificate
+# authority (the linds-ca issuer in Kubernetes).
+#
+#   ansible-playbook playbooks/certificates.yml
+#
+# The play reads the certificate each device serves, and replaces it only when
+# it is not already a current certificate from the cluster. It is safe to
+# re-run and to run on a timer. Read playbooks/certificates.md first.
+#
+# The control node needs kubectl pointing at the cluster (the same context used
+# for the rest of the homelab). Baseboard controllers are skipped until their
+# login is set in the vault.
+
+- name: Certificates from the cluster
+  hosts: cluster_cert
+  gather_facts: true
+  roles:
+    - cluster_cert

@@ -1,0 +1,21 @@
+---
+# Install the certificate on a UniFi OS console (Cloud Key). UniFi OS serves
+# the web interface from /data/unifi-core/config/unifi-core.{crt,key} and picks
+# the new files up when unifi-core restarts.
+
+- name: Install the certificate and key
+  ansible.builtin.copy:
+    src: "{{ cluster_cert_tmp.path }}/{{ item.src }}"
+    dest: "/data/unifi-core/config/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop:
+    - { src: serve.crt, dest: unifi-core.crt }
+    - { src: tls.key, dest: unifi-core.key }
+
+- name: Restart the UniFi OS web service
+  ansible.builtin.systemd_service:
+    name: unifi-core
+    state: restarted
+  changed_when: true
