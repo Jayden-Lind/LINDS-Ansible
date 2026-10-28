@@ -1,0 +1,79 @@
+---
+# Install the certificate on a baseboard management controller over Redfish.
+# The controller makes its own signing request, so its private key never
+# leaves it; the cluster signs the request; the controller installs the signed
+# certificate and restarts its web server.
+#
+# This path follows the standard Redfish CertificateService and is meant for
+# the AMI MegaRAC controller (the SR655 XCC). An older Dell iDRAC does not
+# offer GenerateCSR over Redfish and needs the racadm path instead; that is
+# added when its login is available.
+#
+# A redfish host is skipped earlier in main.yml when no login is set, so this
+# file only runs with a login in hand.
+
+- name: Refuse to run without a login
+  ansible.builtin.assert:
+    that:
+      - cluster_cert_redfish_user | length > 0
+      - cluster_cert_redfish_password | length > 0
+    fail_msg: "Set cluster_cert_redfish_user and cluster_cert_redfish_password (in the vault) for {{ inventory_hostname }}."
+    quiet: true
+
+- name: Ask the controller to make a signing request
+  ansible.builtin.uri:
+    url: "https://{{ cluster_cert_endpoint_host }}/redfish/v1/CertificateService/Actions/CertificateService.GenerateCSR"
+    method: POST
+    url_username: "{{ cluster_cert_redfish_user }}"
+    url_password: "{{ cluster_cert_redfish_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      CommonName: "{{ cluster_cert_common_name }}"
+      AlternativeNames: "{{ cluster_cert_dns_names + cluster_cert_ip_addresses }}"
+      KeyPairAlgorithm: TPM_ALG_RSA
+      KeyBitLength: 2048
+      CertificateCollection:
+        "@odata.id": "/redfish/v1/Managers/Self/NetworkProtocol/HTTPS/Certificates"
+    status_code: [200, 202]
+  delegate_to: localhost
+  register: cluster_cert_redfish_csr
+
+- name: Save the signing request
+  ansible.builtin.copy:
+    content: "{{ cluster_cert_redfish_csr.json.CSRString }}"
+    dest: "{{ cluster_cert_tmp.path }}/device.csr"
+    mode: "0600"
+  delegate_to: localhost
+
+- name: Have the cluster sign it
+  ansible.builtin.command:
+    argv:
+      - "{{ role_path }}/files/sign-csr.sh"
+      - "{{ cluster_cert_tmp.path }}/device.csr"
+      - "{{ cluster_cert_tmp.path }}"
+      - "{{ cluster_cert_duration }}"
+      - "{{ cluster_cert_issuer }}"
+      - "{{ cluster_cert_namespace }}"
+  delegate_to: localhost
+  register: cluster_cert_sign
+  changed_when: "'SIGNED' in cluster_cert_sign.stdout"
+
+- name: Install the signed certificate on the controller
+  ansible.builtin.uri:
+    url: "https://{{ cluster_cert_endpoint_host }}/redfish/v1/CertificateService/Actions/CertificateService.ReplaceCertificate"
+    method: POST
+    url_username: "{{ cluster_cert_redfish_user }}"
+    url_password: "{{ cluster_cert_redfish_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      CertificateString: "{{ lookup('ansible.builtin.file', cluster_cert_tmp.path ~ '/tls.crt') }}"
+      CertificateType: PEM
+      CertificateUri:
+        "@odata.id": "/redfish/v1/Managers/Self/NetworkProtocol/HTTPS/Certificates/1"
+    status_code: [200, 202]
+  delegate_to: localhost
+  changed_when: true

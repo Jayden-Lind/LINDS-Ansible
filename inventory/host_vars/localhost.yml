@@ -1,0 +1,7 @@
+---
+# localhost is named in the inventory (see inventory/wsl.yml), which turns off
+# Ansible's built-in "localhost means a local connection" rule. Put it back, so
+# that any task delegated to localhost runs here on the control node instead of
+# trying to reach "localhost" over SSH.
+ansible_connection: local
+ansible_python_interpreter: "{{ ansible_playbook_python }}"

@@ -1,0 +1,51 @@
+---
+# The devices that get a TLS certificate from the cluster. Each host says what
+# kind it is, the name and addresses that go in the certificate, and how to
+# reach it. See roles/cluster_cert and playbooks/certificates.md.
+cluster_cert:
+  hosts:
+
+    jd-proxmox-02:
+      ansible_host: 10.0.50.246
+      ansible_user: root
+      cluster_cert_kind: proxmox
+      cluster_cert_common_name: jd-proxmox-02.linds.com.au
+      cluster_cert_dns_names: [jd-proxmox-02.linds.com.au]
+      cluster_cert_ip_addresses: [10.0.50.246]
+    linds-proxmox-01:
+      ansible_host: 192.168.6.205
+      ansible_user: root
+      cluster_cert_kind: proxmox
+      cluster_cert_common_name: linds-proxmox-01.linds.com.au
+      cluster_cert_dns_names: [linds-proxmox-01.linds.com.au]
+      cluster_cert_ip_addresses: [192.168.6.205]
+    linds-truenas-01:
+      ansible_host: 10.3.1.50
+      ansible_user: root
+      cluster_cert_kind: truenas
+      cluster_cert_common_name: linds-truenas-01.linds.com.au
+      cluster_cert_dns_names: [linds-truenas-01.linds.com.au]
+      cluster_cert_ip_addresses: [10.3.1.50]
+    jd-unifi-01:
+      ansible_host: 10.0.52.7
+      ansible_user: root
+      cluster_cert_kind: unifi
+      cluster_cert_common_name: jd-unifi-01.linds.com.au
+      cluster_cert_dns_names: [jd-unifi-01.linds.com.au]
+      cluster_cert_ip_addresses: [10.0.52.7]
+    # Baseboard controllers. Skipped until a login is set in the vault
+    # (cluster_cert_redfish_user / cluster_cert_redfish_password).
+    jd-proxmox-02-bmc:
+      ansible_host: 10.0.50.240
+      ansible_connection: local
+      cluster_cert_kind: redfish
+      cluster_cert_common_name: jd-proxmox-02-bmc.linds.com.au
+      cluster_cert_dns_names: [jd-proxmox-02-bmc.linds.com.au]
+      cluster_cert_ip_addresses: [10.0.50.240]
+    linds-proxmox-01-bmc:
+      ansible_host: 192.168.6.240
+      ansible_connection: local
+      cluster_cert_kind: redfish
+      cluster_cert_common_name: linds-proxmox-01-bmc.linds.com.au
+      cluster_cert_dns_names: [linds-proxmox-01-bmc.linds.com.au]
+      cluster_cert_ip_addresses: [192.168.6.240]

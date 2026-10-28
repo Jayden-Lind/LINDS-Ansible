@@ -1,0 +1,67 @@
+---
+# Install the certificate on TrueNAS SCALE through its middleware client
+# (midclt): import the key and certificate, make it the web interface
+# certificate, then restart the interface. The old imported certificates are
+# left in place; TrueNAS will not delete one that is in use.
+
+- name: Make a scratch directory on the appliance
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: cluster-cert-
+  register: cluster_cert_node_tmp
+  changed_when: false
+
+- name: Copy the certificate and key to the appliance
+  ansible.builtin.copy:
+    src: "{{ cluster_cert_tmp.path }}/{{ item.src }}"
+    dest: "{{ cluster_cert_node_tmp.path }}/{{ item.dest }}"
+    mode: "0600"
+  loop:
+    - { src: serve.crt, dest: cert.pem }
+    - { src: tls.key, dest: key.pem }
+
+- name: Build the import request
+  ansible.builtin.copy:
+    content: >-
+      {{
+        {
+          "name": "cluster_" ~ ansible_date_time.epoch,
+          "create_type": "CERTIFICATE_CREATE_IMPORTED",
+          "certificate": lookup('ansible.builtin.file', cluster_cert_tmp.path ~ '/serve.crt'),
+          "privatekey": lookup('ansible.builtin.file', cluster_cert_tmp.path ~ '/tls.key')
+        } | to_json
+      }}
+    dest: "{{ cluster_cert_node_tmp.path }}/import.json"
+    mode: "0600"
+
+- name: Import the certificate
+  ansible.builtin.command:
+    cmd: "midclt -job call certificate.create @{{ cluster_cert_node_tmp.path }}/import.json"
+  register: cluster_cert_truenas_import
+  changed_when: true
+
+- name: Read back the id of the imported certificate
+  ansible.builtin.command:
+    cmd: >-
+      midclt call certificate.query
+      [["name","=","cluster_{{ ansible_date_time.epoch }}"]]
+  register: cluster_cert_truenas_query
+  changed_when: false
+
+- name: Make it the web interface certificate
+  ansible.builtin.command:
+    cmd: >-
+      midclt call system.general.update
+      {"ui_certificate":{{ (cluster_cert_truenas_query.stdout | from_json)[0].id }}}
+  changed_when: true
+
+- name: Restart the web interface
+  ansible.builtin.command:
+    cmd: midclt call system.general.ui_restart
+  changed_when: true
+
+- name: Remove the scratch directory
+  ansible.builtin.file:
+    path: "{{ cluster_cert_node_tmp.path }}"
+    state: absent
+  changed_when: false
