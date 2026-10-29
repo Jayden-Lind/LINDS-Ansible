@@ -39,6 +39,9 @@ from pathlib import Path
 import yaml
 
 HERE = Path(__file__).resolve().parent
+# gh lives in ~/.local/bin. The systemd units put it on PATH; a run from a shell
+# may not.
+os.environ["PATH"] = f"{Path.home() / '.local/bin'}:{os.environ.get('PATH', '')}"
 SOURCE = Path(__file__).read_bytes()
 
 STATE = Path(
@@ -144,11 +147,15 @@ def now_utc(minutes=0):
 # --- GitHub and Alertmanager -------------------------------------------------
 
 def github_status(sha, context, state, description, kind="deploy"):
-    r = subprocess.run(
-        ["gh", "api", "--method", "POST", f"repos/{GITHUB_REPO}/statuses/{sha}", "-f", f"state={state}",
-         "-f", f"context={kind}/{context}", "-f", f"description={description[:140]}"],
-        capture_output=True, text=True)
-    if r.returncode != 0:
+    try:
+        r = subprocess.run(
+            ["gh", "api", "--method", "POST", f"repos/{GITHUB_REPO}/statuses/{sha}", "-f", f"state={state}",
+             "-f", f"context={kind}/{context}", "-f", f"description={description[:140]}"],
+            capture_output=True, text=True)
+        ok = r.returncode == 0
+    except OSError:
+        ok = False
+    if not ok:
         log(f"warning: could not set the commit status {kind}/{context} on GitHub")
 
 
@@ -157,13 +164,18 @@ def github_status(sha, context, state, description, kind="deploy"):
 # hours out. A later success resolves it: the same alert with an end time
 # that has passed.
 def alert(name, summary, start=None, end=None):
-    r = subprocess.run(
-        ["kubectl", "--request-timeout=30s", "exec", *ALERTMANAGER, "--", "amtool",
-         "--alertmanager.url=http://localhost:9093", "alert", "add", "alertname=LindsAnsibleDeployFailed",
-         "severity=warning", f"entry={name}", f"--annotation=summary=LINDS-Ansible deploy of {name}: {summary[:450]}",
-         f"--start={start or now_utc()}", f"--end={end or now_utc(120)}"],
-        capture_output=True, text=True)
-    if r.returncode != 0:
+    try:
+        r = subprocess.run(
+            ["kubectl", "--request-timeout=30s", "exec", *ALERTMANAGER, "--", "amtool",
+             "--alertmanager.url=http://localhost:9093", "alert", "add", "alertname=LindsAnsibleDeployFailed",
+             "severity=warning", f"entry={name}",
+             f"--annotation=summary=LINDS-Ansible deploy of {name}: {summary[:450]}",
+             f"--start={start or now_utc()}", f"--end={end or now_utc(120)}"],
+            capture_output=True, text=True)
+        ok = r.returncode == 0
+    except OSError:
+        ok = False
+    if not ok:
         log(f"warning: could not update the alert for {name} in Alertmanager")
 
 
