@@ -17,6 +17,26 @@
           $Ansible.Changed = $true
       }
 
+# win_dns_client compares this value with its list. It sets the list with
+# Set-DnsClientServerAddress, which has no IPv6 to change on an adapter without
+# IPv6, so an old value can show as a change on every run.
+- name: Remove the IPv6 resolvers of a server without IPv6
+  ansible.windows.win_powershell:
+    script: |
+      [CmdletBinding(SupportsShouldProcess)]
+      param()
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      foreach ($key in Get-ChildItem -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces') {
+          $resolvers = $key.GetValue('NameServer')
+          if ($resolvers) {
+              if (-not $Ansible.CheckMode) { $key | Remove-ItemProperty -Name NameServer }
+              $Ansible.Changed = $true
+              "$($key.PSChildName): remove $resolvers"
+          }
+      }
+  when: not (windows_baseline_ipv6 | default(true) | bool)
+
 - name: Set the resolvers of the server, a partner first and then itself
   ansible.windows.win_dns_client:
     adapter_names: "*"

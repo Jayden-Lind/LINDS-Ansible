@@ -63,7 +63,7 @@ with `-e bootstrap_address=<address>`.
 | File | Contents |
 | --- | --- |
 | `inventory/windows.yml` | The servers, their groups, addresses and VMs |
-| `inventory/group_vars/windows/main.yml` | The domain, the WinRM connection, DNS forwarders, NTP, CPU mitigations |
+| `inventory/group_vars/windows/main.yml` | The domain, the WinRM connection, DNS forwarders, NTP, CPU mitigations, IPv6 |
 | `inventory/group_vars/windows/topology.yml` | Sites, subnets, site link, FSMO role holders |
 | `inventory/group_vars/windows/replication.yml` | The NAS replication group |
 | `inventory/group_vars/windows/gpo.yml` | The GPOs that the code owns: the server baseline and the time hierarchy |

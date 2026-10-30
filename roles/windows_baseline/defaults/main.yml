@@ -30,6 +30,11 @@ windows_baseline_rdp: true
 # on an Intel host. The change takes effect at the next restart.
 windows_baseline_cpu_mitigations: true
 
+# IPv6. true keeps the Windows default. false turns it off on each network
+# adapter now, and on the server at the next restart. The loopback address ::1
+# stays.
+windows_baseline_ipv6: true
+
 # The offloads of the VirtIO network adapter, at the driver defaults: large
 # send (LSO) and receive segment coalescing (RSC) on. With them off, the server
 # sends and receives 1500-byte packets only. A change restarts the adapter, and

@@ -13,7 +13,7 @@ and the global catalog.
 3. It waits until the directory and SYSVOL are available.
 4. It sets the DNS forwarders.
 5. It sets the resolvers of the server: another domain controller first,
-   then itself.
+   then itself. If the server has no IPv6, it removes old IPv6 resolvers.
 
 `finish.yml`, after the other domain controllers know the new one:
 
@@ -39,7 +39,7 @@ answers with a certificate from the domain CA.
 | `windows_dc_site` | `ad_site` | The AD site. |
 | `windows_dsrm_password` | from the environment or the vault | The restore-mode password. |
 | `windows_dc_dns_forwarders` | `[]` | The DNS forwarders. The inventory sets them. |
-| `windows_dc_dns_client_servers` | `windows_dns_servers` + `127.0.0.1` | The resolvers of the server. |
+| `windows_dc_dns_client_servers` | `windows_dns_servers` + `127.0.0.1`, and `::1` if the server has IPv6 | The resolvers of the server. |
 | `windows_dc_ready_timeout` | `1800` | Seconds to wait for the directory and SYSVOL. |
 | `windows_dc_rid_pool_timeout` | `900` | Seconds to wait for the RID pool. |
 | `windows_dc_require_ldaps` | `true` | Wait for LDAPS. Set `false` in a domain without an enterprise CA. |
