@@ -32,7 +32,7 @@
           if ($resolvers) {
               if (-not $Ansible.CheckMode) { $key | Remove-ItemProperty -Name NameServer }
               $Ansible.Changed = $true
-              "$($key.PSChildName): remove $resolvers"
+              "$($key.PSChildName): remove $($resolvers.Trim([char]0))"
           }
       }
   when: not (windows_baseline_ipv6 | default(true) | bool)
