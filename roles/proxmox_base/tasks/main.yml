@@ -11,3 +11,7 @@
 - name: Let the ipmiutil watchdog service restart cron
   ansible.builtin.import_tasks: ipmi-watchdog.yml
   tags: ipmi-watchdog
+
+- name: Set the CPU governor and the ring buffers at boot
+  ansible.builtin.import_tasks: tuning.yml
+  tags: tuning

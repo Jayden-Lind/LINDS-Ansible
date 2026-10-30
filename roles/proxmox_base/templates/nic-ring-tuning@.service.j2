@@ -1,0 +1,14 @@
+# Managed by LINDS-Ansible: roles/proxmox_base/templates/nic-ring-tuning@.service.j2.
+# Sets the receive and transmit ring buffers of one interface at boot.
+[Unit]
+Description=NIC ring buffer tuning for %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/ethtool -G %i rx {{ proxmox_base_nic_ring_size }} tx {{ proxmox_base_nic_ring_size }}
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
