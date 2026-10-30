@@ -10,3 +10,10 @@ proxmox_base:
       ansible_host: 10.0.50.246
     linds-proxmox-01:
       ansible_host: 192.168.6.205
+      # The host does not export or mount NFS.
+      proxmox_base_rpcbind_enabled: false
+      # The kernel default is the performance governor.
+      proxmox_base_cpu_governor: schedutil
+      proxmox_base_nic_ring_interfaces:
+        - eno1
+        - eno2

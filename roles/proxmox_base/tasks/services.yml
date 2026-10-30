@@ -12,3 +12,18 @@
     enabled: false
     state: stopped
   when: "'nfs-blkmap.service' in ansible_facts.services"
+
+# rpcbind maps RPC programs to ports for NFS version 3, and it listens on all
+# addresses. A host that does not export or mount NFS does not need it.
+
+- name: Stop and disable rpcbind
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  loop:
+    - rpcbind.socket
+    - rpcbind.service
+  when:
+    - not proxmox_base_rpcbind_enabled
+    - "'rpcbind.service' in ansible_facts.services"

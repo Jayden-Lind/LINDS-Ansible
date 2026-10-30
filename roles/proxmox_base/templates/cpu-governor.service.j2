@@ -1,0 +1,13 @@
+# Managed by LINDS-Ansible: roles/proxmox_base/templates/cpu-governor.service.j2.
+# Sets the CPU frequency governor of each CPU at boot.
+[Unit]
+Description=Set CPU scaling governor to {{ proxmox_base_cpu_governor }}
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c "for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo {{ proxmox_base_cpu_governor }} > $g; done"
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

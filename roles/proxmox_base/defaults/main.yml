@@ -7,3 +7,18 @@
 # RFC 5424 format. It is the same line as common_rsyslog_remote_line in the
 # role common. If the value is empty, the role does not write the file.
 proxmox_base_rsyslog_remote_line: "*.* @(o)172.16.1.23:1514;RSYSLOG_SyslogProtocol23Format"
+
+# If false, the role stops and disables rpcbind. A host that exports or mounts
+# NFS needs rpcbind, so the default is true.
+proxmox_base_rpcbind_enabled: true
+
+# The CPU frequency governor that cpu-governor.service sets at boot, for
+# example "schedutil". If the value is empty, the role does not install the
+# unit.
+proxmox_base_cpu_governor: ""
+
+# The interfaces that nic-ring-tuning@.service gives larger ring buffers at
+# boot, and the number of receive and transmit descriptors. If the list is
+# empty, the role does not install the unit.
+proxmox_base_nic_ring_interfaces: []
+proxmox_base_nic_ring_size: 4096

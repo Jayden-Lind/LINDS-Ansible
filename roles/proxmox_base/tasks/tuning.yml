@@ -1,0 +1,44 @@
+---
+# Two optional units that apply a setting at each boot.
+# cpu-governor.service writes the CPU frequency governor to each CPU.
+# nic-ring-tuning@<interface>.service sets the ring buffers of one interface.
+#
+# The role starts cpu-governor.service. It does not start nic-ring-tuning,
+# because a change of the ring size resets the link of the interface. The
+# ring size changes at the next boot.
+
+- name: Install cpu-governor.service
+  ansible.builtin.template:
+    src: cpu-governor.service.j2
+    dest: /etc/systemd/system/cpu-governor.service
+    owner: root
+    group: root
+    mode: "0644"
+  when: proxmox_base_cpu_governor | length > 0
+  notify: Reload systemd
+
+- name: Install nic-ring-tuning@.service
+  ansible.builtin.template:
+    src: nic-ring-tuning@.service.j2
+    dest: /etc/systemd/system/nic-ring-tuning@.service
+    owner: root
+    group: root
+    mode: "0644"
+  when: proxmox_base_nic_ring_interfaces | length > 0
+  notify: Reload systemd
+
+- name: Load the changed unit files
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start cpu-governor.service
+  ansible.builtin.systemd_service:
+    name: cpu-governor.service
+    enabled: true
+    state: started
+  when: proxmox_base_cpu_governor | length > 0
+
+- name: Enable nic-ring-tuning for each interface
+  ansible.builtin.systemd_service:
+    name: "nic-ring-tuning@{{ item }}.service"
+    enabled: true
+  loop: "{{ proxmox_base_nic_ring_interfaces }}"
