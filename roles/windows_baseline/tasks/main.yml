@@ -89,6 +89,32 @@
   when: windows_baseline_mitigations is changed
   tags: cpu-mitigations
 
+# 255 turns off IPv6 on every interface except the loopback. It also covers a
+# new network adapter, but it takes effect only at the next restart.
+- name: Set IPv6 on the server
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters
+    name: DisabledComponents
+    data: 255
+    type: dword
+    state: "{{ 'absent' if windows_baseline_ipv6 | bool else 'present' }}"
+  register: windows_baseline_ipv6_server
+  tags: ipv6
+
+- name: Say that the IPv6 change needs a restart
+  ansible.builtin.debug:
+    msg: The change to IPv6 on the server takes effect when {{ inventory_hostname }} next restarts.
+  when: windows_baseline_ipv6_server is changed
+  tags: ipv6
+
+# This removes the IPv6 addresses now, without a restart.
+- name: Set IPv6 on the network adapters
+  community.windows.win_net_adapter_feature:
+    interface: "*"
+    component_id: ms_tcpip6
+    state: "{{ 'enabled' if windows_baseline_ipv6 | bool else 'disabled' }}"
+  tags: ipv6
+
 - name: Keep the offloads of the VirtIO network adapter on
   ansible.windows.win_powershell:
     parameters:

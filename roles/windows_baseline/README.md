@@ -12,15 +12,17 @@ The role applies the security baseline to a Windows server.
 6. It allows Remote Desktop with Network Level Authentication, and opens its
    firewall rules.
 7. It sets the CPU side-channel mitigations of Windows (see Variables).
-8. It keeps the large send and receive offloads of the VirtIO network adapter
+8. If `windows_baseline_ipv6` is false, it turns off IPv6 on the server and on
+   each network adapter.
+9. It keeps the large send and receive offloads of the VirtIO network adapter
    on. If a value changes, it restarts the adapter.
-9. If `windows_baseline_updates` is true, it installs Windows updates and
-   restarts the server.
+10. If `windows_baseline_updates` is true, it installs Windows updates and
+    restarts the server.
 
 The role applies the settings one time, when the server is built. After the
-server joins the domain, the GPO `Server - Baseline` keeps steps 1 to 7 in
-place (role `windows_gpo`). If you change a setting here, change it in
-`inventory/group_vars/windows/gpo.yml` too.
+server joins the domain, the GPO `Server - Baseline` keeps steps 1 to 7 and the
+server setting of step 8 in place (role `windows_gpo`). If you change a setting
+here, change it in `inventory/group_vars/windows/gpo.yml` too.
 
 ## Requirements
 
@@ -37,6 +39,7 @@ place (role `windows_gpo`). If you change a setting here, change it in
 | `windows_baseline_event_logs` | Security 1 GB, System and Application 256 MB | The maximum size of each log. |
 | `windows_baseline_rdp` | `true` | Allow Remote Desktop with Network Level Authentication. |
 | `windows_baseline_cpu_mitigations` | `true` | `false` turns off the Spectre variant 2 and Meltdown mitigations (and MDS buffer clearing). The inventory sets `false`. |
+| `windows_baseline_ipv6` | `true` | `false` turns off IPv6 on the server and on each network adapter. The inventory sets `false`. |
 | `windows_baseline_nic_offloads` | LSO and RSC on (the driver defaults) | The properties of the VirtIO network adapter to keep, by registry keyword. `{}` leaves the adapter as it is. |
 | `windows_baseline_updates` | `false` | Install updates. `windows-prepare.yml` and `windows-join.yml` set `true`. |
 | `windows_baseline_update_categories` | security, critical, rollups, definitions | The update categories. |
@@ -46,7 +49,8 @@ place (role `windows_gpo`). If you change a setting here, change it in
 
 - `playbooks/windows.yml` applies it to each server in `windows_managed`
   (tag `baseline`). Add `--limit <fqdn>` for one server, and
-  `--tags cpu-mitigations` or `--tags nic-offloads` for one setting.
+  `--tags cpu-mitigations`, `--tags ipv6` or `--tags nic-offloads` for one
+  setting.
 - The build playbooks apply it to each new server.
 
 ## Safety
@@ -60,6 +64,12 @@ the Intel host at LINDS the mitigations cost about 5 to 10% of system-call
 speed; on the AMD host at JD no mitigation was on. They protect the kernel from
 code that already runs in the server. The hypervisor keeps the VMs apart in
 both cases.
+
+**CAUTION:** With `windows_baseline_ipv6: false`, each network adapter loses
+IPv6 at once. Connections over IPv6 stop, and the clients must connect again
+over IPv4. The setting on the server takes effect at the next restart. Only the
+loopback address `::1` then stays. Microsoft does not recommend this setting,
+because some Windows components can stop working.
 
 **CAUTION:** A change to the network adapter offloads restarts the adapter 15
 seconds after the task. The network stops for about 3 seconds. The server
@@ -76,3 +86,6 @@ from the cluster then got about 210 MB/s for each stream.
 - KB5007651 (Update for Windows Security platform) installs, reports success
   and is offered again. `win_updates` then fails with a loop. Windows Update
   installs it by itself.
+- A server that loses IPv6 can keep its AAAA records in DNS. The role does not
+  remove them. See "IPv6 records that do not route" in
+  `docs/windows/runbooks/replication.md`.

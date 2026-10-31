@@ -15,8 +15,9 @@ windows_dc_dns_forwarders: []
 
 # The resolvers of the server itself: another domain controller first, then
 # itself. A domain controller that only asks itself can stop at boot. The
-# promotion adds ::1, the IPv6 address of the server itself.
-windows_dc_dns_client_servers: "{{ windows_dns_servers + ['127.0.0.1', '::1'] }}"
+# promotion adds ::1, the IPv6 address of the server itself, if the server has
+# IPv6 (windows_baseline_ipv6).
+windows_dc_dns_client_servers: "{{ windows_dns_servers + ['127.0.0.1'] + (['::1'] if windows_baseline_ipv6 | default(true) | bool else []) }}"
 
 # Maximum times to wait, in seconds: for the directory and SYSVOL after the
 # restart, and for the RID pool.

@@ -12,9 +12,9 @@ windows_gpo_definitions:
   # If you change a setting here, change it in that role too.
   - name: Server - Baseline
     comment: >-
-      Firewall, Defender, event logs, Remote Desktop, SMB1, Print Spooler and
-      CPU mitigations of the servers. Made by LINDS-Ansible, role windows_gpo.
-      Do not edit it in GPMC.
+      Firewall, Defender, event logs, Remote Desktop, SMB1, Print Spooler, CPU
+      mitigations and IPv6 of the servers. Made by LINDS-Ansible, role
+      windows_gpo. Do not edit it in GPMC.
     # The computer names of the servers in the inventory group windows_managed.
     apply_to: "{{ groups['windows_managed'] | map('split', '.') | map('first') | map('upper') | list }}"
     policy:
@@ -47,6 +47,13 @@ windows_gpo_definitions:
         type: DWord
         value: 3
         state: "{{ 'absent' if windows_baseline_cpu_mitigations | default(true) | bool else 'present' }}"
+      # 255 turns off IPv6 on every interface except the loopback. The change
+      # takes effect at the next restart. See windows_baseline_ipv6.
+      - key: 'HKLM\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters'
+        name: DisabledComponents
+        type: DWord
+        value: 255
+        state: "{{ 'absent' if windows_baseline_ipv6 | default(true) | bool else 'present' }}"
 
   # The time hierarchy. Every domain controller gets its time from the domain.
   # The PDC emulator gets its time from ntp_servers, and is the reliable source
