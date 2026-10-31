@@ -38,6 +38,16 @@ router_k8s_port_forward_reserved_ports: {tcp: [], udp: [500, 4500]}
 router_k8s_port_forward_max_forwards: 128
 router_k8s_port_forward_interval: 20
 
+# The daemons with a systemd sandbox (tasks/hardening.yml). The site's optional
+# daemons join the list only if the site has them.
+router_sandboxed_units: >-
+  {{ ['ddclient', 'unbound', 'snmpd', 'lldpd', 'strongswan',
+      'isc-kea-dhcp4-server', 'isc-kea-dhcp-ddns-server',
+      'prometheus-node-exporter', 'prometheus-smokeping-prober',
+      'prometheus-frr-exporter']
+     + (['suricata'] if router_suricata | bool else [])
+     + (['avahi-daemon'] if router_mdns | bool else []) }}
+
 # Connections `swanctl --list-conns` must show (tasks/validate.yml).
 router_ipsec_connections: [LINDS]
 # Routing tables the validator prints besides main (information only).

@@ -1,0 +1,5 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/suricata/update.yaml
+# suricata-update tests new rules with a log directory that only root can
+# use. Suricata runs as its own user (run-as in suricata.yaml) and cannot write
+# there, so the test fails and the old rules stay. This test uses /tmp.
+test-command: ${SURICATA_PATH} -T -c /etc/suricata/suricata.yaml -S ${OUTPUT_FILENAME} -l /tmp

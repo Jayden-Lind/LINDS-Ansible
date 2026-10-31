@@ -35,6 +35,19 @@ vars:
 
 default-log-dir: /var/log/suricata/
 
+# Suricata parses every packet from the internet, so it does not stay root. It
+# opens the capture as root, then runs as this user with CAP_NET_RAW,
+# CAP_NET_ADMIN and CAP_SYS_NICE only. The user owns /var/log/suricata,
+# /run/suricata and /var/lib/suricata/cache (tasks/suricata.yml).
+run-as:
+  user: suricata
+  group: suricata
+
+security:
+  # After the start, Suricata cannot make new processes. This has no effect on
+  # root, so it needs run-as.
+  limit-noproc: true
+
 stats:
   enabled: yes
   interval: 60

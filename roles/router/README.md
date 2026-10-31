@@ -26,6 +26,7 @@ JD's; where LINDS differs, the LINDS section says so.
 | Task flow | `tasks/main.yml` → one task file per area, in dependency order |
 | Failover and port-forward daemon tests | `tests/` — `python3 -m unittest discover -s roles/router/tests` |
 | What the LINDS ruleset does to packets, in throwaway network namespaces | `tests/linds-ruleset-netns.sh` — `sudo unshare -n bash roles/router/tests/linds-ruleset-netns.sh roles/router/files/linds/etc/nftables.conf` |
+| What the JD ruleset does to packets, in throwaway network namespaces | `tests/jd-ruleset-netns.sh` — `sudo unshare -n bash roles/router/tests/jd-ruleset-netns.sh roles/router/files/linds/etc/nftables.conf` |
 | The swap from VyOS at LINDS, as a script for the hypervisor | `cutover/linds-router-cutover` (not installed by the role) |
 
 To change something, **edit the file under `files/<site>/etc/` (or
@@ -127,7 +128,7 @@ layout above), and the notes are JD's.
 | mDNS reflector | avahi-daemon | `etc/avahi/avahi-daemon.conf` | Repeats mDNS between `lan0`, `lan0.52`, `lan0.53` and `lan0.58` so devices on one can be found from the others; publishes nothing itself |
 | IDS | Suricata 8 + suricata-update, from trixie-backports | `etc/suricata/` | One worker thread on `lan0`; WAN traffic and DNS only (BPF filter); TLS flows bypassed after the handshake; EVE → rsyslog imfile → Alloy → Loki; weekly rule refresh reloads in place |
 | Troubleshooting and metrics | `router` (a script), node-exporter, frr-exporter, smokeping-prober | `usr/local/sbin/router`, `etc/default/prometheus-*`, `etc/prometheus/smokeping_prober.yml` | See "Troubleshooting" below; the exporters listen on the cluster network only |
-| Kernel | linux-image-cloud-amd64 from trixie-backports (7.x, `router_kernel_backports`), sysctl, modules, grub | `etc/sysctl.d/`, `etc/modules-load.d/`, `etc/default/grub.d/` | `ignore_routes_with_linkdown` keeps a link-down build reachable; `ip_nonlocal_bind` lets daemons bind `.1` addresses before the LAN link is up |
+| Kernel | linux-image-cloud-amd64 from trixie-backports (7.x, `router_kernel_backports`), sysctl, modules, grub | `etc/sysctl.d/`, `etc/modules-load.d/`, `etc/modprobe.d/`, `etc/default/grub.d/` | `ignore_routes_with_linkdown` keeps a link-down build reachable; `ip_nonlocal_bind` lets daemons bind `.1` addresses before the LAN link is up |
 
 ## Port forwards
 
@@ -204,8 +205,8 @@ it.
   `files/etc/systemd/network/` and the interface is gone on the next run.
 * **A changed `.link` file or a kernel package change means a reboot** (the
   run does it). The kernel is the cloud flavour from trixie-backports
-  (`router_kernel_backports: true`); stable's 6.12 stays installed as a
-  fallback GRUB entry. The kernel package only changes in an upgrade run
+  (`router_kernel_backports: true`); the kernel before it stays installed
+  as a fallback GRUB entry. The kernel package only changes in an upgrade run
   (`-e router_apt_upgrade=true`) or on a first build. Until 2026-10 it was
   `state: latest` on every run, so any run could reboot the router, and
   while backports sat between a `linux` upload and its `linux-signed-amd64`
@@ -332,9 +333,10 @@ it.
     issue #3792, fixed in Kea 3.1.7). If a 10.0.50.x offer shows up next to
     a 10.0.52.x one again, it went out untagged and never reached the client.
 * **Software flowtable, main LAN, VLAN 52 and VLAN 53 <-> WAN.** The last
-  six forward rules hand established TCP/UDP flows between `lan0`, `lan0.52`,
+  forward rule hands established TCP/UDP flows between `lan0`, `lan0.52`,
   `lan0.53` and `wan0` to `flowtable ft`; later packets skip the ruleset. `conntrack -L |
-  grep -c OFFLOAD` shows how many. Tunnels are excluded (xfrm and WireGuard
+  grep -c OFFLOAD` shows how many. The flowtable lists only the real devices,
+  `wan0` and `lan0`. Tunnels are excluded (xfrm and WireGuard
   cannot be software-offloaded). Capture pitfall: the flowtable's ingress
   hook on the parent `lan0` handles tagged frames itself, so an offloaded
   VLAN flow never appears in a `tcpdump -i lan0.52`; use `tcpdump -i lan0 -e
@@ -368,6 +370,13 @@ it.
     mobile public address).
   * A restarted `wan-failover` withdraws the route of a WAN that fails its
     first `fall` rounds. Before, it left the previous run's route in place.
+* **Invalid packets stop at the WAN.** The forward chain drops packets that
+  conntrack calls invalid when they come from a WAN or go to a WAN. Masquerade
+  skips those packets, so they would leave with a private source address.
+  **CAUTION:** Do not apply this rule between the LANs. The hypervisor is on
+  the main LAN and on VLAN 53 and answers directly. Conntrack then sees one
+  direction of the flow and calls it invalid. Neighbour discovery also counts
+  as invalid, so the `invalid` value of `conntrack -S` is not a fault count.
 * **A private destination never leaves through a WAN.** LINDS, the k8s
   VIPs and the pod and service ranges exist only as BGP routes; with a
   session or the tunnel down they fell through to the default route and went
@@ -534,11 +543,49 @@ it.
   must be spelled exactly like the stock ones (they are regexes used as hash
   keys). The package itself was missing from the role until 2026-10, so
   before that nothing was restarted at all. `needrestart -b` lists what is
-  running on replaced libraries. The backports packages and FRR are not
-  security origins. They only move through an upgrade run of this role.
+  running on replaced libraries. The backports packages, FRR, Kea and lldpd
+  are not security origins. They only move through an upgrade run of this
+  role. `router` shows what waits, and `router metrics` writes the same as
+  `router_updates_pending{origin}` and `router_reboot_required`. An alert
+  fires after 7 days.
   `journalctl -t unattended-upgrade` and
   `/var/log/unattended-upgrades/` show what happened; `unattended-upgrade
   --dry-run -d` previews.
+* **The kernel hardening settings are in `etc/sysctl.d/90-router.conf`.**
+  A user that is not root cannot make a user namespace. A process can trace
+  only its own children. Kernel addresses are hidden from all users, root too.
+  **NOTE:** `perf` and `dropwatch` need those addresses. Run
+  `sysctl kernel.kptr_restrict=0` while you use them, then set it back to 2.
+* **A kernel fault restarts the router.** `kernel.panic_on_oops=1` makes an
+  oops a panic, and `kernel.panic=10` restarts 10 seconds later. Without
+  these, the router stays down until someone gets to the hypervisor.
+* **The daemons that take input from other machines run in a systemd
+  sandbox.** `tasks/hardening.yml` installs one drop-in for each unit, and
+  each file says what its daemon needs. `systemd-analyze security UNIT` shows
+  the result. `ssh` and `qemu-guest-agent` have no sandbox because they give
+  root access. `frr` has none because a restart drops every route.
+  * If a daemon stops with `status=31/SYS`, it made a system call that the
+    sandbox blocks. `journalctl -k | grep type=1326` gives the call number.
+    Add the call to `SystemCallFilter` in the drop-in.
+  * After you change a drop-in, test what the daemon does, not only that it
+    runs. node-exporter ran and died at each scrape: its `timex` collector
+    uses `adjtimex`, which `@system-service` does not include.
+* **cloud-init is off after the build.** The role makes
+  `/etc/cloud/cloud-init.disabled`. If cloud-init ran again with a new instance
+  id, it would do its first-boot work again.
+* **The RDMA modules do not load** (`etc/modprobe.d/no-rdma.conf`). The
+  initramfs holds the mlx5 modules and its own copy of `modprobe.d`, so the
+  role runs `update-initramfs`. The change applies at the next boot.
+* **Suricata runs as the `suricata` user.** `run-as` in `suricata.yaml` drops
+  root after the capture opens. Three capabilities stay: `CAP_NET_RAW`,
+  `CAP_NET_ADMIN` and `CAP_SYS_NICE`. The user owns `/var/log/suricata`,
+  `/run/suricata` and `/var/lib/suricata/cache`. `suricatasc` still works
+  from root.
+  * **CAUTION:** Keep `etc/suricata/update.yaml`. `suricata-update` tests new
+    rules with a log directory that only root can use. Without this file the
+    test fails and no rule update succeeds.
+  * `etc/logrotate.d/suricata` is Debian's file with `su` added. The user
+    owns the directory, so logrotate must not work in it as root.
 * **Suricata no longer disables offloads on lan0.** The switch is the
   top-level `capture: disable-offloading: false`; the same key inside the
   af-packet interface block is ignored, and with it Suricata turned sg, TSO,
@@ -1231,6 +1278,8 @@ alerts go to Discord (LINDS-Kubernetes `base/monitoring/router-metrics.yaml`):
 * The site tunnel down, a BGP peer down, or no WireGuard handshake for
   15 minutes.
 * A DHCP pool over 90% used, conntrack over 80% full, a failed systemd unit.
+* Package updates that wait for 7 days, or a newer kernel that does not run
+  for 7 days.
 * DNS SERVFAILs, Unbound not answering, Suricata silent or dropping packets.
 * The `router_*` metrics missing or older than 5 minutes.
 * `k8s-port-forward` unable to list Services, refusing a request, or not

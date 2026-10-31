@@ -1,0 +1,16 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/logrotate.d/suricata
+# Debian's file with `su` added. The suricata user owns the directory, so
+# logrotate must not work in it as root.
+/var/log/suricata/*.log
+/var/log/suricata/*.json
+{
+	su suricata suricata
+	rotate 14
+	missingok
+	compress
+	create
+	sharedscripts
+	postrotate
+		/usr/bin/kill -HUP `cat /var/run/suricata/suricata.pid 2>/dev/null` 2>/dev/null || true
+	endscript
+}

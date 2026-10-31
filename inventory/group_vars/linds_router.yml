@@ -12,8 +12,8 @@ router_hostname: linds-router-01
 # The directory under roles/router/files/ that holds this site's files.
 router_site: linds
 
-# The kernel jd-router-01 runs: trixie-backports (7.x), stable's 6.12 kept as
-# a fallback GRUB entry. The flowtable's handling of VLANs on the LAN trunk
+# The kernel jd-router-01 runs: trixie-backports (7.x), the kernel before it
+# kept as a fallback GRUB entry. The flowtable's handling of VLANs on the LAN trunk
 # was proven on that kernel, so this router does not get a different one.
 router_kernel_backports: true
 

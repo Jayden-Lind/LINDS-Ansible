@@ -11,6 +11,51 @@
     name: [suricata, suricata-update]
     state: present
 
+# The user that run-as in suricata.yaml names. Debian's package makes none.
+- name: Suricata group
+  ansible.builtin.group:
+    name: suricata
+    system: true
+
+- name: Suricata user
+  ansible.builtin.user:
+    name: suricata
+    group: suricata
+    system: true
+    shell: /usr/sbin/nologin
+    home: /var/lib/suricata
+    create_home: false
+
+- name: Suricata logs belong to its user
+  ansible.builtin.file:
+    path: /var/log/suricata
+    state: directory
+    owner: suricata
+    group: suricata
+    recurse: true
+
+# The directory holds the socket and the PID file. Debian's tmpfiles.d file
+# makes it for root. A file of the same name in /etc replaces that one.
+- name: Suricata runtime directory (tmpfiles.d)
+  ansible.builtin.copy:
+    src: etc/tmpfiles.d/suricata.conf
+    dest: /etc/tmpfiles.d/suricata.conf
+    mode: '0644'
+  register: router_suricata_tmpfiles
+
+- name: Suricata runtime directory now
+  ansible.builtin.command: systemd-tmpfiles --create /etc/tmpfiles.d/suricata.conf
+  when: router_suricata_tmpfiles is changed
+  changed_when: true
+
+# The directory belongs to the suricata user, so logrotate must not work in it
+# as root: the file adds `su` to Debian's.
+- name: Suricata log rotation
+  ansible.builtin.copy:
+    src: etc/logrotate.d/suricata
+    dest: /etc/logrotate.d/suricata
+    mode: '0644'
+
 # Per site: HOME_NET (suricata.yaml includes this file) and the alert
 # suppressions.
 - name: Suricata site files
@@ -35,8 +80,18 @@
 # suricata.yaml). Suricata does not make the directory itself.
 - name: Suricata rule cache dir
   ansible.builtin.file:
+    path: /var/lib/suricata/cache
+    state: directory
+    owner: suricata
+    group: suricata
+    recurse: true
+
+- name: Suricata rule cache subdir
+  ansible.builtin.file:
     path: /var/lib/suricata/cache/sgh
     state: directory
+    owner: suricata
+    group: suricata
     mode: '0750'
 
 - name: suricata.service drop-in dir
@@ -58,6 +113,13 @@
     dest: /etc/suricata/disable.conf
     mode: '0644'
   notify: suricata-update
+
+# The rule test must work as the suricata user, or no rule update succeeds.
+- name: suricata-update settings
+  ansible.builtin.copy:
+    src: etc/suricata/update.yaml
+    dest: /etc/suricata/update.yaml
+    mode: '0644'
 
 - name: suricata-update service + timer
   ansible.builtin.copy:

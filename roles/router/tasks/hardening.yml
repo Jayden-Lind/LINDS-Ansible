@@ -1,0 +1,36 @@
+---
+# Sandboxes for the daemons that take input from other machines: one systemd
+# drop-in for each unit, in files/etc/systemd/system/<unit>.service.d/. Each
+# file says what its daemon needs. A drop-in takes effect when its daemon
+# restarts, so this file restarts the ones that changed. For strongswan that
+# means a tunnel outage of about 3 seconds.
+#
+# Not here: ssh and qemu-guest-agent exist to give root access. frr is reached
+# only by the cluster and the tunnel, and a restart drops every route.
+
+- name: Sandbox drop-in directories
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}.service.d"
+    state: directory
+    mode: '0755'
+  loop: "{{ router_sandboxed_units }}"
+
+- name: Sandbox drop-ins
+  ansible.builtin.copy:
+    src: "etc/systemd/system/{{ item }}.service.d/hardening.conf"
+    dest: "/etc/systemd/system/{{ item }}.service.d/hardening.conf"
+    mode: '0644'
+  loop: "{{ router_sandboxed_units }}"
+  register: router_sandbox_dropins
+  notify: daemon-reload
+
+- name: Flush handlers (units know their sandboxes)
+  ansible.builtin.meta: flush_handlers
+
+- name: Restart the daemons with a new sandbox
+  ansible.builtin.systemd_service:
+    name: "{{ item.item }}"
+    state: restarted
+  loop: "{{ router_sandbox_dropins.results | selectattr('changed') | list }}"
+  loop_control:
+    label: "{{ item.item }}"
