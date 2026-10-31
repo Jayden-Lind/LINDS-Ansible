@@ -113,6 +113,10 @@
   when: router_suricata | bool
   tags: [suricata]
 
+- name: Daemon sandboxes
+  ansible.builtin.import_tasks: hardening.yml
+  tags: [hardening]
+
 - name: Validate
   ansible.builtin.import_tasks: validate.yml
   tags: [validate, always]

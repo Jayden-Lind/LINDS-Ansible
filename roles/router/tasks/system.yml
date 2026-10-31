@@ -63,6 +63,15 @@
     dest: /etc/modprobe.d/nf_conntrack.conf
     mode: '0644'
 
+# The initramfs holds the mlx5 modules and its own copy of modprobe.d, so the
+# blacklist works only after a rebuild. It applies at the next boot.
+- name: RDMA modules not loaded
+  ansible.builtin.copy:
+    src: etc/modprobe.d/no-rdma.conf
+    dest: /etc/modprobe.d/no-rdma.conf
+    mode: '0644'
+  notify: update-initramfs
+
 - name: Load the modules now
   ansible.builtin.command: "modprobe {{ item }}"
   loop: "{{ lookup('ansible.builtin.file', 'etc/modules-load.d/router.conf').splitlines() | reject('match', '^\\s*(#|$)') | list }}"
@@ -82,6 +91,17 @@
   ansible.builtin.systemd_service:
     name: systemd-sysctl
     state: started
+
+# cloud-init builds the VM at its first boot and has no work after that. If
+# the instance id changes, it does its first-boot work again: new SSH host
+# keys, for example. The file stops it at the next boot.
+- name: cloud-init off after the build
+  ansible.builtin.file:
+    path: /etc/cloud/cloud-init.disabled
+    state: touch
+    mode: '0644'
+    modification_time: preserve
+    access_time: preserve
 
 - name: journald conf dir
   ansible.builtin.file:

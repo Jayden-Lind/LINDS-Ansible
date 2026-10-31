@@ -29,8 +29,8 @@ router_k8s_port_forward_backend_cidrs: [172.16.1.0/24]
 
 # Kernel from trixie-backports (7.x) rather than stable's 6.12. The role adds
 # the backports source, installs linux-image-cloud-amd64 from it and reboots
-# when the package changes; stable's kernel stays installed as a fallback
-# GRUB entry.
+# when the package changes. The kernel before it stays installed as a
+# fallback GRUB entry.
 router_kernel_backports: true
 
 # NordVPN egress tunnels. Each tunnel's .netdev is rendered from this (the

@@ -39,6 +39,9 @@ TRACE_TABLE = "router_trace"
 FORWARD_STATE = "/var/lib/k8s-port-forward/state.json"
 FORWARD_TABLE = "k8s_port_forward"
 FORWARD_METRICS = "/var/lib/prometheus/node-exporter/k8s_port_forward.prom"
+UPDATES_CACHE = "/run/router-updates.json"
+# pending_updates() asks apt again only when one of these changes.
+APT_STATE = ("/var/lib/dpkg/status", "/var/cache/apt/pkgcache.bin")
 
 # `router logs AREA` -> systemd units.
 LOG_AREAS = {
@@ -333,6 +336,42 @@ def conntrack_usage():
         return 0, 0
 
 
+def pending_updates():
+    """Packages apt would upgrade, by origin, or None if apt cannot say.
+
+    Only Debian's security packages update on their own. The kernel, Suricata,
+    FRR, Kea and lldpd wait for an upgrade run, and this is how that shows.
+    """
+    try:
+        stamp = [os.stat(path).st_mtime_ns for path in APT_STATE]
+    except OSError:
+        return None
+    try:
+        with open(UPDATES_CACHE) as f:
+            cached = json.load(f)
+        if cached["stamp"] == stamp:
+            return cached["updates"]
+    except (OSError, ValueError, KeyError):
+        pass
+    out = run(["apt-get", "-s", "-o", "Debug::NoLocking=1", "dist-upgrade"], timeout=25)
+    if not out:
+        return None
+    inst = [line for line in out.splitlines() if line.startswith("Inst ")]
+    security = sum("Debian-Security" in line for line in inst)
+    updates = {"security": security, "other": len(inst) - security}
+    with open(UPDATES_CACHE, "w") as f:
+        json.dump({"stamp": stamp, "updates": updates}, f)
+    return updates
+
+
+def reboot_required():
+    """True if a newer kernel is installed than the one that runs."""
+    def version(name):
+        return [int(n) for n in re.findall(r"\d+", name)]
+    installed = [f.removeprefix("vmlinuz-") for f in os.listdir("/boot") if f.startswith("vmlinuz-")]
+    return bool(installed) and max(installed, key=version) != os.uname().release
+
+
 def uptime_seconds():
     with open("/proc/uptime") as f:
         return float(f.read().split()[0])
@@ -533,6 +572,10 @@ def cmd_status(_args):
     print(f"{'Conntrack':10}{used} of {maximum}" + (bad(" (over 80%)") if maximum and used > maximum * 0.8 else ""))
     failed = failed_units()
     print(f"{'Services':10}" + (bad("failed: " + ", ".join(failed)) if failed else good("all running")))
+    updates, reboot = pending_updates(), reboot_required()
+    text = dim("apt does not answer") if updates is None else \
+        (f"{sum(updates.values())} pending ({updates['security']} security)" if sum(updates.values()) else "none pending")
+    print(f"{'Updates':10}{text}" + (bad(", reboot for the new kernel") if reboot else ""))
 
 
 def cmd_wan(_args):
@@ -888,6 +931,12 @@ def cmd_metrics(args):
             out.append(f"router_dns_lookup_seconds_sum {dns.get('total.recursion.time.avg', 0) * total:.6f}")
             out.append(f"router_dns_lookup_seconds_count {total}")
     metric("failed_units", "systemd units in the failed state.", [({}, len(failed_units()))])
+    updates = pending_updates()
+    if updates is not None:
+        metric("updates_pending", "Packages with a newer version in apt, by origin.",
+               [({"origin": k}, v) for k, v in updates.items()])
+    metric("reboot_required", "1 if a newer kernel is installed than the one that runs.",
+           [({}, int(reboot_required()))])
     text = "\n".join(out) + "\n"
     path = args.file or TEXTFILE
     tmp = f"{path}.tmp"
