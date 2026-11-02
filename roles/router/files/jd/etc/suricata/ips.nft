@@ -1,0 +1,20 @@
+#!/usr/sbin/nft -f
+# Managed by LINDS-Ansible: roles/router/files/jd/etc/suricata/ips.nft.
+# What the blocking Suricata sees: the first packet of each new connection
+# from the WAN to a published Kubernetes Service. Port forwards reach the
+# LoadBalancer pool only, and the torrent client's UPnP port does not, so the
+# address picks these out. suricata-ips.service loads this table and removes it.
+#
+# Nothing else enters the queue: not browsing, not games, not the LANs, not the
+# tunnels. An established connection is never queued, so it stays on the
+# flowtable and cannot stall if Suricata does.
+# bypass: if nothing listens on the queue, the kernel accepts the packet.
+table inet suricata_ips
+delete table inet suricata_ips
+
+table inet suricata_ips {
+    chain forward {
+        type filter hook forward priority filter - 10; policy accept;
+        iifname "wan0" ct state new ct status dnat ip daddr 172.16.1.0/24 queue flags bypass to 0
+    }
+}

@@ -20,6 +20,8 @@ router_site: jd
 # and table 1001 come back with it).
 router_failover: false
 router_road_warrior: true
+# The blocking Suricata, for the published ports.
+router_ips: true
 # k8s-port-forward: the cluster's API server and its LoadBalancer pool
 # (Cilium LB-IPAM, LINDS-Terraform proxmox/cilium.tf). The token is
 # k8s_port_forward_token in inventory/router.yml.

@@ -113,6 +113,11 @@
   when: router_suricata | bool
   tags: [suricata]
 
+- name: Suricata IPS
+  ansible.builtin.import_tasks: ips.yml
+  when: router_ips | bool
+  tags: [ips]
+
 - name: Daemon sandboxes
   ansible.builtin.import_tasks: hardening.yml
   tags: [hardening]

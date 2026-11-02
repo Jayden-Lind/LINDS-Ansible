@@ -1,0 +1,91 @@
+%YAML 1.1
+---
+# Managed by LINDS-Ansible: roles/router/files/etc/suricata/ips.yaml.
+#
+# The second Suricata, which blocks. The first one (suricata.yaml) reads a copy
+# of the traffic and cannot touch it. This one gets the first packet of each
+# new connection from the WAN to a published port (etc/suricata/ips.nft) and
+# decides if the connection may start. It loads only the rules that block
+# (suricata-ips-rules), so it needs about 50 MB. Established connections never
+# reach it. `router ips` shows what it does, and `router ips off` stops it.
+
+vars:
+  address-groups: !include site-address-groups.yaml
+  port-groups:
+    HTTP_PORTS: "[80,8080]"
+
+default-log-dir: /var/log/suricata-ips/
+
+security:
+  limit-noproc: true
+
+# If Suricata cannot keep up, the kernel lets the packet through.
+nfq:
+  mode: accept
+  fail-open: yes
+
+# Only a rule may block. In IPS mode the default, auto, drops traffic when a
+# memory limit is reached, with no rule behind the drop.
+exception-policy: ignore
+
+capture:
+  disable-offloading: false
+  checksum-validation: none
+
+host-mode: router
+runmode: workers
+max-pending-packets: 256
+
+stream:
+  memcap: 32mb
+  reassembly:
+    memcap: 32mb
+    depth: 1mb
+
+stats:
+  enabled: yes
+  interval: 60
+
+outputs:
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: eve.json
+      types:
+        # One alert with action "blocked" for each block, with its rule.
+        - alert:
+            payload: no
+            packet: no
+            metadata: no
+        # A drop with its reason. A drop with no alert is a block by the
+        # engine, not by a rule.
+        - drop:
+            alerts: no
+            flows: start
+  - stats:
+      enabled: yes
+      filename: stats.log
+      totals: yes
+      threads: no
+
+logging:
+  default-log-level: notice
+  outputs:
+    - console:
+        enabled: yes
+
+unix-command:
+  enabled: yes
+  filename: /run/suricata-ips/command.socket
+
+default-rule-path: /var/lib/suricata/ips
+rule-files:
+  - ips.rules
+  - /etc/suricata/ips-local.rules
+
+classification-file: /etc/suricata/classification.config
+reference-config-file: /etc/suricata/reference.config
+threshold-file: /dev/null
+
+detect:
+  profile: low
