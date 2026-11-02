@@ -22,6 +22,8 @@ router_suricata: true # Suricata IDS on the LAN trunk, EVE to Loki
 router_failover: false # wan-failover: needs a second WAN to fail over to
 router_road_warrior: false # IKEv2 remote access (LINDS_MOBILE): its own
 # certificate, the EAP users, an XFRM interface
+router_ips: false # A second Suricata that blocks new connections to published
+# ports (tasks/ips.yml). It needs router_suricata and etc/suricata/ips.nft.
 router_k8s_port_forward: false # k8s-port-forward: WAN ports for the Kubernetes
 # Services that ask for them (tasks/port_forward.yml). It needs the settings
 # below and a token in the vault (k8s_port_forward_token).

@@ -114,6 +114,16 @@
     name: suricata
     state: restarted
 
+- name: restart suricata-ips
+  ansible.builtin.systemd_service:
+    name: suricata-ips
+    state: restarted
+
+- name: reload suricata-ips
+  ansible.builtin.systemd_service:
+    name: suricata-ips
+    state: reloaded
+
 # disable.conf is consumed by suricata-update, not the daemon: rebuild the
 # ruleset and reload it in place (a restart re-reads ~50k rules, ~20s blind).
 - name: suricata-update

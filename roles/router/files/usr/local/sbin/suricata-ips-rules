@@ -1,0 +1,29 @@
+#!/bin/sh
+# Managed by LINDS-Ansible: roles/router/files/usr/local/sbin/suricata-ips-rules.
+# Makes the rule set of the blocking Suricata (etc/suricata/ips.yaml) from the
+# rules that suricata-update fetched: the groups in BLOCK, as drop rules.
+#
+# The groups are lists of bad addresses, so a rule needs only the first packet
+# of a connection. Other groups are not for blocking: most of the alerts on
+# this router are ET INFO, and they are normal traffic.
+#
+# The threshold goes because it limits alerts, not drops. With it, a block has
+# an alert once an hour for each source. Without it, each block shows its rule.
+set -eu
+SOURCE=/var/lib/suricata/rules/suricata.rules
+DIR=/var/lib/suricata/ips
+SOCKET=/run/suricata-ips/command.socket
+BLOCK='ET (DROP|CINS|COMPROMISED)'
+
+mkdir -p "$DIR"
+tmp=$(mktemp "$DIR/.ips.rules.XXXXXX")
+trap 'rm -f "$tmp"' EXIT
+grep -E "^alert .*msg:\"$BLOCK " "$SOURCE" | sed -E 's/^alert /drop /; s/ threshold: *[^;]*;//' > "$tmp"
+# Keep the old rules if the source had none.
+[ -s "$tmp" ]
+chmod 0644 "$tmp"
+mv "$tmp" "$DIR/ips.rules"
+trap - EXIT
+if [ -S "$SOCKET" ]; then
+    suricatasc -c ruleset-reload-nonblocking "$SOCKET" > /dev/null
+fi

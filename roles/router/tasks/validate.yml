@@ -26,6 +26,11 @@
   changed_when: false
   when: router_suricata | bool
 
+- name: ips.yaml + rules load
+  ansible.builtin.command: suricata -T -c /etc/suricata/ips.yaml
+  changed_when: false
+  when: router_ips | bool
+
 # Every global IPv6 address on lan0 must be inside Suricata's HOME_NET
 # (files/<site>/etc/suricata/site-address-groups.yaml). If the ISP delegates
 # another prefix, most rules stop matching IPv6 without any error. The output

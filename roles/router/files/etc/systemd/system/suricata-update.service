@@ -9,3 +9,5 @@ After=network-online.target
 Type=oneshot
 ExecStart=/usr/bin/suricata-update --no-reload
 ExecStart=-/usr/bin/suricatasc -c ruleset-reload-nonblocking
+# The blocking Suricata takes its rules from these. Only a site with it has this.
+ExecStart=-/usr/local/sbin/suricata-ips-rules

@@ -11,6 +11,10 @@ Managed by LINDS-Ansible: roles/router/files/usr/local/sbin/router.
   router host ADDR|NAME|MAC everything the router knows about one client
   router dns NAME [TYPE]    a name through this router (Unbound), Quad9 and the DCs
   router ids                Suricata counters and the last alerts
+  router ips                what the blocking Suricata does and the last blocks
+  router ips why ADDRESS    every block that involves one address
+  router ips off [MINUTES]  stop blocking, for 30 minutes unless you say
+  router ips on             start blocking again
   router forwards           port forwards: Kubernetes Services, static rules, UPnP
   router trace ADDR [SEC]   which firewall rules one host's packets go through
   router logs [AREA] [-f] [--since 2h]   the journal of the router's services
@@ -18,7 +22,7 @@ Managed by LINDS-Ansible: roles/router/files/usr/local/sbin/router.
 
 It needs root, and runs itself through sudo when started by a user. It only
 reads, except `trace`, which adds a table `inet router_trace` for the
-duration of the trace and deletes it afterwards.
+duration of the trace and deletes it afterwards, and `ips off` and `ips on`.
 """
 import argparse
 import ipaddress
@@ -39,6 +43,12 @@ TRACE_TABLE = "router_trace"
 FORWARD_STATE = "/var/lib/k8s-port-forward/state.json"
 FORWARD_TABLE = "k8s_port_forward"
 FORWARD_METRICS = "/var/lib/prometheus/node-exporter/k8s_port_forward.prom"
+IPS_SOCKET = "/run/suricata-ips/command.socket"
+IPS_EVE = "/var/log/suricata-ips/eve.json"
+IPS_NFT = "/etc/suricata/ips.nft"
+IPS_TABLE = "suricata_ips"
+IPS_QUEUE = "/proc/net/netfilter/nfnetlink_queue"
+IPS_TIMER = "router-ips-on"
 UPDATES_CACHE = "/run/router-updates.json"
 # pending_updates() asks apt again only when one of these changes.
 APT_STATE = ("/var/lib/dpkg/status", "/var/cache/apt/pkgcache.bin")
@@ -50,7 +60,7 @@ LOG_AREAS = {
     "bgp": ["frr"],
     "dhcp": ["isc-kea-dhcp4-server", "isc-kea-dhcp-ddns-server"],
     "dns": ["unbound"],
-    "ids": ["suricata", "suricata-update"],
+    "ids": ["suricata", "suricata-ips", "suricata-update"],
     "upnp": ["miniupnpd"],
     "forwards": ["k8s-port-forward"],
     "mdns": ["avahi-daemon"],
@@ -322,6 +332,49 @@ def eve_tail(lines=20000):
     return events
 
 
+def ips_state():
+    """What the blocking Suricata does, or None on a router without it."""
+    if not os.path.exists(IPS_NFT):
+        return None
+    queue = None
+    try:
+        with open(IPS_QUEUE) as f:
+            for line in f:
+                p = line.split()
+                if p[0] == "0":
+                    queue = {"waiting": int(p[2]), "kernel_dropped": int(p[5]), "user_dropped": int(p[6])}
+    except OSError:
+        pass
+    data = run_json(["suricatasc", "-c", "dump-counters", IPS_SOCKET]) or {}
+    counters = data.get("message") if data.get("return") == "OK" else None
+    stats = run_json(["suricatasc", "-c", "ruleset-stats", IPS_SOCKET]) or {}
+    rules = stats.get("message") if stats.get("return") == "OK" else None
+    return {"enabled": ("inet", IPS_TABLE) in nft_tables(), "queue": queue,
+            "counters": counters if isinstance(counters, dict) else None,
+            "rules": rules[0].get("rules_loaded") if rules else None}
+
+
+def ips_blocks(address=None, lines=20000):
+    """The blocks in the recent EVE log, newest last."""
+    blocks = []
+    for line in run(["tail", "-n", str(lines), IPS_EVE], timeout=20).splitlines():
+        if '"blocked"' not in line:
+            continue
+        try:
+            e = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if e.get("event_type") == "alert" and (address is None or address in (e.get("src_ip"), e.get("dest_ip"))):
+            blocks.append(e)
+    return blocks
+
+
+def print_block(e):
+    a = e["alert"]
+    print(f"  {e['timestamp'][5:19].replace('T', ' ')}  {e.get('proto', ''):4} {e.get('src_ip')} -> "
+          f"{e.get('dest_ip')}:{e.get('dest_port', '')}  {a['signature'][:60]} [{a['signature_id']}]")
+
+
 def failed_units():
     return [line.split()[0] for line in
             run(["systemctl", "--failed", "--no-legend", "--plain"]).splitlines() if line.strip()]
@@ -572,6 +625,12 @@ def cmd_status(_args):
     print(f"{'Conntrack':10}{used} of {maximum}" + (bad(" (over 80%)") if maximum and used > maximum * 0.8 else ""))
     failed = failed_units()
     print(f"{'Services':10}" + (bad("failed: " + ", ".join(failed)) if failed else good("all running")))
+    ips = ips_state()
+    if ips is not None:
+        blocked = (ips["counters"] or {}).get("ips", {}).get("blocked", 0)
+        text = good(f"blocking, {blocked} blocked") if ips["enabled"] and ips["queue"] else \
+            bad("off") if not ips["enabled"] else bad("not on the queue, nothing blocked")
+        print(f"{'IPS':10}{text}")
     updates, reboot = pending_updates(), reboot_required()
     text = dim("apt does not answer") if updates is None else \
         (f"{sum(updates.values())} pending ({updates['security']} security)" if sum(updates.values()) else "none pending")
@@ -778,6 +837,57 @@ def cmd_ids(_args):
     print(dim("  Grafana: the Suricata and Network devices dashboards"))
 
 
+def cmd_ips(args):
+    state = ips_state()
+    if state is None:
+        print(dim("This router has no blocking Suricata."))
+        return 0
+    if args.action == "off":
+        minutes = args.value and int(args.value) or 30
+        run(["systemctl", "stop", f"{IPS_TIMER}.timer"])
+        run(["nft", "delete", "table", "inet", IPS_TABLE])
+        run(["systemd-run", f"--unit={IPS_TIMER}", f"--on-active={minutes}min", "/usr/local/sbin/router", "ips", "on"])
+        print(f"Blocking is off for {minutes} min. To start it sooner: router ips on")
+        return 0
+    if args.action == "on":
+        run(["systemctl", "stop", f"{IPS_TIMER}.timer"])
+        run(["nft", "-f", IPS_NFT])
+        print("Blocking is on.")
+        return 0
+    if args.action == "why":
+        if not args.value:
+            print("usage: router ips why ADDRESS")
+            return 2
+        blocks = ips_blocks(args.value)
+        print(f"{len(blocks)} blocks in the recent log involve {args.value}.")
+        for e in blocks[-40:]:
+            print_block(e)
+        if blocks:
+            print(dim("  To let it through: a pass rule in files/<site>/etc/suricata/ips-local.rules (the file says how)."))
+            print(dim("  To see if blocking is the cause: router ips off 10"))
+        return 0
+    queue, counters = state["queue"], state["counters"]
+    if not state["enabled"]:
+        print(bad("Blocking is OFF") + dim(": no queue rule. `router ips on` starts it."))
+    elif queue is None:
+        print(bad("NOT BLOCKING") + dim(": Suricata is not on the queue, so all connections pass."))
+    else:
+        print(good("Blocking is on") + ": new connections from the WAN to published ports go through Suricata.")
+    if counters:
+        ips = counters.get("ips", {})
+        print(f"Since Suricata started ({ago(counters.get('uptime', 0))} ago): "
+              f"{ips.get('accepted', 0)} packets let through, {ips.get('blocked', 0)} blocked, "
+              f"{state['rules']} rules loaded")
+    if queue:
+        print(f"Queue: {queue['waiting']} waiting, {queue['kernel_dropped']} let through because it was full")
+    blocks = ips_blocks()
+    print(f"The last blocks ({len(blocks)} in the recent log):")
+    for e in blocks[-15:]:
+        print_block(e)
+    print(dim("  Loki: {job=\"suricata\", event_type=\"alert\"} | alert_action=\"blocked\""))
+    return 0
+
+
 def cmd_trace(args):
     try:
         ip = ipaddress.ip_address(args.target)
@@ -931,6 +1041,18 @@ def cmd_metrics(args):
             out.append(f"router_dns_lookup_seconds_sum {dns.get('total.recursion.time.avg', 0) * total:.6f}")
             out.append(f"router_dns_lookup_seconds_count {total}")
     metric("failed_units", "systemd units in the failed state.", [({}, len(failed_units()))])
+    ips = ips_state()
+    if ips is not None:
+        metric("ips_enabled", "1 if the queue rule for the blocking Suricata is in place.", [({}, int(ips["enabled"]))])
+        metric("ips_attached", "1 if Suricata listens on the queue.", [({}, int(ips["queue"] is not None))])
+        if ips["queue"]:
+            metric("ips_queue_full_total", "Packets let through uninspected because the queue was full.",
+                   [({}, ips["queue"]["kernel_dropped"])], kind="counter")
+        if ips["counters"]:
+            metric("ips_blocked_total", "Packets the blocking Suricata dropped.",
+                   [({}, ips["counters"].get("ips", {}).get("blocked", 0))], kind="counter")
+            metric("ips_accepted_total", "Packets the blocking Suricata let through.",
+                   [({}, ips["counters"].get("ips", {}).get("accepted", 0))], kind="counter")
     updates = pending_updates()
     if updates is not None:
         metric("updates_pending", "Packages with a newer version in apt, by origin.",
@@ -967,6 +1089,10 @@ def main():
     p.add_argument("type", nargs="?")
     p.set_defaults(func=cmd_dns)
     sub.add_parser("ids").set_defaults(func=cmd_ids)
+    p = sub.add_parser("ips")
+    p.add_argument("action", nargs="?", choices=["why", "off", "on"])
+    p.add_argument("value", nargs="?")
+    p.set_defaults(func=cmd_ips)
     sub.add_parser("forwards").set_defaults(func=cmd_forwards)
     p = sub.add_parser("trace")
     p.add_argument("target")

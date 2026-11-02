@@ -1,0 +1,56 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/system/suricata-ips.service
+# The second Suricata, which blocks (etc/suricata/ips.yaml). It runs as the
+# suricata user. It needs CAP_NET_ADMIN for the queue and nothing else.
+#
+# The queue exists only while this service runs. ExecStopPost takes it away,
+# and the queue rule has `bypass`, so a stopped or crashed Suricata never stops
+# a connection: it only stops blocking.
+# No MemoryDenyWriteExecute: the PCRE JIT needs memory that is executable.
+[Unit]
+Description=Suricata IPS: blocks new connections to published ports
+Documentation=file:/etc/suricata/ips.yaml
+After=network.target nftables.service
+# A restart of nftables flushes the whole ruleset, this table too.
+PartOf=nftables.service
+Wants=nftables.service
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=suricata
+Group=suricata
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+ExecStartPre=+/usr/local/sbin/suricata-ips-rules
+ExecStart=/usr/bin/suricata -c /etc/suricata/ips.yaml -q 0
+ExecStartPost=+/usr/sbin/nft -f /etc/suricata/ips.nft
+ExecReload=/usr/bin/suricatasc -c ruleset-reload-nonblocking /run/suricata-ips/command.socket
+ExecStopPost=-+/usr/sbin/nft delete table inet suricata_ips
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=suricata-ips
+RuntimeDirectoryMode=0750
+LogsDirectory=suricata-ips
+LogsDirectoryMode=0750
+MemoryMax=512M
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

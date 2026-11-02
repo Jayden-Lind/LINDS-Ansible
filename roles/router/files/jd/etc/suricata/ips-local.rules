@@ -1,0 +1,5 @@
+# Managed by LINDS-Ansible: roles/router/files/jd/etc/suricata/ips-local.rules.
+# This site's own rules for the blocking Suricata. A pass rule goes before every
+# drop rule. To let through a source that the lists block, add a line like this
+# and run `systemctl reload suricata-ips`:
+#   pass ip 203.0.113.7 any -> $HOME_NET any (msg:"Who this is"; sid:9000001; rev:1;)

@@ -1,0 +1,14 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/logrotate.d/suricata-ips
+/var/log/suricata-ips/*.log
+/var/log/suricata-ips/*.json
+{
+	su suricata suricata
+	rotate 8
+	missingok
+	compress
+	create
+	sharedscripts
+	postrotate
+		/usr/bin/suricatasc -c reopen-log-files /run/suricata-ips/command.socket > /dev/null 2>&1 || true
+	endscript
+}

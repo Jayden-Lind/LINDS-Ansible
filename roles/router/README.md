@@ -126,6 +126,7 @@ layout above), and the notes are JD's.
 | DNS forwarder | Unbound (Debian's) | `etc/unbound/unbound.conf`, `etc/default/unbound` | Upstream Quad9 over DNS over TLS; expired answers served at once and refreshed behind the client: see below |
 | NTP / SNMP / LLDP / DDNS | chrony, snmpd, lldpd (from its author's OBS repository), ddclient | `etc/chrony/`, `etc/snmp/`, `etc/default/` | |
 | mDNS reflector | avahi-daemon | `etc/avahi/avahi-daemon.conf` | Repeats mDNS between `lan0`, `lan0.52`, `lan0.53` and `lan0.58` so devices on one can be found from the others; publishes nothing itself |
+| Blocking on published ports | A second Suricata on an NFQUEUE, `suricata-ips.service` (`router_ips`) | `etc/suricata/ips.yaml`, `files/<site>/etc/suricata/ips.nft`, `files/<site>/etc/suricata/ips-local.rules` | First packet of new connections only; fails open; see "Suricata blocks on published ports" |
 | IDS | Suricata 8 + suricata-update, from trixie-backports | `etc/suricata/` | One worker thread on `lan0`; WAN traffic and DNS only (BPF filter); TLS flows bypassed after the handshake; EVE → rsyslog imfile → Alloy → Loki; weekly rule refresh reloads in place |
 | Troubleshooting and metrics | `router` (a script), node-exporter, frr-exporter, smokeping-prober | `usr/local/sbin/router`, `etc/default/prometheus-*`, `etc/prometheus/smokeping_prober.yml` | See "Troubleshooting" below; the exporters listen on the cluster network only |
 | Kernel | linux-image-cloud-amd64 from trixie-backports (7.x, `router_kernel_backports`), sysctl, modules, grub | `etc/sysctl.d/`, `etc/modules-load.d/`, `etc/modprobe.d/`, `etc/default/grub.d/` | `ignore_routes_with_linkdown` keeps a link-down build reachable; `ip_nonlocal_bind` lets daemons bind `.1` addresses before the LAN link is up |
@@ -197,6 +198,70 @@ games and the torrent client take inbound IPv6. Thus each host on the main
 LAN with a global IPv6 address can be reached from the internet on each port
 that it listens on. The cluster has no IPv6, so none of the above applies to
 it.
+
+## Suricata blocks on published ports
+
+A second Suricata blocks new connections from known bad addresses to the
+published Kubernetes Services. The first Suricata reads a copy of the traffic
+and cannot block. `router_ips: true` turns the second one on
+(`tasks/ips.yml`, `etc/suricata/ips.yaml`).
+
+**What it sees:** the first packet of each new connection from `wan0` to the
+LoadBalancer pool (`etc/suricata/ips.nft`). It does not see browsing, games,
+the LANs, the tunnels or the torrent client's port. An established connection
+never enters the queue, so it stays on the flowtable.
+
+**What it blocks:** the `ET DROP`, `ET CINS` and `ET COMPROMISED` rules, about
+390. These rules are lists of bad addresses. `suricata-ips-rules` makes them
+from the weekly rule update. A site's own rules are in
+`etc/suricata/ips-local.rules`.
+
+**CAUTION:** Do not add rule groups without a look at what they match. Most
+alerts on this router are `ET INFO`, and those are normal traffic.
+
+### How to see what it blocks
+
+| Question | Where |
+|---|---|
+| Is it on? What did it block? | `router ips` |
+| Did it block this address? | `router ips why ADDRESS` |
+| What is the history? | Grafana, Router dashboard, row "Suricata blocking" |
+| Where is the log? | Loki: `{job="suricata", event_type="alert"} \| alert_action="blocked"` |
+| Which metrics show it? | `router_ips_enabled`, `router_ips_attached`, `router_ips_blocked_total` |
+
+### If a client cannot connect
+
+1. Run `router ips off 10`. This stops blocking for 10 minutes. Blocking
+   starts again by itself.
+2. Try the connection again.
+3. If the connection works now, Suricata blocked it. Run
+   `router ips why ADDRESS` to find the rule.
+4. Add a `pass` rule to `files/<site>/etc/suricata/ips-local.rules`. The file
+   has an example.
+5. Merge the change. To apply it sooner, copy the file to
+   `/etc/suricata/ips-local.rules` and run `systemctl reload suricata-ips`.
+
+### How to test it
+
+1. Add this line to `/etc/suricata/ips-local.rules` on the router. Use an
+   address outside the site that you can connect from:
+   `drop ip ADDRESS any -> $HOME_NET any (msg:"IPS test"; sid:9000999; rev:1;)`
+2. Run `systemctl reload suricata-ips`.
+3. Connect to a published port from that address. The connection must time
+   out.
+4. Run `router ips`. The block must show.
+5. Remove the line and run `systemctl reload suricata-ips`.
+
+### If it fails
+
+* **NOTE:** It fails open. If Suricata stops, its unit removes the queue. If
+  Suricata cannot keep up, the kernel lets the packet through. Connections
+  pass and nothing is blocked. `RouterIPSNotAttached` and `RouterIPSOff` report
+  this, because nothing else shows it.
+* **CAUTION:** Keep `exception-policy: ignore` in `ips.yaml`. With the default,
+  `auto`, an IPS drops traffic at a memory limit, with no rule behind the drop.
+* A `drop` event in `eve.json` with no alert is a block by the engine, not by a
+  rule. Its `reason` field says why.
 
 ## Conventions and sharp edges
 
@@ -1263,6 +1328,7 @@ deletes it at the end.
 | A published Kubernetes Service cannot be reached from the internet | `router forwards` | Its forward and count of new connections, or the reason the router refuses it. Then the Service's network policy (`hubble observe --namespace NS --verdict DROPPED`) |
 | AirPlay or Cast does not find a device on another VLAN | `router logs mdns`, `tcpdump -ni lan0.52 udp port 5353` | The device's network must be in `allow-interfaces` in `avahi-daemon.conf`; the capture shows the device's answers and the router's repeats (from 10.0.52.1, on VLAN 58 from 10.0.58.1) |
 | Questions about the IDS | `router ids` | Drops, alerts, suppressions; the Suricata dashboard |
+| A published service refuses one client | `router ips why ADDRESS`, `router ips off 10` | The blocks for that address; see "Suricata blocks on published ports" |
 | Throughput through the router | `iperf3` between two hosts on different networks | On the router at the same time: `htop`, `perf top`, `dropwatch -l kas` |
 | Anything else | `router logs AREA -f` | Areas: wan, vpn, bgp, dhcp, dns, ids, upnp, mdns, firewall, forwards |
 
@@ -1281,6 +1347,7 @@ alerts go to Discord (LINDS-Kubernetes `base/monitoring/router-metrics.yaml`):
 * Package updates that wait for 7 days, or a newer kernel that does not run
   for 7 days.
 * DNS SERVFAILs, Unbound not answering, Suricata silent or dropping packets.
+* The blocking Suricata off its queue for 10 minutes, or off for an hour.
 * The `router_*` metrics missing or older than 5 minutes.
 * `k8s-port-forward` unable to list Services, refusing a request, or not
   running.

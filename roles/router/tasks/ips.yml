@@ -1,0 +1,64 @@
+---
+# The second Suricata, which blocks. The first one (suricata.yml) reads a copy
+# of the traffic and cannot block. This one sees the first packet of each new
+# connection to a published port. The README, "Suricata blocks on published
+# ports", says how to see what it does and how to turn it off.
+
+- name: IPS rule builder
+  ansible.builtin.copy:
+    src: usr/local/sbin/suricata-ips-rules
+    dest: /usr/local/sbin/suricata-ips-rules
+    mode: '0755'
+
+- name: IPS settings
+  ansible.builtin.copy:
+    src: etc/suricata/ips.yaml
+    dest: /etc/suricata/ips.yaml
+    mode: '0644'
+  notify: restart suricata-ips
+
+- name: IPS queue table
+  ansible.builtin.copy:
+    src: "{{ router_site }}/etc/suricata/ips.nft"
+    dest: /etc/suricata/ips.nft
+    mode: '0644'
+    validate: nft -c -f %s
+  notify: restart suricata-ips
+
+- name: IPS site rules
+  ansible.builtin.copy:
+    src: "{{ router_site }}/etc/suricata/ips-local.rules"
+    dest: /etc/suricata/ips-local.rules
+    mode: '0644'
+  notify: reload suricata-ips
+
+- name: IPS log rotation
+  ansible.builtin.copy:
+    src: etc/logrotate.d/suricata-ips
+    dest: /etc/logrotate.d/suricata-ips
+    mode: '0644'
+
+- name: IPS EVE -> Loki rsyslog relay
+  ansible.builtin.copy:
+    src: etc/rsyslog.d/61-suricata-ips-eve.conf
+    dest: /etc/rsyslog.d/61-suricata-ips-eve.conf
+    mode: '0644'
+  notify: restart rsyslog
+
+- name: IPS unit
+  ansible.builtin.copy:
+    src: etc/systemd/system/suricata-ips.service
+    dest: /etc/systemd/system/suricata-ips.service
+    mode: '0644'
+  notify:
+    - daemon-reload
+    - restart suricata-ips
+
+- name: Flush handlers (unit known)
+  ansible.builtin.meta: flush_handlers
+
+- name: IPS enabled
+  ansible.builtin.systemd_service:
+    name: suricata-ips
+    enabled: true
+    state: started
