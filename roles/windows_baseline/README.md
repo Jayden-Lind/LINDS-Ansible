@@ -41,7 +41,7 @@ here, change it in `inventory/group_vars/windows/gpo.yml` too.
 | `windows_baseline_cpu_mitigations` | `true` | `false` turns off the Spectre variant 2 and Meltdown mitigations (and MDS buffer clearing). The inventory sets `false`. |
 | `windows_baseline_ipv6` | `true` | `false` turns off IPv6 on the server and on each network adapter. The inventory sets `false`. |
 | `windows_baseline_nic_offloads` | LSO and RSC on (the driver defaults) | The properties of the VirtIO network adapter to keep, by registry keyword. `{}` leaves the adapter as it is. |
-| `windows_baseline_updates` | `false` | Install updates. `windows-prepare.yml` and `windows-join.yml` set `true`. |
+| `windows_baseline_updates` | `false` | Install updates. `windows/prepare.yml` and `windows/join.yml` set `true`. |
 | `windows_baseline_update_categories` | security, critical, rollups, definitions | The update categories. |
 | `windows_baseline_update_reject` | `KB5007651` | Updates that the role does not install. |
 

@@ -1,0 +1,21 @@
+---
+# The media hosts: Plex at LINDS, and qBittorrent at both sites.
+#
+#   ansible-playbook playbooks/media.yml --check --diff
+#   ansible-playbook playbooks/media.yml --limit torrent
+#
+# Read playbooks/media.md before you use it.
+
+- name: Install Plex Media Server and mount the network drives
+  hosts: plex
+  become: true
+  roles:
+    - common
+    - plex
+
+- name: Install qBittorrent and mount the NAS
+  hosts: torrent
+  become: true
+  roles:
+    - common
+    - torrent

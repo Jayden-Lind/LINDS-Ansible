@@ -25,7 +25,7 @@
     that: state.role >= 4 or state.existing | length == 0
     fail_msg: >-
       {{ windows_forest_domain }} already exists: {{ state.existing }} answers
-      for it. A new server joins that domain (playbooks/windows-join.yml); it
+      for it. A new server joins that domain (playbooks/windows/join.yml); it
       does not make it again.
   vars:
     state: "{{ windows_forest_state.output[0] | from_json }}"

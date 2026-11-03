@@ -50,7 +50,7 @@
     msg: "{{ windows_dc_retire_dns.output | default([]) }}"
 
 # If a new server with the same name comes next, the preferred bridgehead stays
-# until windows-promote.yml has made the new server known at both sites.
+# until windows/promote.yml has made the new server known at both sites.
 # Otherwise the other site can choose the new server before it can talk to it.
 - name: Let the topology generator choose the bridgehead again
   ansible.builtin.import_tasks: bridgehead-release.yml

@@ -13,7 +13,7 @@ IPv4 address.
 ## Requirements
 
 - A connection as the local Administrator at the DHCP address
-  (`playbooks/vars/windows-local-admin.yml`).
+  (`playbooks/windows/vars/local-admin.yml`).
 
 ## Variables
 
@@ -30,7 +30,7 @@ The role has no defaults. It uses these host variables from
 
 ## How to use it
 
-`playbooks/windows-join.yml` applies it. See `playbooks/windows-join.md`.
+`playbooks/windows/join.yml` applies it. See `playbooks/windows/join.md`.
 
 ## Known problems
 

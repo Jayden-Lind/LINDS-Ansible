@@ -35,13 +35,12 @@ sectors that had gone unreadable without anyone knowing.
 
 ## Hosts
 
-`inventory/storage_health.yml`. The group is deliberately not `proxmox`:
-`playbooks/proxmox.yml` gives that group the JD storage role (ZFS datasets,
-NFS, iSCSI targets), which linds-proxmox-01 must never get.
+The group `hypervisors` in `inventory/hypervisor.yml`. The values of each
+host are in `inventory/host_vars/<host>/storage_health.yml`.
 
 | Host | Storage | Collectors that report |
 |---|---|---|
-| jd-proxmox-02 (inventory name `jd-proxmox-01.linds.com.au`) | ZFS pools `VM`, `NAS-SSD`, `HDD-20T` on ten SATA drives behind an Adaptec HBA; boots from NVMe | zfs, smart, lvm |
+| jd-proxmox-02 | ZFS pools `VM`, `NAS-SSD`, `HDD-20T` on ten SATA drives behind an Adaptec HBA; boots from NVMe | zfs, smart, lvm |
 | linds-proxmox-01 | PERC H730 in RAID mode: two RAID 5 arrays of four disks, one SSD mirror; LVM thin pools on top | raid, smart, lvm |
 
 ## What reads the disks, and when
@@ -76,15 +75,15 @@ same afternoon ran its 160 minutes without showing in either, and passed.
 | The self-test schedule | `templates/smartd.conf.j2` → `/etc/smartd.conf` |
 | When weekly scrubs start | `templates/zfs-scrub-weekly.conf.j2` → a drop-in for `zfs-scrub-weekly@<pool>.timer` |
 | Defaults, with the reasoning | `defaults/main.yml` |
-| Per-host values | `inventory/storage_health.yml` |
+| Per-host values | `inventory/host_vars/<host>/storage_health.yml` |
 | Tests for the exporter | `tests/` — `python3 -m unittest discover -s roles/storage_health/tests` |
 
 ## Running it
 
 ```sh
-ansible-playbook playbooks/storage_health.yml --check --diff   # what would change
-ansible-playbook playbooks/storage_health.yml                  # apply, both hosts
-ansible-playbook playbooks/storage_health.yml --tags exporter  # one part: exporter, selftests, scrub, raid
+ansible-playbook playbooks/hypervisor.yml --tags storage_health --check --diff  # what would change
+ansible-playbook playbooks/hypervisor.yml --tags storage_health                 # apply, both hosts
+ansible-playbook playbooks/hypervisor.yml --tags exporter                       # one part: exporter, selftests, scrub, raid
 ```
 
 Safe to run in full at any time. It installs one package
@@ -206,7 +205,7 @@ raid collector as failed instead of saying nothing.
   `systemctl reload smartmontools` gets the new one into the schedule. Until
   it has had a long test it counts its whole powered life as untested: a used
   drive is flagged at once, a new one after 45 days.
-- **Another host:** add it to `inventory/storage_health.yml`, run the
+- **Another host:** add it to `inventory/hypervisor.yml`, run the
   playbook, then add its address to the ScrapeConfig in LINDS-Kubernetes.
 - **The self-test schedule:** `storage_health_selftest_schedule`. The template
   is validated with `smartd -q showtests`, which also prints the dates an

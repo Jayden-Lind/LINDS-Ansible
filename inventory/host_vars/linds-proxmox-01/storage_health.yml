@@ -1,0 +1,18 @@
+---
+# A Dell T630: a PERC H730 in RAID mode, with LVM thin pools on its virtual
+# disks (roles/storage_health).
+
+# As set on the controller on 2026-10-10. Until then patrol read excluded
+# every virtual disk and consistency check was off, so nothing had read
+# the arrays end to end in years, and a rebuild of the mirror found
+# thousands of sectors nobody knew were unreadable.
+storage_health_raid_patrol:
+  controller: 0
+  # VD 0 "NAS" and VD 3 "RAID-5", the two four-disk RAID 5 arrays, get
+  # patrol read. VD 1 "OS" is the SSD mirror: patrol read skips arrays
+  # made only of SSDs ("PR on SSD: OnlyMixed"), so it is excluded there
+  # and gets the consistency check instead. Both run weekly.
+  patrol_read_mode: Auto
+  patrol_read_excluded_vds: [1]
+  consistency_check_mode: Sequential
+  consistency_check_excluded_vds: [0, 3]

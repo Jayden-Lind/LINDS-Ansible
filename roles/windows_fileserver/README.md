@@ -68,7 +68,7 @@ items, DFS Replication must settle a conflict for each item.
 
 ## Requirements
 
-- The data disk is attached to the VM (`playbooks/windows-data-disk.yml`).
+- The data disk is attached to the VM (`playbooks/windows/data-disk.yml`).
 - A Kerberos ticket (`kinit -f Administrator@LINDS.COM.AU`).
 
 ## Variables
@@ -93,9 +93,9 @@ Set them in `inventory/host_vars/<fqdn>/`. The shares are in
 
 - `playbooks/windows.yml` applies it to a host in `windows_fileserver` and
   `windows_managed` (tag `fileserver`).
-- `playbooks/windows-promote.yml` applies it to a new server in
+- `playbooks/windows/promote.yml` applies it to a new server in
   `windows_fileserver`.
-- `playbooks/windows-nas-access.yml` shows what each domain account can do in
+- `playbooks/windows/nas-access.yml` shows what each domain account can do in
   each top folder (`tasks_from: access-report`). It reads only.
 
 ## Safety

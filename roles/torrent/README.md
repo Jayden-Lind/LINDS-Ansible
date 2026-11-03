@@ -54,7 +54,7 @@ The defaults are in `defaults/main.yml`.
 | `torrent_sunrpc_modprobe_file` | `/etc/modprobe.d/sunrpc.conf` | The file for the RPC slot setting. |
 | `torrent_sunrpc_slot_table_entries` | `"64"` | The first NFS RPC slot count. The kernel default is 2. |
 
-`inventory/torrent.yml` sets `nfs_server`, `nfs_path`, `torrent_user` and
+`inventory/media.yml` sets `nfs_server`, `nfs_path`, `torrent_user` and
 `torrent_categories` for `linds_torrent`. Its downloads go to
 `/mnt/nas/downloads/<category>`, which no Plex library contains. Radarr and
 Sonarr hardlink them into the libraries (LINDS-Kubernetes mounts the same
@@ -62,8 +62,8 @@ share at `/mnt/nas`).
 
 ## How to use it
 
-`playbooks/torrent.yml` applies `common` and then this role to the group
-`torrent`. See [playbooks/torrent.md](../../playbooks/torrent.md).
+`playbooks/media.yml` applies `common` and then this role to the group
+`torrent`. See [playbooks/media.md](../../playbooks/media.md).
 
 ## Safety
 

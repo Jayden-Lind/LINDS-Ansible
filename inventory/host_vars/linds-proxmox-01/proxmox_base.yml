@@ -1,0 +1,10 @@
+---
+# The base settings of linds-proxmox-01 (roles/proxmox_base).
+
+# The host does not export or mount NFS.
+proxmox_base_rpcbind_enabled: false
+# The kernel default is the performance governor.
+proxmox_base_cpu_governor: schedutil
+proxmox_base_nic_ring_interfaces:
+  - eno1
+  - eno2

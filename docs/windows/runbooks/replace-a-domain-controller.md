@@ -23,15 +23,15 @@ file and run `linds-ansible-deploy --retry`. See [deploy/README.md](../../../dep
 4. Make a list of what is on the server and not in code: shares other than
    SYSVOL and NETLOGON, scheduled tasks, software, certificates with private
    keys. The rebuild does not keep them.
-5. Run `ansible-playbook playbooks/windows-capture.yml` and commit, so that
+5. Run `ansible-playbook playbooks/windows/capture.yml` and commit, so that
    you can compare after.
-6. Make the new VM, then run `windows-prepare.yml` and `windows-edition.yml`
+6. Make the new VM, then run `windows/prepare.yml` and `windows/edition.yml`
    for it (see [build-a-server.md](../build-a-server.md), steps 1 to 4). The
    old server stays in service.
 7. For a replication member, run the file check:
 
    ```shell
-   ansible-playbook playbooks/windows-retire.yml -e target=<fqdn> --tags unique-files
+   ansible-playbook playbooks/windows/retire.yml -e target=<fqdn> --tags unique-files
    ```
 
 ## Procedure
@@ -39,31 +39,31 @@ file and run `linds-ansible-deploy --retry`. See [deploy/README.md](../../../dep
 1. Retire the old server, and keep its bridgehead for the new one:
 
    ```shell
-   ansible-playbook playbooks/windows-retire.yml -e target=<fqdn> -e windows_dc_retire_keep_bridgehead=true
+   ansible-playbook playbooks/windows/retire.yml -e target=<fqdn> -e windows_dc_retire_keep_bridgehead=true
    ```
 
 2. On the Proxmox host: `qm set <old vmid> --onboot 0 --name <name>-old`.
 3. For a file server with a data disk, attach the disk:
 
    ```shell
-   ansible-playbook playbooks/windows-data-disk.yml -e target=<fqdn>
+   ansible-playbook playbooks/windows/data-disk.yml -e target=<fqdn>
    ```
 
 4. Join the new server to the domain:
 
    ```shell
-   ansible-playbook playbooks/windows-join.yml -e target=<fqdn> -e bootstrap_address=<DHCP address>
+   ansible-playbook playbooks/windows/join.yml -e target=<fqdn> -e bootstrap_address=<DHCP address>
    ```
 
 5. Promote it:
-   `ansible-playbook playbooks/windows-promote.yml -e target=<fqdn>`.
+   `ansible-playbook playbooks/windows/promote.yml -e target=<fqdn>`.
 6. Run `ansible-playbook playbooks/windows.yml`. For a replication member, this
    adds it to the replication group again.
 7. Record the state, and commit `windows-state/`. For the CA, also back it up:
 
    ```shell
-   ansible-playbook playbooks/windows-ca-backup.yml
-   ansible-playbook playbooks/windows-capture.yml
+   ansible-playbook playbooks/windows/ca-backup.yml
+   ansible-playbook playbooks/windows/capture.yml
    ```
 
 **WARNING:** Do not start the old VM again. It would come up at the address of
@@ -112,7 +112,7 @@ Run `kinit -R` (Linux) or `klist purge` (Windows) on them.
   reachable=False ... no inbound replication partner"). The partner did not
   yet resolve the new server, whose DNS record the retirement had removed. If
   `repadmin /showrepl` on the new server shows successful inbound
-  replication, run `windows-promote.yml` again. Each step that is complete
+  replication, run `windows/promote.yml` again. Each step that is complete
   does nothing.
 - A zone transfer setting belongs to each DNS server and does not replicate.
   A new domain controller refuses transfers until `windows.yml` (tag `dc`)

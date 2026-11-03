@@ -28,7 +28,7 @@ The scripts are in `files/`. `scripts/windows_state.py` writes the files.
 
 ## How to use it
 
-`ansible-playbook playbooks/windows-capture.yml`, then
+`ansible-playbook playbooks/windows/capture.yml`, then
 `git diff -- windows-state`.
 
 ## Safety

@@ -49,13 +49,13 @@ with `-e bootstrap_address=<address>`.
 | Make the servers and the domain agree with the code | `ansible-playbook playbooks/windows.yml` | [windows.md](../../playbooks/windows.md) |
 | Do one server only | `ansible-playbook playbooks/windows.yml --limit <fqdn>` | [windows.md](../../playbooks/windows.md) |
 | Do one part only, for example the directory | `ansible-playbook playbooks/windows.yml --tags directory` | [windows.md](../../playbooks/windows.md) |
-| Record the state of the domain | `ansible-playbook playbooks/windows-capture.yml` | [windows-capture.md](../../playbooks/windows-capture.md) |
-| Back up the CA | `ansible-playbook playbooks/windows-ca-backup.yml` | [windows-ca-backup.md](../../playbooks/windows-ca-backup.md) |
+| Record the state of the domain | `ansible-playbook playbooks/windows/capture.yml` | [windows/capture.md](../../playbooks/windows/capture.md) |
+| Back up the CA | `ansible-playbook playbooks/windows/ca-backup.yml` | [windows/ca-backup.md](../../playbooks/windows/ca-backup.md) |
 | Build a new server | prepare, edition, join, promote | [build-a-server.md](build-a-server.md) |
 | Replace a domain controller | retire, then build | [runbooks/replace-a-domain-controller.md](runbooks/replace-a-domain-controller.md) |
 | Replace a file server that is not a domain controller | retire, then build | [runbooks/replace-a-file-server.md](runbooks/replace-a-file-server.md) |
 | Add a replicated folder | edit the inventory, then `ansible-playbook playbooks/windows.yml` | [runbooks/replication.md](runbooks/replication.md) |
-| See or change who can open the NAS folders | `ansible-playbook playbooks/windows-nas-access.yml` | [runbooks/nas-permissions.md](runbooks/nas-permissions.md) |
+| See or change who can open the NAS folders | `ansible-playbook playbooks/windows/nas-access.yml` | [runbooks/nas-permissions.md](runbooks/nas-permissions.md) |
 | Update the VirtIO drivers and the guest agent | installer from the virtio-win ISO, one restart | [runbooks/update-virtio-drivers.md](runbooks/update-virtio-drivers.md) |
 
 ## Where the settings are
@@ -85,10 +85,10 @@ with `-e bootstrap_address=<address>`.
   top of the repository is not read.
 - There are no system-state backups, by decision. If a domain controller is
   lost, build a new one. If the directory is lost, make the domain again with
-  `windows-forest.yml` (see [windows-forest.md](../../playbooks/windows-forest.md)).
+  `windows/forest.yml` (see [windows/forest.md](../../playbooks/windows/forest.md)).
 - The code owns the GPOs in `inventory/group_vars/windows/gpo.yml` (role
   `windows_gpo`). Change them there, not in GPMC. Edit the other GPOs in GPMC.
-  `ansible-playbook playbooks/windows-capture.yml` keeps a backup of each GPO.
+  `ansible-playbook playbooks/windows/capture.yml` keeps a backup of each GPO.
 - Use a module of `microsoft.ad`, `ansible.windows` or `community.windows`
   where one exists. Write PowerShell only for what no module does, and put a
   long script in the `files/` directory of the role.
@@ -107,8 +107,6 @@ with `-e bootstrap_address=<address>`.
 - Do not use `delegate_to` from one Windows host to another. The task keeps
   `ansible_winrm_kerberos_hostname_override` of the first host, and Kerberos
   fails. Use a separate play for the other host.
-- A play on `localhost` needs `connection: local`. `inventory/wsl.yml` lists
-  `localhost` as an SSH host.
 - In a script that supports check mode, `ForEach-Object <property>` returns
   nothing under `-WhatIf`. Use a script block.
 - Put a PowerShell script of more than about 25 lines in `files/` of the role,

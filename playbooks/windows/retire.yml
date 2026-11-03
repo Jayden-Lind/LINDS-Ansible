@@ -1,0 +1,100 @@
+---
+# Retire a Windows server: a domain controller or a member, for example a file
+# server. Hand over what it carries, demote it if it is a domain controller,
+# stop it, and remove what is left of it in the directory and in DNS.
+#
+#   ansible-playbook playbooks/windows/retire.yml -e target=<fqdn>
+#
+# If a new domain controller with the same name comes next, also give
+# -e windows_dc_retire_keep_bridgehead=true.
+#
+# Read playbooks/windows/retire.md before you use it.
+
+- name: Check the request
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: always
+  tasks:
+    - name: Make sure that the server to retire is in the inventory
+      ansible.builtin.assert:
+        that:
+          - target is defined
+          - target in groups['windows']
+          - hostvars[target].windows_domain is defined
+        fail_msg: Give -e target=<fqdn>, a host in the windows group of the inventory.
+
+    - name: Choose the domain controller that does the work (the partner)
+      ansible.builtin.import_tasks: tasks/partner-dc.yml
+
+- name: Look for replicated files that only the server to retire holds
+  hosts: "{{ target | default('none') }}"
+  gather_facts: false
+  tags: [handover, unique-files]
+  tasks:
+    - name: Compare its replicated files with the files of its partner
+      ansible.builtin.import_role:
+        name: windows_dc_retire
+        tasks_from: unique-files
+
+- name: Move its FSMO roles and its replication memberships to the partner
+  hosts: windows_partner_dc
+  gather_facts: false
+  tags: handover
+  vars:
+    windows_dc_retire_machine: "{{ hostvars[target].windows_hostname | default(target.split('.')[0]) }}"
+  tasks:
+    - name: Hand over the FSMO roles and the replication memberships
+      ansible.builtin.import_role:
+        name: windows_dc_retire
+        tasks_from: handover
+
+- name: Back up the CA for the last time
+  ansible.builtin.import_playbook: ca-backup.yml
+  when: target in groups['windows_ca'] | default([])
+  tags: handover
+
+- name: Remove the CA from the server to retire
+  hosts: "{{ target | default('none') }}"
+  gather_facts: false
+  tags: handover
+  tasks:
+    - name: Remove the CA role
+      ansible.builtin.import_role:
+        name: windows_ca
+        tasks_from: remove
+      when: inventory_hostname in groups['windows_ca'] | default([])
+
+# A member server does not replicate the directory, so this play is for a
+# domain controller only.
+- name: Move replication between the sites to the partner
+  hosts: windows_partner_dc
+  gather_facts: false
+  tags: bridgehead
+  vars:
+    windows_dc_retire_machine: "{{ hostvars[target].windows_hostname | default(target.split('.')[0]) }}"
+  tasks:
+    - name: Make the partner the preferred bridgehead of its site
+      ansible.builtin.import_role:
+        name: windows_dc_retire
+        tasks_from: bridgehead
+      when: target in groups['windows_dc']
+
+- name: Demote the server to retire if it is a domain controller, and stop it
+  hosts: "{{ target | default('none') }}"
+  gather_facts: false
+  roles:
+    - windows_dc_retire
+
+- name: Remove what is left of the server in the directory and in DNS
+  hosts: windows_partner_dc
+  gather_facts: false
+  tags: cleanup
+  vars:
+    windows_dc_retire_machine: "{{ hostvars[target].windows_hostname | default(target.split('.')[0]) }}"
+    windows_dc_retire_address: "{{ hostvars[target].windows_ipv4_address | default(hostvars[target].ansible_host) }}"
+  tasks:
+    - name: Clean up the directory and DNS
+      ansible.builtin.import_role:
+        name: windows_dc_retire
+        tasks_from: cleanup

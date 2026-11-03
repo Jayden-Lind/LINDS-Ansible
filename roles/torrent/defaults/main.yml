@@ -12,7 +12,7 @@ torrent_packages_redhat:
 
 # The account qBittorrent runs as. A torrent client takes whatever its peers
 # send it, so it should not be root; root stays the default so that a host
-# moves only when its group says so (inventory/torrent.yml). For another
+# moves only when its group says so (inventory/media.yml). For another
 # account the role makes a system user and moves the profile over from root
 # once (tasks/user.yml).
 torrent_user: root

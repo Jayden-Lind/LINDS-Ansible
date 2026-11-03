@@ -1,7 +1,7 @@
 ---
 # Disk patrol and storage health metrics. README.md says what each part is for
 # and what reads it; the values that differ per host are in
-# inventory/storage_health.yml.
+# inventory/host_vars/<host>/storage_health.yml.
 
 # --- what Prometheus scrapes ---------------------------------------------------
 # node_exporter is installed to serve one file: the one storage-health-exporter

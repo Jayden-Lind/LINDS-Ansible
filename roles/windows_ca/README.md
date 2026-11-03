@@ -36,10 +36,10 @@ The role has no main task file. Use one of its task files:
 
 - `playbooks/windows.yml` installs or restores the CA, and sets the
   published templates (tag `ca`).
-- `playbooks/windows-ca-backup.yml` makes a backup.
-- `playbooks/windows-promote.yml` installs it on a host in the group
+- `playbooks/windows/ca-backup.yml` makes a backup.
+- `playbooks/windows/promote.yml` installs it on a host in the group
   `windows_ca`.
-- `playbooks/windows-retire.yml` makes a backup and removes it from the
+- `playbooks/windows/retire.yml` makes a backup and removes it from the
   server to retire.
 
 ## Safety

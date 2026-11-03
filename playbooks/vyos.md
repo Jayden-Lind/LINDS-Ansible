@@ -8,7 +8,7 @@ The `vyos.yml` playbook applies the role `vyos` to the VyOS routers. Only
 - Read [roles/vyos/README.md](../roles/vyos/README.md).
 - Run the commands from the repository root. `ansible.cfg` reads the
   inventory and the `vault_password` file from there.
-- Install the collection `vyos.vyos`: `make update-requirements`.
+- Install the collection `vyos.vyos`: `ansible-galaxy install -r requirements.yml`.
 - `inventory/group_vars/linds_vyos.yml` says that its values are not checked
   against the running configuration. Read each change in check mode.
 

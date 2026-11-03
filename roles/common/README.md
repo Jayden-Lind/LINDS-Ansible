@@ -45,7 +45,7 @@ On Debian-family hosts:
 
 ## Requirements
 
-- Install the Galaxy roles and collections: `make update-requirements`.
+- Install the Galaxy roles and collections: `ansible-galaxy install -r requirements.yml`.
 - The play uses `become: true`. Ansible logs in as your user, which needs
   `sudo` without a password.
 
@@ -68,8 +68,7 @@ All variables are in `defaults/main.yml`.
 
 ## How to use it
 
-The playbooks `plex`, `torrent` and `minecraft` apply it before their own
-role.
+`playbooks/media.yml` applies it before the roles `plex` and `torrent`.
 
 ## Safety
 

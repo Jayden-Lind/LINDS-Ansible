@@ -1,7 +1,0 @@
----
-- name: Install qBittorrent and mount the NAS
-  hosts: torrent
-  become: true
-  roles:
-    - common
-    - torrent

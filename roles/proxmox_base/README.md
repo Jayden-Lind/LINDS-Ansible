@@ -44,8 +44,9 @@ Each part has a tag.
 
 ## How to use it
 
-`playbooks/proxmox_base.yml` applies this role to the group `proxmox_base`.
-See [playbooks/proxmox_base.md](../../playbooks/proxmox_base.md).
+`playbooks/hypervisor.yml` applies this role to the group `hypervisors`. Set
+the values of one host in `inventory/host_vars/<host>/proxmox_base.yml`. See
+[playbooks/hypervisor.md](../../playbooks/hypervisor.md).
 
 ## Safety
 

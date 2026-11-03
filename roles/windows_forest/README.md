@@ -14,8 +14,8 @@ The role makes a new server the first domain controller of a new forest.
 ## Requirements
 
 - A new server with its name and address, not in a domain
-  (`windows-prepare.yml`, then the name and address step of
-  `windows-join.yml`).
+  (`windows/prepare.yml`, then the name and address step of
+  `windows/join.yml`).
 - A connection as the local Administrator.
 
 ## Variables
@@ -30,7 +30,7 @@ The role makes a new server the first domain controller of a new forest.
 ## How to use it
 
 ```shell
-ansible-playbook -i <inventory> playbooks/windows-forest.yml \
+ansible-playbook -i <inventory> playbooks/windows/forest.yml \
     -e target=<fqdn> -e windows_forest_domain=<domain>
 ```
 

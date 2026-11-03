@@ -30,4 +30,4 @@ The role has no main task file. Use one of its task files:
 
 ## How to use it
 
-`playbooks/windows-join.yml` applies it. See `playbooks/windows-join.md`.
+`playbooks/windows/join.yml` applies it. See `playbooks/windows/join.md`.

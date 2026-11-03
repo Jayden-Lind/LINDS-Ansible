@@ -1,0 +1,22 @@
+---
+# The Proxmox hosts at both sites. Safe to run in full at any time.
+#
+#   ansible-playbook playbooks/hypervisor.yml --check --diff
+#   ansible-playbook playbooks/hypervisor.yml --limit linds-proxmox-01
+#   ansible-playbook playbooks/hypervisor.yml --tags storage_health
+#
+# Each role is a tag. Read playbooks/hypervisor.md before you use it.
+
+- name: Base settings and storage health of each hypervisor
+  hosts: hypervisors
+  roles:
+    - role: proxmox_base
+      tags: proxmox_base
+    - role: storage_health
+      tags: storage_health
+
+- name: Storage services for the cluster
+  hosts: storage_hypervisors
+  roles:
+    - role: proxmox
+      tags: proxmox

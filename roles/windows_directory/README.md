@@ -91,7 +91,7 @@ files. It lists them under "not in the code".
 
 **NOTE:** The role does not change the GPOs. The role `windows_gpo` makes the
 GPOs that the code owns. Edit the other GPOs in GPMC.
-`ansible-playbook playbooks/windows-capture.yml` keeps a backup of each GPO.
+`ansible-playbook playbooks/windows/capture.yml` keeps a backup of each GPO.
 
 ## Known problems
 

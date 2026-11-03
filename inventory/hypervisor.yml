@@ -1,0 +1,17 @@
+---
+# The Proxmox hosts (playbooks/hypervisor.yml). The settings of each host are
+# in host_vars/<host>/<role>.yml.
+hypervisors:
+  vars:
+    ansible_user: root
+  hosts:
+    jd-proxmox-02:
+      ansible_host: 10.0.50.246
+    linds-proxmox-01:
+      ansible_host: 192.168.6.205
+  children:
+    # The hosts that get roles/proxmox: ZFS, NFS, iSCSI, sanoid and the fan
+    # control of a Lenovo SR655. Only jd-proxmox-02.
+    storage_hypervisors:
+      hosts:
+        jd-proxmox-02:

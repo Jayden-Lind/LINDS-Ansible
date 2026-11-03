@@ -1,0 +1,15 @@
+---
+# The NAS at LINDS: linds-truenas-01.
+#
+#   ansible-playbook playbooks/nas.yml --check --diff
+#
+# Read playbooks/nas.md before you use it.
+
+- name: Configure the TrueNAS hosts
+  hosts: truenas
+  collections:
+    - arensb.truenas
+  environment:
+    middleware_method: client
+  roles:
+    - truenas

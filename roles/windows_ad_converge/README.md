@@ -21,7 +21,7 @@ all domain controllers agree about one computer account.
 
 - A Kerberos ticket with delegation (`kinit -f Administrator@LINDS.COM.AU`).
 - The role runs on one domain controller. The playbooks use the partner
-  (`playbooks/tasks/windows-partner-dc.yml`).
+  (`playbooks/windows/tasks/partner-dc.yml`).
 
 ## Variables
 
@@ -33,7 +33,7 @@ all domain controllers agree about one computer account.
 
 ## How to use it
 
-`windows-join.yml`, `windows-promote.yml` and `windows-retire.yml` use it.
+`windows/join.yml`, `windows/promote.yml` and `windows/retire.yml` use it.
 You do not run it alone.
 
 ## Known problems
