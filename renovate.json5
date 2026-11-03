@@ -24,4 +24,14 @@
   // A homelab doesn't need 25 PRs in the first hour.
   prConcurrentLimit: 0,
   prHourlyLimit: 0,
+
+  packageRules: [
+    {
+      // ansible-core 2.22 masks each value of a vaulted file in all output.
+      // Short values such as "1" and "E" break the output of the deploy and
+      // of tasks. Keep 2.21 until the vault files contain only secrets.
+      matchPackageNames: ["ansible-core"],
+      allowedVersions: "<2.22",
+    },
+  ],
 }
