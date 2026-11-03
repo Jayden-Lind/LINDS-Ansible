@@ -3,7 +3,7 @@
 # ServerDatacenter.
 windows_edition_target: ServerStandard
 
-# The product key. playbooks/windows-edition.yml asks for it. Do not put it in
+# The product key. playbooks/windows/edition.yml asks for it. Do not put it in
 # a file.
 windows_product_key: ""
 

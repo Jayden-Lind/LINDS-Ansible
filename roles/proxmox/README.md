@@ -35,7 +35,7 @@ Each part has a tag.
 ## Variables
 
 The defaults are in `defaults/main.yml`. Set the lists in
-`inventory/proxmox.yml`.
+`inventory/host_vars/jd-proxmox-02/proxmox.yml`.
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -51,8 +51,9 @@ The defaults are in `defaults/main.yml`. Set the lists in
 
 ## How to use it
 
-`playbooks/proxmox.yml` applies this role to the group `proxmox`. See
-[playbooks/proxmox.md](../../playbooks/proxmox.md).
+`playbooks/hypervisor.yml` applies this role to the group
+`storage_hypervisors`. Only `jd-proxmox-02` is in it. See
+[playbooks/hypervisor.md](../../playbooks/hypervisor.md).
 
 ## Safety
 
@@ -61,8 +62,3 @@ makes it.
 
 **CAUTION:** A change to the ZFS module parameters takes effect at the next
 boot.
-
-## Known problems
-
-- The host is `jd-proxmox-02`, but the inventory still calls it
-  `jd-proxmox-01.linds.com.au`.

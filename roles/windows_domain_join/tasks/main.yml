@@ -1,9 +1,9 @@
 ---
-# playbooks/windows-join.yml uses the two task files of this role. They run on
+# playbooks/windows/join.yml uses the two task files of this role. They run on
 # different machines, with different connections:
 #
 #   tasks_from: provision   on a domain controller (Kerberos)
 #   tasks_from: join        on the new server (local Administrator)
 - name: Stop, because this role has only task files
   ansible.builtin.fail:
-    msg: Use this role with tasks_from provision or join. See playbooks/windows-join.yml.
+    msg: Use this role with tasks_from provision or join. See playbooks/windows/join.yml.

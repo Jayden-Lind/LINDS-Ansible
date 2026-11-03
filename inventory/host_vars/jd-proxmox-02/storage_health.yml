@@ -1,0 +1,13 @@
+---
+# ZFS on ten drives behind an Adaptec HBA, and the NVMe that the host boots
+# from (roles/storage_health).
+
+storage_health_zfs_pools:
+  # Three SSDs, one of them a worn consumer drive that has already
+  # replaced 1,231 sectors. A scrub takes a quarter of an hour.
+  - name: VM
+    scrub: weekly
+  - name: NAS-SSD
+    scrub: monthly
+  - name: HDD-20T
+    scrub: monthly

@@ -22,7 +22,7 @@ snapshots on a replication target stop the next incremental pull.
 
 ## Requirements
 
-- The collection `arensb.truenas`: `make update-requirements`.
+- The collection `arensb.truenas`: `ansible-galaxy install -r requirements.yml`.
 - SSH as `root` (the inventory sets `ansible_user: root`).
 
 ## Variables
@@ -37,11 +37,11 @@ snapshots on a replication target stop the next incremental pull.
 | `truenas_syslog_server` | `""` | `host:port` of a syslog server. Empty: no change. |
 | `truenas_syslog_transport` | `UDP` | The syslog transport. |
 
-`inventory/truenas.yml` sets the values for `linds-truenas-01`.
+`inventory/nas.yml` sets the values for `linds-truenas-01`.
 
 ## How to use it
 
-`playbooks/truenas.yml`. See [playbooks/truenas.md](../../playbooks/truenas.md).
+`playbooks/nas.yml`. See [playbooks/nas.md](../../playbooks/nas.md).
 
 ## Known problems
 

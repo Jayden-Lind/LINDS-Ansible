@@ -1,0 +1,28 @@
+---
+# Attach the data disks of a server to its VM, on the hypervisor. The playbook
+# refuses while another VM that has a disk is running.
+#
+#   ansible-playbook playbooks/windows/data-disk.yml -e target=<fqdn>
+#
+# Read playbooks/windows/data-disk.md before you use it.
+
+- name: Check the request
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Make sure that the server has a VM and data disks in the inventory
+      ansible.builtin.assert:
+        that:
+          - target is defined
+          - hostvars[target].windows_vm is defined
+          - hostvars[target].windows_vm.data_disks | default([]) | length > 0
+        fail_msg: Give -e target=<fqdn>, a host with windows_vm.data_disks in inventory/windows.yml.
+
+- name: Attach the data disks
+  hosts: "{{ hostvars[target | default('localhost')].windows_vm.hypervisor | default('none') }}"
+  gather_facts: false
+  vars:
+    windows_data_disk_vm: "{{ hostvars[target].windows_vm }}"
+  roles:
+    - windows_data_disk

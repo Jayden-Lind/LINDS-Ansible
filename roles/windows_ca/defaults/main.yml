@@ -13,9 +13,10 @@ windows_ca_validity_years: 10
 # the list. After a restore the CA issues the default set.
 windows_ca_templates: []
 
-# The state directory. The backup of the CA is in ca/backup in it.
-windows_state_dir: "{{ playbook_dir }}/../windows-state"
+# The state directory. The backup of the CA is in ca/backup in it. The path
+# starts at the folder of ansible.cfg, so it is the same for each playbook.
+windows_state_dir: "{{ ansible_config_file | dirname }}/windows-state"
 
-# Set by playbooks/windows-ca-backup.yml.
+# Set by playbooks/windows/ca-backup.yml.
 windows_ca_backup_password: ""
 windows_ca_backup_work: ""

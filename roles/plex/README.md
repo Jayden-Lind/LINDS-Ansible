@@ -24,7 +24,7 @@ the media shares with autofs.
 
 ## Requirements
 
-- Install the Galaxy roles: `make update-requirements`.
+- Install the Galaxy roles: `ansible-galaxy install -r requirements.yml`.
 - The play uses `become: true`.
 
 ## Variables
@@ -32,15 +32,15 @@ the media shares with autofs.
 | Variable | Where | Description |
 | --- | --- | --- |
 | `plex_crypto_policy` | `defaults/main.yml`: `LEGACY` | The crypto policy on a RedHat-family host. |
-| `server`, `path` | `inventory/plex.yml`: `linds-truenas-01.linds.com.au`, `/mnt/ZFS_NAS` | The NFS export for `/mnt/nas`. |
-| `smb_server`, `smb_path` | `inventory/plex.yml`: `linds-dc.linds.com.au`, `/nas/holiday videos` | The SMB share for `/mnt/cifs`. |
+| `server`, `path` | `inventory/media.yml`: `linds-truenas-01.linds.com.au`, `/mnt/ZFS_NAS` | The NFS export for `/mnt/nas`. |
+| `smb_server`, `smb_path` | `inventory/media.yml`: `linds-dc.linds.com.au`, `/nas/holiday videos` | The SMB share for `/mnt/cifs`. |
 | `smb_username`, `smb_password`, `smb_domain` | `vars/plex.yml` (vault) | The account for `/mnt/cifs`: `svc-plex-smb`, a domain account that can only read the NAS and only log on over the network. Its password is also in `windows_directory_initial_passwords`. |
-| `truenas_host`, `truenas_path` | `inventory/plex.yml`: `jd-truenas-01.linds.com.au`, `/mnt/NAS` | The NFS export for `/mnt/truenas` (the storage address of `jd-proxmox-02`). |
+| `truenas_host`, `truenas_path` | `inventory/media.yml`: `jd-truenas-01.linds.com.au`, `/mnt/NAS` | The NFS export for `/mnt/truenas` (the storage address of `jd-proxmox-02`). |
 
 ## How to use it
 
-`playbooks/plex.yml` applies `common` and then this role. See
-[playbooks/plex.md](../../playbooks/plex.md).
+`playbooks/media.yml` applies `common` and then this role to the group
+`plex`. See [playbooks/media.md](../../playbooks/media.md).
 
 ## Safety
 

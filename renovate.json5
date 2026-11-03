@@ -14,11 +14,10 @@
   // environment of the Windows playbooks. The deploy (deploy/README.md) uses
   // the versions that these two files pin, so merging a PR runs the checks of
   // every playbook in deploy/playbooks with the new version. For a run by
-  // hand, run `make update-requirements` and rebuild .venv after a merge.
+  // hand, run `ansible-galaxy install -r requirements.yml --force` and
+  // rebuild .venv after a merge.
   //
-  // Not tracked:
-  // requirements.txt, which names its packages without a version (Renovate
-  // skips those), and anything installed with apt on the hosts themselves.
+  // Not tracked: anything installed with apt on the hosts themselves.
   labels: ["renovate"],
 
   // A homelab doesn't need 25 PRs in the first hour.

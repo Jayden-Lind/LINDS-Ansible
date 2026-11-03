@@ -47,7 +47,7 @@ answers with a certificate from the domain CA.
 
 ## How to use it
 
-- `playbooks/windows-promote.yml` promotes a new server in `windows_dc`
+- `playbooks/windows/promote.yml` promotes a new server in `windows_dc`
   (`tasks/main.yml` and `tasks/finish.yml`).
 - `playbooks/windows.yml` sets the DNS forwarders and the resolvers of each
   domain controller in `windows_managed` (`tasks/settings.yml`, tag `dc`).
@@ -57,5 +57,5 @@ answers with a certificate from the domain CA.
 - A domain controller certificate has an empty subject. Its names are in the
   subject alternative name. The LDAPS check does not look at the subject.
 - A ticket that a domain controller issued with the old password of the
-  server works on a member, but not on a domain controller. `windows-join.yml`
+  server works on a member, but not on a domain controller. `windows/join.yml`
   renews the ticket of the operator for this reason.

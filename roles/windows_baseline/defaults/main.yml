@@ -47,7 +47,7 @@ windows_baseline_nic_offloads:
   "*RscIPv6": "1"
 
 # Install Windows updates. This can take one hour and restarts the server.
-# windows-prepare.yml and windows-join.yml set it to true.
+# windows/prepare.yml and windows/join.yml set it to true.
 windows_baseline_updates: false
 windows_baseline_update_categories:
   - SecurityUpdates

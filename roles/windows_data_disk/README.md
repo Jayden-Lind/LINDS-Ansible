@@ -16,7 +16,7 @@ cannot delete it.
 
 ## Requirements
 
-- SSH as `root` to the Proxmox host (`inventory/hypervisors.yml`).
+- SSH as `root` to the Proxmox host (`inventory/hypervisor.yml`).
 
 ## Variables
 
@@ -39,7 +39,7 @@ windows_vm:
 
 ## How to use it
 
-`playbooks/windows-data-disk.yml`. See `playbooks/windows-data-disk.md`.
+`playbooks/windows/data-disk.yml`. See `playbooks/windows/data-disk.md`.
 
 ## Safety
 

@@ -23,14 +23,14 @@ file and run `linds-ansible-deploy --retry`. See [deploy/README.md](../../../dep
 
 1. Build the new VM and prepare it while the old server is in service (see
    [build-a-server.md](../build-a-server.md), steps 1 to 4: Terraform,
-   `windows-prepare.yml`, `windows-edition.yml`).
+   `windows/prepare.yml`, `windows/edition.yml`).
 2. Make sure that each replicated folder has no backlog in both directions:
 
    ```shell
    dfsrdiag backlog /rgname:NAS /rfname:<folder> /smem:<member> /rmem:<partner>
    ```
 
-3. Run `ansible-playbook playbooks/windows-capture.yml` and commit, so that you
+3. Run `ansible-playbook playbooks/windows/capture.yml` and commit, so that you
    can compare after.
 4. Make sure that the inventory has the settings of the server:
    `windows_vm` with the data disk in `inventory/windows.yml`, and the shares
@@ -47,14 +47,14 @@ wins. Do the swap only when the backlog in step 2 is 0 in both directions.
    not have:
 
    ```shell
-   ansible-playbook playbooks/windows-retire.yml -e target=<fqdn> --tags unique-files
+   ansible-playbook playbooks/windows/retire.yml -e target=<fqdn> --tags unique-files
    ```
 
 2. Retire the old server. It leaves its replication group and stops, and its
    computer account and DNS records are removed. **The shares stop here.**
 
    ```shell
-   ansible-playbook playbooks/windows-retire.yml -e target=<fqdn>
+   ansible-playbook playbooks/windows/retire.yml -e target=<fqdn>
    ```
 
 3. On the Proxmox host: `qm set <old vmid> --onboot 0 --name <name>-old`.
@@ -73,7 +73,7 @@ wins. Do the swap only when the backlog in step 2 is 0 in both directions.
      stopped:
 
      ```shell
-     ansible-playbook playbooks/windows-data-disk.yml -e target=<fqdn>
+     ansible-playbook playbooks/windows/data-disk.yml -e target=<fqdn>
      ```
 
    **CAUTION:** Both VMs must be stopped for a reassign. Proxmox refuses it
@@ -82,20 +82,20 @@ wins. Do the swap only when the backlog in step 2 is 0 in both directions.
 5. Join the new server to the domain:
 
    ```shell
-   ansible-playbook playbooks/windows-join.yml -e target=<fqdn> -e bootstrap_address=<DHCP address>
+   ansible-playbook playbooks/windows/join.yml -e target=<fqdn> -e bootstrap_address=<DHCP address>
    ```
 
 6. Make it the file server. This brings `D:` online and makes the shares:
 
    ```shell
-   ansible-playbook playbooks/windows-promote.yml -e target=<fqdn>
+   ansible-playbook playbooks/windows/promote.yml -e target=<fqdn>
    ```
 
    **The shares are back here.**
 7. Add the server to the group `windows_managed` in `inventory/windows.yml`.
    Then run `ansible-playbook playbooks/windows.yml`. This adds the server to
    its replication group again, and applies the baseline GPO.
-8. Run `ansible-playbook playbooks/windows-capture.yml`, and commit the
+8. Run `ansible-playbook playbooks/windows/capture.yml`, and commit the
    inventory and `windows-state/`.
 
 **WARNING:** Do not start the old VM again. It would come up with the name

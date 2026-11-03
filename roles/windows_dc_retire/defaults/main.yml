@@ -1,5 +1,5 @@
 ---
-# The playbook playbooks/windows-retire.yml sets the name and the address of
+# The playbook playbooks/windows/retire.yml sets the name and the address of
 # the server to retire. The other values are safe defaults.
 
 # The computer name and the IPv4 address of the server to retire.
@@ -20,7 +20,7 @@ windows_dc_retire_accept_unique_files: false
 # Keep the preferred bridgehead after the retirement. Set it to true when a new
 # server with the same name comes next
 # (-e windows_dc_retire_keep_bridgehead=true).
-# windows-promote.yml then releases it.
+# windows/promote.yml then releases it.
 windows_dc_retire_keep_bridgehead: false
 
 # How long to wait for replication between the sites to work through the

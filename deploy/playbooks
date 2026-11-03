@@ -7,12 +7,9 @@
 #
 # Do not add a playbook that makes or removes a server, or that needs input.
 
-storage_health  playbooks/storage_health.yml
-proxmox_base    playbooks/proxmox_base.yml
-proxmox         playbooks/proxmox.yml
-truenas         playbooks/truenas.yml
-plex            playbooks/plex.yml
-torrent         playbooks/torrent.yml
+hypervisor      playbooks/hypervisor.yml
+nas             playbooks/nas.yml
+media           playbooks/media.yml
 windows         playbooks/windows.yml
 
 # The router is last. A change to strongSwan restarts it, and the tunnel to

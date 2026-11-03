@@ -1,7 +1,8 @@
 ---
 # Versions are pinned so that Renovate can see them: it ignores an entry with
-# no version. `make update-requirements` installs exactly these; to move one,
-# merge its Renovate PR (or edit the pin) and run that again.
+# no version. `ansible-galaxy install -r requirements.yml --force` installs
+# exactly these; to move one, merge its Renovate PR (or edit the pin) and run
+# that again.
 roles:
   - name: robertdebock.autofs
     version: 2.1.10

@@ -21,22 +21,22 @@ it to the full edition if you give a product key.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `windows_edition_target` | `ServerStandard` | The edition: `ServerStandard` or `ServerDatacenter`. |
-| `windows_product_key` | `""` | The product key. `playbooks/windows-edition.yml` asks for it. |
+| `windows_product_key` | `""` | The product key. `playbooks/windows/edition.yml` asks for it. |
 | `windows_edition_allow_evaluation` | `false` | `true`: let an Evaluation installation continue (test servers only). |
 
 ## How to use it
 
-- `playbooks/windows-edition.yml` converts a clone or a domain member. See
-  `playbooks/windows-edition.md`.
-- `playbooks/windows-promote.yml` runs the check first.
+- `playbooks/windows/edition.yml` converts a clone or a domain member. See
+  `playbooks/windows/edition.md`.
+- `playbooks/windows/promote.yml` runs the check first.
 
 ## Safety
 
 **CAUTION:** You cannot convert a domain controller. Convert the edition
 before the promotion.
 
-**NOTE:** Ansible does not keep the product key. The make target gives it in
-the environment of one run.
+**NOTE:** Ansible does not keep the product key. The playbook asks for it at
+the start of each run.
 
 **NOTE:** An Evaluation installation stops working 180 days after the
 installation.

@@ -67,7 +67,7 @@ playbooks and task names.
 
 ## Template for a playbook
 
-Each playbook `playbooks/<name>.yml` has a page `playbooks/<name>.md`.
+Each playbook `<name>.yml` has a page `<name>.md` beside it.
 
 ```markdown
 # <name>.yml

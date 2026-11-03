@@ -26,7 +26,7 @@ Two layers give these rights:
 
 ## Check the rights
 
-1. Run `ansible-playbook playbooks/windows-nas-access.yml`.
+1. Run `ansible-playbook playbooks/windows/nas-access.yml`.
 2. Compare each table with the table above.
 
 ## Change the share permissions

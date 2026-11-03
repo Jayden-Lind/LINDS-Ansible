@@ -5,7 +5,7 @@
 # A new address stops the WinRM connection, and a new name needs a restart.
 # Thus the server gets a script that makes both changes 20 seconds later and
 # then restarts. The next play waits for the server at its new address
-# (playbooks/windows-join.yml).
+# (playbooks/windows/join.yml).
 
 # The template opens WinRM to this network only when Windows setup has
 # finished, so there is nothing to answer, and nothing to lock out, before

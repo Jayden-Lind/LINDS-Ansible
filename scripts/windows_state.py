@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn what playbooks/windows-capture.yml collected into files worth diffing.
+"""Turn what playbooks/windows/capture.yml collected into files worth diffing.
 
 The playbook leaves one JSON document per source in a work directory. This
 writes them out as small YAML files with a fixed layout and ordering, so that
@@ -300,7 +300,7 @@ def ca_backup(work, state):
 README = """\
 # State of the Windows domain
 
-Written by `ansible-playbook playbooks/windows-capture.yml` and `ansible-playbook playbooks/windows-ca-backup.yml`. Do not edit by
+Written by `ansible-playbook playbooks/windows/capture.yml` and `ansible-playbook playbooks/windows/ca-backup.yml`. Do not edit by
 hand: capture again and read the diff.
 
 | Folder | What |

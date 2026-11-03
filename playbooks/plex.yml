@@ -1,7 +1,0 @@
----
-- name: Install Plex Media Server and mount the network drives
-  hosts: plex
-  become: true
-  roles:
-    - common
-    - plex

@@ -43,7 +43,7 @@ The other task files run from the playbook:
 
 ## How to use it
 
-`playbooks/windows-retire.yml`. See `playbooks/windows-retire.md`.
+`playbooks/windows/retire.yml`. See `playbooks/windows/retire.md`.
 
 ## Known problems
 
