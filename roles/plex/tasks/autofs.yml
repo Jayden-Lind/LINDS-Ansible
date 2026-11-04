@@ -25,12 +25,14 @@
     mode: "0640"
   notify: Reload autofs
 
+# The file holds the SMB password: only root (automount) reads it.
 - name: Write the media shares
   ansible.builtin.template:
     src: mounts.j2
     dest: /etc/auto.{{ plex_autofs_map }}
-    mode: "0644"
-  # The file holds the SMB password.
+    owner: root
+    group: root
+    mode: "0600"
   diff: false
   notify: Reload autofs
 
