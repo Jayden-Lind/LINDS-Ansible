@@ -49,7 +49,7 @@ exists() { zfs list -H -o name "$1" >/dev/null 2>&1; }
 # Print a file of the Backblaze VM. The QEMU guest agent reads it.
 guest_read() {
   pvesh get "/nodes/$NODE/qemu/$BACKUP_VMID/agent/file-read" --file "$1" --output-format json 2>/dev/null |
-    python3 -c 'import json, sys; print(json.load(sys.stdin)["content"])'
+    python3 -c 'import json, sys; print(json.load(sys.stdin)["content"])' 2>/dev/null
 }
 
 # Print the value of the first XML attribute $1 in stdin, or nothing.

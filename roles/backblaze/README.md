@@ -16,7 +16,7 @@ timer. A run does these steps:
 
 1. It freezes the file systems of the file server through the QEMU guest
    agent (VSS), takes the ZFS snapshot `<data zvol>@backblaze`, and thaws
-   the file systems. The freeze takes less than a second.
+   the file systems. The file server holds its writes for a few seconds.
 2. It clones the snapshot to `<pool>/vm-<Backblaze VM>-nas-clone`, and
    attaches the clone to the Backblaze VM as `scsi1`.
 3. It starts the Backblaze VM. If the drive does not show the Backblaze
@@ -43,6 +43,10 @@ the storage health metrics (role `storage_health`). The alert
   `bzvol_id.xml` of the Backblaze volume `backblaze_volume_guid`. Backblaze
   writes this folder when it first backs up a drive. See "Give a new data
   disk to Backblaze".
+- Hibernation is off in the Backblaze VM (`powercfg /hibernate off`), and
+  with it Fast Startup. Each run gives Windows a newer clone of the same
+  volume. A Windows that resumes a saved session can write old file system
+  data to it.
 - The role `storage_health` makes `/run/node-exporter-textfile`. Without it,
   the script writes no metrics.
 
