@@ -1,21 +1,8 @@
 ---
 # Versions are pinned so that Renovate can see them: it ignores an entry with
-# no version. `ansible-galaxy install -r requirements.yml --force` installs
-# exactly these; to move one, merge its Renovate PR (or edit the pin) and run
-# that again.
-# Unused since the media hosts use native tasks. They stay until the deploy
-# has applied that change, because it checks the commit before it too.
-roles:
-  - name: robertdebock.autofs
-    version: 2.1.10
-  - name: robertdebock.auto_update
-    version: 3.1.9
-  - name: robertdebock.epel
-    version: 4.1.7
-  - name: robertdebock.logrotate
-    version: 2.11.2
-  - name: claranet.motd
-    version: 2.2.0
+# no version. `ansible-galaxy collection install -r requirements.yml --force`
+# installs exactly these; to move one, merge its Renovate PR (or edit the pin)
+# and run that again.
 collections:
   - name: ansible.posix
     version: 2.2.2

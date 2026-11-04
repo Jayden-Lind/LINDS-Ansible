@@ -1,6 +1,4 @@
 /.vscode
-/roles/rober*
-/roles/clara*
 vault_password
 /.idea/
 /.venv

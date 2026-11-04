@@ -35,16 +35,15 @@ These are the files that a playbook uses:
 - The playbook, the files of its roles, and the files of the roles that
   those roles use.
 - The inventory files of its hosts and of the groups of its hosts.
-- `ansible.cfg`, `requirements.yml` and `requirements-windows.txt`.
+- `ansible.cfg`, `requirements.yml` and `requirements.txt`.
 - Any other file that the playbook or its roles name, for example
   `windows-state/`.
 
 Markdown files, `docs/` and `deploy/` change no host.
 
-The deploy installs Ansible, the collections and the Galaxy roles that
-`requirements-windows.txt` and `requirements.yml` of the commit pin. It keeps
-them in its state folder. A merged Renovate update is used from the next
-deploy.
+The deploy installs Ansible and the collections that `requirements.txt` and
+`requirements.yml` of the commit pin. It keeps them in its state folder. A
+merged Renovate update is used from the next deploy.
 
 ## What it does not do
 
