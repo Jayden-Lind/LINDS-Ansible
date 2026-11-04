@@ -6,7 +6,8 @@
 #      take a ZFS snapshot of its data zvol, and thaw them.
 #   2. Clone the snapshot, and attach the clone to the Backblaze VM.
 #   3. Start the Backblaze VM. Make sure that Backblaze sees its drive. Stop
-#      the VM when Backblaze reports a finished backup, or at the time limit.
+#      the VM when Backblaze has scanned the drive again and has finished a
+#      backup after that scan, or at the time limit.
 #   4. Detach and destroy the clone, and destroy the snapshot.
 #
 # Usage:
@@ -24,7 +25,7 @@ set -euo pipefail
 : "${BACKUP_VMID:?}" "${SOURCE_VMID:?}" "${SOURCE_ZVOL:?}" "${STORAGE:?}" "${CLONE:?}"
 : "${DRIVE:?}" "${VOLUME_GUID:?}"
 : "${SLOT:=scsi1}" "${DISK_OPTIONS:=backup=0,discard=on,iothread=1,ssd=1}"
-: "${MIN_MINUTES:=120}" "${MAX_HOURS:=12}" "${POLL_SECONDS:=300}" "${BOOT_MINUTES:=15}"
+: "${MAX_HOURS:=12}" "${POLL_SECONDS:=300}" "${BOOT_MINUTES:=15}"
 : "${METRICS:=/run/node-exporter-textfile/backblaze.prom}"
 
 SNAPSHOT="$SOURCE_ZVOL@backblaze"
@@ -33,6 +34,7 @@ VOLID="$STORAGE:$CLONE"
 NODE=$(hostname)
 STATE=/run/backblaze-run
 REPORTS='C:\ProgramData\Backblaze\bzdata\bzreports'
+FILELISTS='C:\ProgramData\Backblaze\bzdata\bzfilelists'
 COMPLETED=0
 REMAINING_FILES=NaN
 REMAINING_BYTES=NaN
@@ -50,6 +52,13 @@ exists() { zfs list -H -o name "$1" >/dev/null 2>&1; }
 guest_read() {
   pvesh get "/nodes/$NODE/qemu/$BACKUP_VMID/agent/file-read" --file "$1" --output-format json 2>/dev/null |
     python3 -c 'import json, sys; print(json.load(sys.stdin)["content"])' 2>/dev/null
+}
+
+# Run PowerShell in the Backblaze VM through the QEMU guest agent, and print
+# its output. Fail if the command fails.
+guest_ps() {
+  qm guest exec "$BACKUP_VMID" --timeout 60 -- powershell -NoProfile -NonInteractive -Command "$1" 2>/dev/null |
+    python3 -c 'import json, sys; d = json.load(sys.stdin); print(d.get("out-data", "").strip()); sys.exit(1 if d.get("exitcode") else 0)' 2>/dev/null
 }
 
 # Print the value of the first XML attribute $1 in stdin, or nothing.
@@ -105,12 +114,22 @@ check_drive() {
   log "Drive $DRIVE: of VM $BACKUP_VMID is the Backblaze volume $VOLUME_GUID."
 }
 
-# Backblaze writes bzstat_lastbackupcompleted.xml when a backup pass ends
-# with nothing left to upload.
-completed_since() {
-  local millis
+# When Backblaze last finished a scan of the drive (epoch seconds). The scanner
+# writes the file list of the drive at the end of a scan.
+scanned_at() {
+  guest_ps "([DateTimeOffset](Get-Item '$FILELISTS\\${VOLUME_GUID}_*filelist.dat').LastWriteTimeUtc).ToUnixTimeSeconds()"
+}
+
+# Backblaze writes bzstat_lastbackupcompleted.xml when a pass ends with nothing
+# left to upload. It also writes it soon after a start, from the file list of
+# the last run. Thus a backup counts only if it ended after a scan that ended
+# after $1.
+done_since() {
+  local scanned millis
+  scanned=$(scanned_at) || return 1
+  [ -n "$scanned" ] && [ "$scanned" -ge "$1" ] || return 1
   millis=$(guest_read "$REPORTS\\bzstat_lastbackupcompleted.xml" | attr gmt_millis) || return 1
-  [ -n "$millis" ] && [ "$millis" -ge $(($1 * 1000)) ]
+  [ -n "$millis" ] && [ "$millis" -ge $((scanned * 1000)) ]
 }
 
 read_remaining() {
@@ -121,14 +140,12 @@ read_remaining() {
   log "Backblaze has $REMAINING_FILES files ($REMAINING_BYTES bytes) left to upload."
 }
 
-# A pass can end before Backblaze has scanned the clone. Thus a completion
-# counts only after MIN_MINUTES.
 wait_for_backup() {
   local started now
   started=$(cat "$STATE/started")
   while running "$BACKUP_VMID"; do
     now=$(date +%s)
-    if [ "$now" -ge $((started + MIN_MINUTES * 60)) ] && completed_since "$started"; then
+    if done_since "$started"; then
       COMPLETED=1
       log "Backblaze finished a backup."
       break
@@ -242,12 +259,15 @@ end_start() {
 }
 
 status() {
-  local xml millis
+  local xml millis scanned
   qm status "$BACKUP_VMID"
   if exists "$SNAPSHOT"; then echo "snapshot: $SNAPSHOT"; else echo "snapshot: none"; fi
   if exists "$CLONE_ZVOL"; then echo "clone: $CLONE_ZVOL"; else echo "clone: none"; fi
   running "$BACKUP_VMID" || return 0
   [ -f "$STATE/started" ] && echo "started: $(date -d "@$(cat "$STATE/started")")"
+  if scanned=$(scanned_at) && [ -n "$scanned" ]; then
+    echo "last scan of $DRIVE: ended: $(date -d "@$scanned")"
+  fi
   if xml=$(guest_read "$REPORTS\\bzstat_lastbackupcompleted.xml") && millis=$(attr gmt_millis <<<"$xml") && [ -n "$millis" ]; then
     echo "last backup completed: $(date -d "@$((millis / 1000))")"
   fi
@@ -295,7 +315,7 @@ case "$command" in
     ;;
   finish)
     if running "$BACKUP_VMID"; then
-      if [ -f "$STATE/started" ] && completed_since "$(cat "$STATE/started")"; then
+      if [ -f "$STATE/started" ] && done_since "$(cat "$STATE/started")"; then
         COMPLETED=1
       fi
       read_remaining

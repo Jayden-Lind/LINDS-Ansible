@@ -21,10 +21,12 @@ timer. A run does these steps:
    attaches the clone to the Backblaze VM as `scsi1`.
 3. It starts the Backblaze VM. If the drive does not show the Backblaze
    volume ID within 15 minutes, the run fails.
-4. It waits until Backblaze writes a finished backup in
-   `bzstat_lastbackupcompleted.xml`. A finished backup counts only after
-   `backblaze_min_minutes`, because Backblaze first scans the drive. At
-   `backblaze_max_hours`, the run stops without a finished backup.
+4. It waits until Backblaze has scanned the drive again, and has written a
+   finished backup in `bzstat_lastbackupcompleted.xml` after that scan. The
+   scanner writes the file list of the drive at the end of a scan. Backblaze
+   also writes a finished backup soon after a start, from the file list of
+   the last run, so that one does not count. At `backblaze_max_hours`, the
+   run stops without a finished backup.
 5. It shuts down the VM, destroys the clone, and destroys the snapshot.
 
 The script writes metrics to
@@ -67,7 +69,6 @@ Set the first six for the host in
 | `backblaze_disk_slot` | `scsi1` | The slot of the clone in the Backblaze VM. |
 | `backblaze_disk_options` | `backup=0,discard=on,iothread=1,ssd=1` | The options of the clone in the Backblaze VM. |
 | `backblaze_schedule` | `Sat 02:30` | When the timer starts a run (systemd calendar expression). |
-| `backblaze_min_minutes` | `120` | A finished backup counts only after this time. |
 | `backblaze_max_hours` | `12` | The run stops the VM after this time. |
 
 ## How to use it
