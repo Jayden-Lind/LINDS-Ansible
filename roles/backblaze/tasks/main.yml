@@ -54,3 +54,5 @@
     enabled: true
     state: "{{ 'restarted' if backblaze_units is changed else 'started' }}"
     daemon_reload: "{{ backblaze_units is changed }}"
+  # In check mode, a new unit is not on the host yet, and systemd cannot find it.
+  when: not (ansible_check_mode and backblaze_units is changed)
