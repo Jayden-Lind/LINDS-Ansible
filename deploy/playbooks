@@ -12,6 +12,7 @@ nas             playbooks/nas.yml
 media           playbooks/media.yml
 windows         playbooks/windows.yml
 
-# The router is last. A change to strongSwan restarts it, and the tunnel to
-# LINDS stops for a short time.
+# The routers are last, one after the other. A change to strongSwan restarts
+# it, and the tunnel between the sites stops for a short time.
 jd-router-01    playbooks/router.yml  --limit jd-router-01
+linds-router-01 playbooks/router.yml  --limit linds-router-01

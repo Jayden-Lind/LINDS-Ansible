@@ -57,7 +57,6 @@ merged Renovate update is used from the next deploy.
   remove servers, or ask for input. A renewal by `certificates.yml` looks like
   drift to the deploy. `vyos.yml` is for the router that `linds-router-01`
   replaces. Run them by hand.
-- **Deploy `linds-router-01`.** Add an entry for it after the cutover.
 - **Run during a Talos deploy.** If `linds-tf-deploy` runs, the deploy waits
   for the next poll.
 - **Run at the same time as a playbook that a person runs.** If an
