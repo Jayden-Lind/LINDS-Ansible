@@ -1,12 +1,12 @@
 ---
-# linds-router-01 — the Debian 13 replacement for linds-vyos-01 (roles/router).
+# linds-router-01, the router of the LINDS site (roles/router).
 #
 # Nearly everything is a plain file: roles/router/files/linds/etc/ for what
 # is this site's, roles/router/files/etc/ for what every router gets (edit
 # those). What is here is what the few remaining templates need: the
 # WireGuard tunnel (its endpoint and keys are vaulted in
-# inventory/router.yml), which of the role's optional parts this site has,
-# and what the validator checks for.
+# host_vars/linds-router-01/secrets.yml), which of the role's optional parts
+# this site has, and what the validator checks for.
 
 router_hostname: linds-router-01
 # The directory under roles/router/files/ that holds this site's files.
