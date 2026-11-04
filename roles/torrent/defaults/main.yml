@@ -1,14 +1,8 @@
 ---
-torrent_packages_debian:
+torrent_packages:
   - qbittorrent-nox
   - cifs-utils
   - nfs-common
-
-torrent_packages_redhat:
-  - qbittorrent
-  - qbittorrent-nox
-  - cifs-utils
-  - nfs-utils
 
 # The account qBittorrent runs as. A torrent client takes whatever its peers
 # send it, so it should not be root; root stays the default so that a host

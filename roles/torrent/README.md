@@ -6,8 +6,7 @@ traffic.
 
 ## What it does
 
-1. Installs the packages in `torrent_packages_debian` or
-   `torrent_packages_redhat`.
+1. Installs the packages in `torrent_packages`.
 2. If `torrent_user` is not `root`: makes that system account, with its home
    in `torrent_home`. The first time, it stops `qbittorrent-nox@root`, copies
    root's profile (`~/.config/qBittorrent`, `~/.local/share/qBittorrent`,
@@ -22,7 +21,8 @@ traffic.
 5. Mounts the NAS at `/mnt/nas` and keeps it in `/etc/fstab`:
    - `jd_torrent`: `jd-truenas-01.linds.com.au:/mnt/HDD` (the storage address
      of `jd-proxmox-02`), NFS 4 with `nconnect=4` and `soft`.
-   - `linds_torrent`: `{{ nfs_server }}:{{ nfs_path }}`, NFS 4.2 with `soft`.
+   - `linds_torrent`: `{{ torrent_nfs_server }}:{{ torrent_nfs_path }}`, NFS 4.2
+     with `soft`.
 6. Writes `torrent_sysctl_settings` to `torrent_sysctl_file` and applies them.
 7. Sets the NFS client RPC slot count in `/etc/modprobe.d/sunrpc.conf`. If the
    `sunrpc` module is loaded, it also sets the running value.
@@ -42,8 +42,7 @@ The defaults are in `defaults/main.yml`.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `torrent_packages_debian` | `qbittorrent-nox`, `cifs-utils`, `nfs-common` | The packages for Debian-family hosts. |
-| `torrent_packages_redhat` | `qbittorrent`, `qbittorrent-nox`, `cifs-utils`, `nfs-utils` | The packages for RedHat-family hosts. |
+| `torrent_packages` | `qbittorrent-nox`, `cifs-utils`, `nfs-common` | The packages. |
 | `torrent_user` | `root` | The account qBittorrent runs as. `linds_torrent`: `qbittorrent`. |
 | `torrent_home` | `/root`, or `/var/lib/<torrent_user>` | The account's home, which holds the profile. |
 | `torrent_service_name` | `qbittorrent-nox@<torrent_user>.service` | The qBittorrent service. |
@@ -54,7 +53,7 @@ The defaults are in `defaults/main.yml`.
 | `torrent_sunrpc_modprobe_file` | `/etc/modprobe.d/sunrpc.conf` | The file for the RPC slot setting. |
 | `torrent_sunrpc_slot_table_entries` | `"64"` | The first NFS RPC slot count. The kernel default is 2. |
 
-`inventory/media.yml` sets `nfs_server`, `nfs_path`, `torrent_user` and
+`inventory/media.yml` sets `torrent_nfs_server`, `torrent_nfs_path`, `torrent_user` and
 `torrent_categories` for `linds_torrent`. Its downloads go to
 `/mnt/nas/downloads/<category>`, which no Plex library contains. Radarr and
 Sonarr hardlink them into the libraries (LINDS-Kubernetes mounts the same

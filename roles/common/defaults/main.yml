@@ -31,4 +31,4 @@ common_sysctl_highmem:
   net.ipv4.tcp_max_syn_backlog: 4096
 
 common_ubuntu_hwe_enabled: true
-common_ubuntu_hwe_package: linux-generic-hwe-{{ ansible_distribution_version }}
+common_ubuntu_hwe_package: linux-generic-hwe-{{ ansible_facts['distribution_version'] }}

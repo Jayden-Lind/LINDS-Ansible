@@ -1,0 +1,8 @@
+---
+- name: Install qBittorrent + required packages
+  become: true
+  ansible.builtin.apt:
+    name: "{{ torrent_packages }}"
+    state: present
+    update_cache: true
+

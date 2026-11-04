@@ -1,11 +1,6 @@
 ---
-- name: Install packages (Debian)
-  ansible.builtin.include_tasks: install-debian.yml
-  when: ansible_facts.os_family == 'Debian'
-
-- name: Install packages (RedHat)
-  ansible.builtin.include_tasks: install-redhat.yml
-  when: ansible_facts.os_family == 'RedHat'
+- name: Install packages
+  ansible.builtin.include_tasks: install.yml
 
 - name: Make the qBittorrent account
   ansible.builtin.include_tasks: user.yml

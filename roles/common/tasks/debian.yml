@@ -1,5 +1,5 @@
 ---
-# Debian-family specifics
+# APT, GRUB and the guest agent.
 
 - name: Start qemu-guest-agent
   ansible.builtin.service:

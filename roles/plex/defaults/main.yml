@@ -1,3 +1,33 @@
 ---
-# The system crypto policy on a RedHat-family host. Not used on Debian.
-plex_crypto_policy: LEGACY
+# The shares under /mnt/. The inventory sets the servers and paths:
+# plex_nas_server, plex_nas_path, plex_smb_server, plex_smb_path,
+# plex_truenas_server and plex_truenas_path. The SMB account comes from
+# vars/plex.yml (vault), loaded as the variable `plex`.
+
+# The name of the autofs map, in its two file names.
+plex_autofs_map: linds_plex_mount_{{ plex_nas_server }}
+
+# How autofs mounts /mnt/: unmount after 60 s idle, show the folders before a
+# mount.
+plex_autofs_options:
+  - --timeout 60
+  - --ghost
+
+plex_mounts:
+  - path: nas
+    server: "{{ plex_nas_server }}:{{ plex_nas_path }}"
+    options: [fstype=nfs4, dir_mode=0777, file_mode=0777, vers=4.2, soft]
+  - path: cifs
+    server: "://{{ plex_smb_server }}{{ plex_smb_path }}/"
+    options:
+      - fstype=cifs
+      - username={{ plex.smb_username }}
+      - password={{ plex.smb_password }}
+      - domain={{ plex.smb_domain }}
+      - vers=3.1.1
+      - dir_mode=0777
+      - file_mode=0777
+      - soft
+  - path: truenas
+    server: "{{ plex_truenas_server }}:{{ plex_truenas_path }}"
+    options: [fstype=nfs4, vers=4.2, soft]

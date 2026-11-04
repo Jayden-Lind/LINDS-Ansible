@@ -21,11 +21,20 @@
   args:
     creates: /etc/apt/keyrings/plexmediaserver.v2.gpg
 
-- name: Add Plex repository
-  ansible.builtin.apt_repository:
-    repo: "deb [signed-by=/etc/apt/keyrings/plexmediaserver.v2.gpg] https://repo.plex.tv/deb/ public main"
-    filename: plex
-    state: present
+- name: Add the Plex repository
+  ansible.builtin.deb822_repository:
+    name: plex
+    types: deb
+    uris: https://repo.plex.tv/deb/
+    suites: public
+    components: main
+    signed_by: /etc/apt/keyrings/plexmediaserver.v2.gpg
+
+# The same repository as one line, as apt_repository wrote it.
+- name: Remove the old form of the repository
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/plex.list
+    state: absent
 
 - name: Install Plex Media Server
   ansible.builtin.apt:

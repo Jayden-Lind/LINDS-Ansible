@@ -1,18 +1,18 @@
 ---
 # The media hosts (playbooks/media.yml): Plex, and qBittorrent at both sites.
 plex:
-  children:
-    linds:
-      hosts:
-        linds-plex-01.linds.com.au:
-      vars:
-        server: linds-truenas-01.linds.com.au
-        path: /mnt/ZFS_NAS
-        smb_server: linds-dc.linds.com.au
-        smb_path: /nas/holiday videos
+  hosts:
+    linds-plex-01.linds.com.au:
   vars:
-    truenas_host: jd-truenas-01.linds.com.au
-    truenas_path: /mnt/NAS
+    # /mnt/nas: the media share of the LINDS NAS.
+    plex_nas_server: linds-truenas-01.linds.com.au
+    plex_nas_path: /mnt/ZFS_NAS
+    # /mnt/cifs: a folder of the NAS share on LINDS-DC.
+    plex_smb_server: linds-dc.linds.com.au
+    plex_smb_path: /nas/holiday videos
+    # /mnt/truenas: the NAS export of jd-proxmox-02.
+    plex_truenas_server: jd-truenas-01.linds.com.au
+    plex_truenas_path: /mnt/NAS
 
 torrent:
   children:
@@ -21,10 +21,12 @@ torrent:
         jd-torrent-01.linds.com.au:
     linds_torrent:
       hosts:
-        10.0.36.2:
+        # VM 105 on linds-proxmox-01, on VLAN 36.
+        linds-torrent-02:
+          ansible_host: 10.0.36.2
       vars:
-        nfs_server: linds-truenas-01.linds.com.au
-        nfs_path: /mnt/ZFS_NAS
+        torrent_nfs_server: linds-truenas-01.linds.com.au
+        torrent_nfs_path: /mnt/ZFS_NAS
         # qBittorrent runs as this system account, not root. The NAS maps
         # every NFS client to its media user anyway (inventory/nas.yml),
         # so this is about the host, not file ownership.

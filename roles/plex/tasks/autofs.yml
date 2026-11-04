@@ -1,0 +1,41 @@
+---
+# autofs mounts each share under /mnt/ when a program first opens its path.
+
+- name: Install autofs
+  ansible.builtin.apt:
+    name: autofs
+    state: present
+
+- name: Read the maps in /etc/auto.master.d
+  ansible.builtin.lineinfile:
+    path: /etc/auto.master
+    line: +dir:/etc/auto.master.d
+  notify: Restart autofs
+
+- name: Make /etc/auto.master.d
+  ansible.builtin.file:
+    path: /etc/auto.master.d
+    state: directory
+    mode: "0755"
+
+- name: Add the map of the media shares
+  ansible.builtin.template:
+    src: plex.autofs.j2
+    dest: /etc/auto.master.d/00-{{ plex_autofs_map }}.autofs
+    mode: "0640"
+  notify: Reload autofs
+
+- name: Write the media shares
+  ansible.builtin.template:
+    src: mounts.j2
+    dest: /etc/auto.{{ plex_autofs_map }}
+    mode: "0644"
+  # The file holds the SMB password.
+  diff: false
+  notify: Reload autofs
+
+- name: Keep autofs running
+  ansible.builtin.service:
+    name: autofs
+    state: started
+    enabled: true

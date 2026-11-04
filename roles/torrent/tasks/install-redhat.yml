@@ -1,7 +1,0 @@
----
-- name: Install qBittorrent + required packages (RedHat)
-  become: true
-  ansible.builtin.dnf:
-    name: "{{ torrent_packages_redhat }}"
-    state: present
-

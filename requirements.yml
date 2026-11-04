@@ -3,6 +3,8 @@
 # no version. `ansible-galaxy install -r requirements.yml --force` installs
 # exactly these; to move one, merge its Renovate PR (or edit the pin) and run
 # that again.
+# Unused since the media hosts use native tasks. They stay until the deploy
+# has applied that change, because it checks the commit before it too.
 roles:
   - name: robertdebock.autofs
     version: 2.1.10

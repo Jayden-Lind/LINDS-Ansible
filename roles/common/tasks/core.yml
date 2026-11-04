@@ -1,28 +1,78 @@
 ---
-- name: Enable Auto Update
-  ansible.builtin.include_role:
-    name: robertdebock.auto_update
-  vars:
-    auto_update_apply_updates: true
-    auto_update_message: true
+- name: Install the automatic updates
+  ansible.builtin.apt:
+    name:
+      - unattended-upgrades
+      - apt-listchanges
+    state: present
 
-- name: MOTD
-  ansible.builtin.include_role:
-    name: claranet.motd
-  vars:
-    motd_template: "{{ ansible_parent_role_paths[0] }}/template/motd"
-    # The default adds the time of the run. Then each run changes the file,
-    # and a check never shows that the host matches the repository.
-    motd_template_append: ""
+- name: Update the package lists and install the updates every day
+  ansible.builtin.copy:
+    src: 10periodic
+    dest: /etc/apt/apt.conf.d/10periodic
+    owner: root
+    group: root
+    mode: "0644"
 
-- name: Logrotate
-  ansible.builtin.include_role:
-    name: robertdebock.logrotate
-  vars:
-    logrotate_compress: true
-    logrotate_keep: 7
-    logrotate_frequency: daily
-    logrotate_dateext: true
+- name: Keep the APT timers on
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  loop:
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
+
+# pam_exec runs the script at each login and shows what it prints.
+- name: Install the login message
+  ansible.builtin.copy:
+    src: dynmotd
+    dest: /usr/local/bin/dynmotd
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Show the login message at each login
+  ansible.builtin.lineinfile:
+    path: "{{ item }}"
+    line: session optional pam_exec.so type=open_session stdout /usr/local/bin/dynmotd
+  loop:
+    - /etc/pam.d/login
+    - /etc/pam.d/sshd
+
+- name: Turn off the default login message (PAM)
+  ansible.builtin.replace:
+    path: "{{ item }}"
+    regexp: '^(session\s+optional\s+pam_motd.so\s+.*)'
+    replace: '# \1'
+  loop:
+    - /etc/pam.d/login
+    - /etc/pam.d/sshd
+
+- name: Turn off the default login message (sshd)
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^PrintMotd "
+    line: PrintMotd no
+
+- name: Install logrotate
+  ansible.builtin.apt:
+    name: logrotate
+    state: present
+
+- name: Rotate the logs every day and keep seven, compressed
+  ansible.builtin.copy:
+    src: logrotate.conf
+    dest: /etc/logrotate.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Keep the logrotate timer on
+  ansible.builtin.systemd_service:
+    name: logrotate.timer
+    state: started
+    enabled: true
 
 # The distribution keeps the clock in time (chrony or systemd-timesyncd).
 - name: Set the time zone

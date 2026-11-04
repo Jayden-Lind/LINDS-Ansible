@@ -6,13 +6,13 @@ qBittorrent at both sites. Each host also gets the role `common`.
 | Play | Hosts | Roles |
 | --- | --- | --- |
 | Plex | `linds-plex-01.linds.com.au` (group `plex`) | [common](../roles/common/README.md), [plex](../roles/plex/README.md) |
-| qBittorrent | `jd-torrent-01.linds.com.au` (`jd_torrent`) and `10.0.36.2` (`linds_torrent`) | [common](../roles/common/README.md), [torrent](../roles/torrent/README.md) |
+| qBittorrent | `jd-torrent-01.linds.com.au` (`jd_torrent`) and `linds-torrent-02` (`linds_torrent`, `10.0.36.2`) | [common](../roles/common/README.md), [torrent](../roles/torrent/README.md) |
 
 ## Before you start
 
 - Run the commands from the repository root.
-- Install the Galaxy roles and collections:
-  `ansible-galaxy install -r requirements.yml`.
+- Install the collections:
+  `ansible-galaxy collection install -r requirements.yml`.
 - The plays use `become: true`. Your user needs `sudo` without a password on
   the hosts.
 - If somebody changed settings in the qBittorrent web UI, copy the files from
