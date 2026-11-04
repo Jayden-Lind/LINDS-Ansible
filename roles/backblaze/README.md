@@ -49,6 +49,8 @@ the storage health metrics (role `storage_health`). The alert
   with it Fast Startup. Each run gives Windows a newer clone of the same
   volume. A Windows that resumes a saved session can write old file system
   data to it.
+- Sleep is off in the Backblaze VM (`powercfg /change standby-timeout-ac 0`).
+  A VM that sleeps stops the backup until the time limit.
 - The role `storage_health` makes `/run/node-exporter-textfile`. Without it,
   the script writes no metrics.
 
