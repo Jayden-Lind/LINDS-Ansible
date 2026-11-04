@@ -125,3 +125,7 @@ windows_directory_groups:
 # Enforce the AD permission checks of KB5008383 (characters 28 and 29). See
 # "dSHeuristics" in roles/windows_directory/README.md.
 windows_directory_ds_heuristics: "00000000010000000002000000011"
+
+# The number of computers that one user can join to the domain
+# (ms-DS-MachineAccountQuota).
+windows_directory_machine_account_quota: 10
