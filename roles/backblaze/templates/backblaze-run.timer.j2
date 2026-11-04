@@ -1,0 +1,13 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=Back up the NAS data disk with Backblaze once a week
+Documentation=https://github.com/Jayden-Lind/LINDS-Ansible/blob/main/roles/backblaze/README.md
+
+[Timer]
+OnCalendar={{ backblaze_schedule }}
+# A run that the host misses while it is off waits for the next week.
+Persistent=false
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

@@ -59,6 +59,13 @@ wins. Do the swap only when the backlog in step 2 is 0 in both directions.
 
 3. On the Proxmox host: `qm set <old vmid> --onboot 0 --name <name>-old`.
 4. Move the data disk to the new VM.
+
+   **CAUTION:** On `jd-proxmox-02`, the weekly Backblaze run clones the data
+   disk (role `backblaze`). Before you move the disk, make sure that no run is
+   active: `backblaze-run status` on the host shows `clone: none`. After the
+   move, set the new VM and volume in
+   `inventory/host_vars/jd-proxmox-02/backblaze.yml`.
+
    - To reassign: stop the new VM, then move the disk. Set the new volume name
      (`qm config <new vmid>`) in `windows_vm.data_disks` of the inventory, and
      start the new VM:

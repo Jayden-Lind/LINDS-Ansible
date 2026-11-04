@@ -1,0 +1,13 @@
+{{ ansible_managed | comment }}
+# The settings of /usr/local/sbin/backblaze-run. See roles/backblaze/README.md.
+BACKUP_VMID={{ backblaze_vmid }}
+SOURCE_VMID={{ backblaze_source_vmid }}
+SOURCE_ZVOL={{ backblaze_source_zvol }}
+STORAGE={{ backblaze_storage }}
+CLONE={{ backblaze_clone_name }}
+SLOT={{ backblaze_disk_slot }}
+DISK_OPTIONS={{ backblaze_disk_options }}
+DRIVE={{ backblaze_drive_letter }}
+VOLUME_GUID={{ backblaze_volume_guid }}
+MIN_MINUTES={{ backblaze_min_minutes }}
+MAX_HOURS={{ backblaze_max_hours }}

@@ -1,0 +1,32 @@
+---
+# The weekly Backblaze run of the file server's data disk. README.md says how
+# a run works. The values of each host are in
+# inventory/host_vars/<host>/backblaze.yml.
+
+# --- the VMs and the disk: set these for the host -----------------------------
+# The Backblaze VM. It runs Backblaze Personal Backup on Windows.
+backblaze_vmid: ""
+# The file server, and the zvol of its data disk.
+backblaze_source_vmid: ""
+backblaze_source_zvol: ""
+# The Proxmox storage of the pool that holds the zvol.
+backblaze_storage: ""
+# The name of the clone. It must start with vm-<backblaze_vmid>-, so that
+# Proxmox gives the clone to the Backblaze VM.
+backblaze_clone_name: "vm-{{ backblaze_vmid }}-nas-clone"
+# Backblaze knows its drive by the drive letter, and by the volume ID in
+# <letter>:\.bzvol\bzvol_id.xml.
+backblaze_drive_letter: D
+backblaze_volume_guid: ""
+
+# --- the run ---------------------------------------------------------------------
+backblaze_disk_slot: scsi1
+# ssd=1 and discard=on: Windows trims the clone, and does not defragment it.
+backblaze_disk_options: backup=0,discard=on,iothread=1,ssd=1
+# systemd calendar expression for the weekly run.
+backblaze_schedule: "Sat 02:30"
+# Backblaze scans the whole drive after the start. A finished backup counts
+# only after this time.
+backblaze_min_minutes: 120
+# The run stops the VM after this time, also if Backblaze is not done.
+backblaze_max_hours: 12

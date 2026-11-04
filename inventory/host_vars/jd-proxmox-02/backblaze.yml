@@ -1,0 +1,13 @@
+---
+# The weekly Backblaze run of the NAS (roles/backblaze).
+
+# JD-Backup-01. Until November 2026 this VM was LINDS-Backup, VM 104 on
+# linds-proxmox-01, and it backed up the LINDS copy of the NAS.
+backblaze_vmid: 1115
+# jd-fs-01 and its data disk D:.
+backblaze_source_vmid: 1113
+backblaze_source_zvol: NAS-SSD/vm-1113-disk-0
+backblaze_storage: NAS-SSD
+# The Backblaze volume ID of the NAS drive. It is the ID of the LINDS copy,
+# so that Backblaze continues the same backup. D:\.bzvol on jd-fs-01 holds it.
+backblaze_volume_guid: v004c0c0115545dd8b8368be0015

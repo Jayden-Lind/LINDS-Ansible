@@ -43,11 +43,12 @@ windows:
             - 10.3.1.201
             - 10.0.50.200
           # The VM, and the data disk that outlives it. The disk belongs to
-          # VM 102, the server this one replaces, which is kept switched off;
-          # 104 is the LINDS-Backup VM, which mounts the same disk for its
-          # Backblaze runs (as scsi1, with discard=on, so that its deletes
-          # reach the thin pool). 104 is not in Terraform or in this
-          # inventory. Only one of the three may ever be running.
+          # VM 102, the server this one replaces, which is kept switched off.
+          # 104 is the LINDS-Backup VM. It has the same disk as scsi1, because
+          # it did the Backblaze runs until November 2026. They now run at JD
+          # (roles/backblaze), and 104 is kept switched off as a fallback.
+          # 104 is not in Terraform or in this inventory. Only one of the
+          # three may ever be running.
           windows_vm:
             hypervisor: linds-proxmox-01
             id: 113
@@ -87,7 +88,9 @@ windows:
             - 10.3.1.200
           # The data disk was reassigned from VM 1103 to 1113 at the swap on
           # 19 October 2026 (qm disk move, a rename). 1113 owns it; VM 1103
-          # (JD-FS-01-old) owns nothing and can go.
+          # (JD-FS-01-old) owns nothing and can go. The weekly Backblaze run
+          # backs up a clone of it: if the disk moves, change
+          # inventory/host_vars/jd-proxmox-02/backblaze.yml too.
           windows_vm:
             hypervisor: jd-proxmox-02
             id: 1113

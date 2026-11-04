@@ -1,0 +1,314 @@
+#!/bin/bash
+# backblaze-run: back up the data disk of the file server with Backblaze.
+#
+# The Backblaze VM never uses the live data disk. A run does these steps:
+#   1. Freeze the file systems of the file server (QEMU guest agent, VSS),
+#      take a ZFS snapshot of its data zvol, and thaw them.
+#   2. Clone the snapshot, and attach the clone to the Backblaze VM.
+#   3. Start the Backblaze VM. Make sure that Backblaze sees its drive. Stop
+#      the VM when Backblaze reports a finished backup, or at the time limit.
+#   4. Detach and destroy the clone, and destroy the snapshot.
+#
+# Usage:
+#   backblaze-run run      Do steps 1 to 4. The timer does this.
+#   backblaze-run start    Do steps 1 to 3, but leave the VM running.
+#   backblaze-run finish   Stop the VM, then do step 4.
+#   backblaze-run status   Show the VM, the clone and the Backblaze reports.
+#
+# Settings: /etc/default/backblaze-run. Log: journalctl -u backblaze-run.
+# Managed by LINDS-Ansible (roles/backblaze). Read its README first.
+set -euo pipefail
+
+# shellcheck source=/dev/null
+. "${BACKBLAZE_RUN_CONFIG:-/etc/default/backblaze-run}"
+: "${BACKUP_VMID:?}" "${SOURCE_VMID:?}" "${SOURCE_ZVOL:?}" "${STORAGE:?}" "${CLONE:?}"
+: "${DRIVE:?}" "${VOLUME_GUID:?}"
+: "${SLOT:=scsi1}" "${DISK_OPTIONS:=backup=0,discard=on,iothread=1,ssd=1}"
+: "${MIN_MINUTES:=120}" "${MAX_HOURS:=12}" "${POLL_SECONDS:=300}" "${BOOT_MINUTES:=15}"
+: "${METRICS:=/run/node-exporter-textfile/backblaze.prom}"
+
+SNAPSHOT="$SOURCE_ZVOL@backblaze"
+CLONE_ZVOL="${SOURCE_ZVOL%/*}/$CLONE"
+VOLID="$STORAGE:$CLONE"
+NODE=$(hostname)
+STATE=/run/backblaze-run
+REPORTS='C:\ProgramData\Backblaze\bzdata\bzreports'
+COMPLETED=0
+REMAINING_FILES=NaN
+REMAINING_BYTES=NaN
+
+log() { echo "$*"; }
+fail() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
+
+running() { qm status "$1" | grep -q '^status: running$'; }
+exists() { zfs list -H -o name "$1" >/dev/null 2>&1; }
+
+# Print a file of the Backblaze VM. The QEMU guest agent reads it.
+guest_read() {
+  pvesh get "/nodes/$NODE/qemu/$BACKUP_VMID/agent/file-read" --file "$1" --output-format json 2>/dev/null |
+    python3 -c 'import json, sys; print(json.load(sys.stdin)["content"])'
+}
+
+# Print the value of the first XML attribute $1 in stdin, or nothing.
+attr() { { grep -o "$1=\"[^\"]*\"" || true; } | head -n 1 | cut -d '"' -f 2; }
+
+take_snapshot() {
+  local frozen=no rc=0
+  if running "$SOURCE_VMID"; then
+    if timeout 120 qm guest cmd "$SOURCE_VMID" fsfreeze-freeze >/dev/null; then
+      frozen=yes
+    else
+      log "WARNING: VM $SOURCE_VMID did not freeze. The snapshot is crash-consistent."
+    fi
+  fi
+  zfs snapshot "$SNAPSHOT" || rc=$?
+  if [ "$frozen" = yes ] && ! timeout 120 qm guest cmd "$SOURCE_VMID" fsfreeze-thaw >/dev/null; then
+    log "WARNING: VM $SOURCE_VMID did not thaw. Windows thaws by itself after 10 seconds."
+  fi
+  [ "$rc" = 0 ] || fail "zfs snapshot $SNAPSHOT failed."
+  log "Took the snapshot $SNAPSHOT (file systems frozen: $frozen)."
+}
+
+attach_clone() {
+  if qm config "$BACKUP_VMID" --current | grep -q "^$SLOT:"; then
+    fail "VM $BACKUP_VMID already has a disk in $SLOT."
+  fi
+  zfs clone "$SNAPSHOT" "$CLONE_ZVOL"
+  udevadm settle
+  [ "$(pvesm path "$VOLID")" = "/dev/zvol/$CLONE_ZVOL" ] ||
+    fail "The storage $STORAGE does not show $VOLID as /dev/zvol/$CLONE_ZVOL."
+  qm set "$BACKUP_VMID" --"$SLOT" "$VOLID,$DISK_OPTIONS" >/dev/null
+  log "Attached the clone $CLONE_ZVOL to VM $BACKUP_VMID as $SLOT."
+}
+
+start_vm() {
+  qm start "$BACKUP_VMID"
+  date +%s >"$STATE/started"
+  log "Started VM $BACKUP_VMID."
+}
+
+# Backblaze knows its drive by the volume ID in .bzvol\bzvol_id.xml, and by
+# the drive letter. If either one is wrong, Backblaze sees a missing drive.
+check_drive() {
+  local deadline id
+  deadline=$(($(date +%s) + BOOT_MINUTES * 60))
+  until id=$(guest_read "$DRIVE:\\.bzvol\\bzvol_id.xml"); do
+    [ "$(date +%s)" -lt "$deadline" ] ||
+      fail "VM $BACKUP_VMID shows no $DRIVE:\\.bzvol\\bzvol_id.xml after $BOOT_MINUTES minutes."
+    sleep 20
+  done
+  [ "$(attr vguid <<<"$id")" = "$VOLUME_GUID" ] ||
+    fail "Drive $DRIVE: of VM $BACKUP_VMID is not the Backblaze volume $VOLUME_GUID."
+  log "Drive $DRIVE: of VM $BACKUP_VMID is the Backblaze volume $VOLUME_GUID."
+}
+
+# Backblaze writes bzstat_lastbackupcompleted.xml when a backup pass ends
+# with nothing left to upload.
+completed_since() {
+  local millis
+  millis=$(guest_read "$REPORTS\\bzstat_lastbackupcompleted.xml" | attr gmt_millis) || return 1
+  [ -n "$millis" ] && [ "$millis" -ge $(($1 * 1000)) ]
+}
+
+read_remaining() {
+  local xml
+  xml=$(guest_read "$REPORTS\\bzstat_remainingbackup.xml") || return 0
+  REMAINING_FILES=$(attr remainingnumfilesforbackup <<<"$xml")
+  REMAINING_BYTES=$(attr remainingnumbytesforbackup <<<"$xml")
+  log "Backblaze has $REMAINING_FILES files ($REMAINING_BYTES bytes) left to upload."
+}
+
+# A pass can end before Backblaze has scanned the clone. Thus a completion
+# counts only after MIN_MINUTES.
+wait_for_backup() {
+  local started now
+  started=$(cat "$STATE/started")
+  while running "$BACKUP_VMID"; do
+    now=$(date +%s)
+    if [ "$now" -ge $((started + MIN_MINUTES * 60)) ] && completed_since "$started"; then
+      COMPLETED=1
+      log "Backblaze finished a backup."
+      break
+    fi
+    if [ "$now" -ge $((started + MAX_HOURS * 3600)) ]; then
+      log "The time limit of $MAX_HOURS hours ends the run."
+      break
+    fi
+    # In the background, so that a TERM signal stops the wait at once.
+    sleep "$POLL_SECONDS" &
+    wait $!
+  done
+  if running "$BACKUP_VMID"; then
+    read_remaining
+  else
+    log "VM $BACKUP_VMID stopped before the end of the run."
+  fi
+}
+
+stop_vm() {
+  running "$BACKUP_VMID" || return 0
+  log "Shutting down VM $BACKUP_VMID."
+  qm shutdown "$BACKUP_VMID" --timeout 600 --forceStop 1
+}
+
+# Remove only what this script makes: the clone of the snapshot, and the
+# snapshot. Anything else in the slot stops the script.
+remove_clone() {
+  local disk unused
+  if running "$BACKUP_VMID"; then
+    fail "VM $BACKUP_VMID runs. Stop it before you remove the clone."
+  fi
+  disk=$(qm config "$BACKUP_VMID" --current | sed -n "s/^$SLOT: //p")
+  case "$disk" in
+    "") ;;
+    "$VOLID" | "$VOLID",*) qm set "$BACKUP_VMID" --delete "$SLOT" --force >/dev/null ;;
+    *) fail "$SLOT of VM $BACKUP_VMID is $disk, not the clone. Remove it by hand." ;;
+  esac
+  # A detach without --force keeps the clone as an unused disk. Deleting an
+  # unused disk destroys its volume.
+  for unused in $(qm config "$BACKUP_VMID" --current | sed -n "s/^\(unused[0-9]*\): $VOLID\$/\1/p"); do
+    qm set "$BACKUP_VMID" --delete "$unused" >/dev/null
+  done
+  if exists "$CLONE_ZVOL"; then
+    [ "$(zfs get -H -o value origin "$CLONE_ZVOL")" = "$SNAPSHOT" ] ||
+      fail "$CLONE_ZVOL is not a clone of $SNAPSHOT. Remove it by hand."
+    zfs destroy "$CLONE_ZVOL"
+  fi
+  if exists "$SNAPSHOT"; then
+    zfs destroy "$SNAPSHOT"
+  fi
+  rm -f "$STATE/started"
+  log "Removed the clone and the snapshot."
+}
+
+# The metrics for node_exporter. The success time stays from run to run, so
+# that a failed run does not hide when the last good one was.
+write_metrics() {
+  local ok=$1 last_success=0 now
+  [ -d "${METRICS%/*}" ] || return 0
+  now=$(date +%s)
+  if [ -f "$METRICS" ]; then
+    last_success=$(sed -n 's/^backblaze_run_last_success_timestamp_seconds //p' "$METRICS")
+  fi
+  [ "$ok" = 1 ] && last_success=$now
+  cat >"$METRICS.tmp" <<EOF
+# HELP backblaze_run_last_success_timestamp_seconds When the last run that had no error ended.
+# TYPE backblaze_run_last_success_timestamp_seconds gauge
+backblaze_run_last_success_timestamp_seconds ${last_success:-0}
+# HELP backblaze_run_last_end_timestamp_seconds When the last run ended.
+# TYPE backblaze_run_last_end_timestamp_seconds gauge
+backblaze_run_last_end_timestamp_seconds $now
+# HELP backblaze_run_last_ok 1 if the last run had no error.
+# TYPE backblaze_run_last_ok gauge
+backblaze_run_last_ok $ok
+# HELP backblaze_run_completed 1 if Backblaze finished a backup during the last run.
+# TYPE backblaze_run_completed gauge
+backblaze_run_completed $COMPLETED
+# HELP backblaze_remaining_files Files that Backblaze had left to upload at the end of the last run.
+# TYPE backblaze_remaining_files gauge
+backblaze_remaining_files ${REMAINING_FILES:-NaN}
+# HELP backblaze_remaining_bytes Bytes that Backblaze had left to upload at the end of the last run.
+# TYPE backblaze_remaining_bytes gauge
+backblaze_remaining_bytes ${REMAINING_BYTES:-NaN}
+EOF
+  mv "$METRICS.tmp" "$METRICS"
+}
+
+# Runs when "run" ends, also on an error or a TERM signal. Each step is in a
+# subshell, so that a failed step does not stop the steps after it.
+end_run() {
+  local rc=$? ok=0
+  set +e
+  [ "$rc" = 0 ] && ok=1
+  (stop_vm) || ok=0
+  (remove_clone) || ok=0
+  write_metrics "$ok"
+  [ "$ok" = 1 ] || [ "$rc" != 0 ] || rc=1
+  exit "$rc"
+}
+
+# Runs when "start" ends. On an error, it removes what the start made.
+end_start() {
+  local rc=$?
+  set +e
+  if [ "$rc" != 0 ]; then
+    (stop_vm)
+    (remove_clone)
+  fi
+  exit "$rc"
+}
+
+status() {
+  local xml millis
+  qm status "$BACKUP_VMID"
+  if exists "$SNAPSHOT"; then echo "snapshot: $SNAPSHOT"; else echo "snapshot: none"; fi
+  if exists "$CLONE_ZVOL"; then echo "clone: $CLONE_ZVOL"; else echo "clone: none"; fi
+  running "$BACKUP_VMID" || return 0
+  [ -f "$STATE/started" ] && echo "started: $(date -d "@$(cat "$STATE/started")")"
+  if xml=$(guest_read "$REPORTS\\bzstat_lastbackupcompleted.xml") && millis=$(attr gmt_millis <<<"$xml") && [ -n "$millis" ]; then
+    echo "last backup completed: $(date -d "@$((millis / 1000))")"
+  fi
+  if xml=$(guest_read "$REPORTS\\bzstat_remainingbackup.xml"); then
+    echo "remaining: $(attr remainingnumfilesforbackup <<<"$xml") files, $(attr remainingnumbytesforbackup <<<"$xml") bytes"
+  fi
+  if xml=$(guest_read 'C:\ProgramData\Backblaze\bzdata\overviewstatus.xml'); then
+    echo "transmit: $(attr cur_state <<<"$xml"), file: $(attr current_file <<<"$xml")"
+  fi
+}
+
+command=${1:-run}
+mkdir -p "$STATE"
+if [ "$command" != status ]; then
+  exec 9>"$STATE/lock"
+  flock -n 9 || fail "Another backblaze-run is active."
+fi
+
+case "$command" in
+  run)
+    if running "$BACKUP_VMID"; then
+      fail "VM $BACKUP_VMID runs already. Use 'backblaze-run finish' first."
+    fi
+    trap end_run EXIT
+    trap 'exit 143' TERM INT
+    remove_clone
+    take_snapshot
+    attach_clone
+    start_vm
+    check_drive
+    wait_for_backup
+    ;;
+  start)
+    if running "$BACKUP_VMID"; then
+      fail "VM $BACKUP_VMID runs already. Use 'backblaze-run finish' first."
+    fi
+    remove_clone
+    trap end_start EXIT
+    trap 'exit 143' TERM INT
+    take_snapshot
+    attach_clone
+    start_vm
+    check_drive
+    log "VM $BACKUP_VMID runs with the clone. When Backblaze is done, use 'backblaze-run finish'."
+    ;;
+  finish)
+    if running "$BACKUP_VMID"; then
+      if [ -f "$STATE/started" ] && completed_since "$(cat "$STATE/started")"; then
+        COMPLETED=1
+      fi
+      read_remaining
+    fi
+    stop_vm
+    remove_clone
+    write_metrics 1
+    ;;
+  status)
+    status
+    ;;
+  *)
+    echo "Usage: backblaze-run [run|start|finish|status]" >&2
+    exit 2
+    ;;
+esac

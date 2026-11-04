@@ -8,6 +8,7 @@ The playbook configures the Proxmox hosts at both sites, `jd-proxmox-02` and
 | [proxmox_base](../roles/proxmox_base/README.md) | Both | Logs to Alloy, unused services off, CPU governor and ring buffers |
 | [storage_health](../roles/storage_health/README.md) | Both | Disk patrols, and storage health metrics for Prometheus |
 | [proxmox](../roles/proxmox/README.md) | `jd-proxmox-02` | ZFS, NFS, iSCSI, sanoid and fan control |
+| [backblaze](../roles/backblaze/README.md) | `jd-proxmox-02` | The weekly Backblaze run of the NAS, from a ZFS clone of the data disk |
 
 ## Before you start
 
@@ -36,10 +37,11 @@ change before you merge it, or to apply a change by hand.
 
 - The hosts in `inventory/hypervisor.yml`. Ansible connects as `root`.
 - The settings of each host are in `inventory/host_vars/<host>/<role>.yml`.
-- The group `storage_hypervisors` gets the role `proxmox`. Only
-  `jd-proxmox-02` is in it.
+- The group `storage_hypervisors` gets the roles `proxmox` and `backblaze`.
+  Only `jd-proxmox-02` is in it.
 - It restarts rsyslog, `smartd` and node_exporter when their configuration
-  changes. It touches no VM.
+  changes. The playbook touches no VM. The timer of the role `backblaze`
+  starts and stops the Backblaze VM once a week.
 
 ## If it fails
 

@@ -1,0 +1,56 @@
+---
+- name: Check the settings
+  ansible.builtin.assert:
+    that:
+      - backblaze_vmid | string | length > 0
+      - backblaze_source_vmid | string | length > 0
+      - backblaze_source_zvol | length > 0
+      - backblaze_storage | length > 0
+      - backblaze_volume_guid | length > 0
+      - backblaze_clone_name.startswith('vm-' ~ backblaze_vmid ~ '-')
+    fail_msg: Set the values in inventory/host_vars/<host>/backblaze.yml. See roles/backblaze/README.md.
+    quiet: true
+
+- name: Make sure that the two VMs exist
+  ansible.builtin.command:
+    argv: [qm, status, "{{ item }}"]
+  loop:
+    - "{{ backblaze_vmid }}"
+    - "{{ backblaze_source_vmid }}"
+  changed_when: false
+  check_mode: false
+
+- name: Install backblaze-run
+  ansible.builtin.copy:
+    src: backblaze-run
+    dest: /usr/local/sbin/backblaze-run
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the settings of backblaze-run
+  ansible.builtin.template:
+    src: backblaze-run.default.j2
+    dest: /etc/default/backblaze-run
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the service and the timer
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - backblaze-run.service
+    - backblaze-run.timer
+  register: backblaze_units
+
+- name: Do a run once a week
+  ansible.builtin.systemd:
+    name: backblaze-run.timer
+    enabled: true
+    state: "{{ 'restarted' if backblaze_units is changed else 'started' }}"
+    daemon_reload: "{{ backblaze_units is changed }}"
