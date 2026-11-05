@@ -478,6 +478,12 @@ alerts on this router are `ET INFO`, and those are normal traffic.
   (`internalmsg.severity`) and logs that one error once per thousand
   (`ConErrSkip`); the reconnect itself loses nothing. To see a DHCP exchange in full, set the `kea-dhcp4` logger back
   to INFO and `config-reload` over the control socket.
+* **The journal is in RAM** (`Storage=volatile`, 256 MB at most, in
+  `journald.conf.d/90-size-cap.conf`). On disk, journald rewrote its index
+  pages for each new line: about 6.7 GB of writes a day for a 282 MB
+  journal. rsyslog keeps `/var/log/syslog`, `auth.log` and `kern.log` on
+  disk and sends every line to Loki. After a reboot, `journalctl -b -1` is
+  empty. Read the earlier boot in `/var/log/syslog` or in Loki.
 * **ECMP hashes the 5-tuple.** `fib_multipath_hash_policy=1` (v4 and v6)
   in sysctl.d, so flows from one client spread across the five Talos
   next-hops of a service VIP instead of all landing on one node.
@@ -557,6 +563,12 @@ alerts on this router are `ET INFO`, and those are normal traffic.
   * No DNSSEC validation (`module-config: "iterator"`): Quad9 validates.
     So `etc/default/unbound` turns off the root trust anchor update, and
     the resolvconf hook (the router's own `resolv.conf` is a fixed file).
+  * At JD the router itself asks this Unbound: `resolv.conf` lists
+    127.0.0.1, then Quad9 (9.9.9.9) in plain text for when Unbound is not
+    running. `linds-pfsense.linds.com.au`, the name the tunnel dials, goes
+    to Quad9 and not to the DCs: the DCs hold it as a CNAME to itself. At
+    LINDS, `resolv.conf` still lists public resolvers: LINDS dials
+    `jd.linds.com.au`, and the DCs answer that name with 10.0.52.7.
   * Debian confines `/usr/sbin/unbound` with AppArmor: it reads its config
     under `/etc/unbound` only. A test config elsewhere fails with
     "Permission denied".
@@ -781,7 +793,10 @@ alerts on this router are `ET INFO`, and those are normal traffic.
   attempt went over IPv6 and failed, so only JD ever brought the tunnel
   up. `ipsec0`'s MTU (1436) is sized for an IPv4 outer header as well: over
   IPv6 a full-size packet is about 12 bytes too big for the WAN, and TCP
-  falls back on path MTU discovery.
+  falls back on path MTU discovery. The `LINDS` child has
+  `replay_window = 1024`. With the default of 32, the kernel dropped ESP
+  packets that arrived more than 32 places out of order under load
+  (`XfrmInStateSeqError` in `/proc/net/xfrm_stat`).
 * **After a WAN failover the tunnel follows the best path**
   (`prefer_best_path = yes` in jd's `strongswan.d/router.conf`). Without it
   charon keeps an SA on any path that still works: after the failover of
@@ -1337,6 +1352,9 @@ The router reports to the cluster's Prometheus: node-exporter (with the
 counters among them), and the FRR and smokeping exporters. They listen on the cluster
 network only (input rule 16). node-exporter has only the collectors that
 the dashboard and the alerts use (`files/<site>/etc/default/prometheus-node-exporter`).
+The smokeping prober and Unbound start after `wan-online.service`, which
+waits at most 30 s for the WAN default routes. A prober that starts before
+the lease never pings its internet targets.
 The Router dashboard in Grafana (folder Network) shows the data. These
 alerts go to Discord (LINDS-Kubernetes `base/monitoring/router-metrics.yaml`):
 
@@ -1349,6 +1367,7 @@ alerts go to Discord (LINDS-Kubernetes `base/monitoring/router-metrics.yaml`):
 * DNS SERVFAILs, Unbound not answering, Suricata silent or dropping packets.
 * The blocking Suricata off its queue for 10 minutes, or off for an hour.
 * The `router_*` metrics missing or older than 5 minutes.
+* The smokeping prober that sends no ping to a target for 10 minutes.
 * `k8s-port-forward` unable to list Services, refusing a request, or not
   running.
 
