@@ -1,0 +1,16 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/system/wan-online.service
+# Waits at most 30 s for the WAN default routes, then always succeeds. Only the
+# daemons that send to the internet as they start order after it, through a
+# wan-online.conf drop-in: the smokeping prober (its first failed ping stops
+# that target for good) and Unbound (it answered SERVFAIL to every client
+# until the lease came). Boot itself does not wait: systemd-networkd-wait-online
+# stays masked (tasks/network.yml).
+[Unit]
+Description=Wait (at most 30 s) for the WAN default routes
+After=systemd-networkd.service
+Wants=systemd-networkd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/wan-online 30

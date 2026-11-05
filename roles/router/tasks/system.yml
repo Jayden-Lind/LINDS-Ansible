@@ -109,7 +109,7 @@
     state: directory
     mode: '0755'
 
-- name: journald size cap
+- name: journald in RAM, size cap
   ansible.builtin.copy:
     src: etc/systemd/journald.conf.d/90-size-cap.conf
     dest: /etc/systemd/journald.conf.d/90-size-cap.conf

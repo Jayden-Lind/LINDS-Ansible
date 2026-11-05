@@ -1,0 +1,25 @@
+#!/bin/sh
+# Managed by LINDS-Ansible: roles/router/files/usr/local/sbin/wan-online
+# Wait until the main table has an IPv4 and an IPv6 default route (the WAN's
+# DHCP lease and RA), at most $1 seconds (default 30). Always exit 0: a WAN
+# that is down must not stop the daemons that order after wan-online.service.
+#
+# Why: at boot the daemons start about 3 s before wan0 has its lease. The
+# smokeping prober's first ping then fails, and the prober never sends to
+# that target again (2026-11-02: no WAN pings for 3.5 days, see
+# wan-online.service).
+limit=${1:-30}
+tries=$((limit * 2))
+i=0
+while [ "$i" -lt "$tries" ]; do
+    if ip -4 route show default | grep -q . && ip -6 route show default | grep -q .; then
+        echo "WAN default routes present after $((i / 2)) s"
+        exit 0
+    fi
+    sleep 0.5
+    i=$((i + 1))
+done
+v4=$(ip -4 route show default | grep -c .)
+v6=$(ip -6 route show default | grep -c .)
+echo "after ${limit} s: IPv4 default routes ${v4}, IPv6 default routes ${v6}; continuing" >&2
+exit 0
