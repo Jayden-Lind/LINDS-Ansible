@@ -9,3 +9,38 @@ windows_fileserver_folder_permissions:
     rules:
       - {who: LINDS\FreeNAS Read & Write, rights: ReadAndExecute, inherit: ObjectInherit, propagation: NoPropagateInherit}
       - {who: LINDS\Domain Users, rights: ReadAndExecute, inherit: ObjectInherit, propagation: NoPropagateInherit}
+
+# The data volume, its shadow copies and its NFS export (role
+# windows_fileserver). The shares are in fileserver.vault.yml.
+windows_fileserver_volumes:
+  - label: NAS
+    letter: E
+windows_fileserver_replication: true
+windows_fileserver_shadow_copies:
+  - letter: E
+    days:
+      - monday
+      - tuesday
+      - wednesday
+      - thursday
+      - friday
+    times:
+      - 07:00
+      - '12:00'
+windows_fileserver_nfs_shares:
+  - name: NAS
+    path: E:\
+    authentication:
+      - sys
+    unmapped_user_access: true
+    anonymous_access: false
+    clients:
+      - client: 10.0.36.2
+        permission: readwrite
+        root: true
+      - client: 10.3.1.20
+        permission: readwrite
+        root: true
+      - client: 10.3.1.50
+        permission: readwrite
+        root: true
