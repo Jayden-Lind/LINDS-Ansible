@@ -144,3 +144,9 @@ To continue the same backup on a new data disk:
 - If the file server does not freeze, the run continues with a
   crash-consistent snapshot. Windows repairs the file system of the clone
   when it mounts it.
+- If the VM stops responding during a run, look in its System and
+  Application logs for event 2004 ("low virtual memory condition") and for
+  crashes of `bztransmit.exe`. The VM has 16 GB and no page file. A run with
+  a very large number of changed files can use all of it. Give the VM a page
+  file or more memory, then restart it. The script forces off a VM that does
+  not respond at `backblaze_max_hours`.
