@@ -13,7 +13,7 @@
 - name: Mount NFS NAS
   ansible.posix.mount:
     path: /mnt/nas
-    src: "{{ nfs_server }}:{{ nfs_path }}"
+    src: "{{ torrent_nfs_server }}:{{ torrent_nfs_path }}"
     fstype: nfs4
     opts: vers=4.2,soft
     state: mounted

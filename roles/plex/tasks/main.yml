@@ -1,53 +1,11 @@
 ---
-- name: Include vars
+- name: Load the SMB account (vault)
   ansible.builtin.include_vars:
     file: plex.yml
     name: plex
 
-- name: Include Plex (RedHat)
-  ansible.builtin.include_tasks:
-    file: plex_redhat.yml
-  when: ansible_facts['os_family'] == "RedHat"
+- name: Install Plex Media Server
+  ansible.builtin.import_tasks: install.yml
 
-- name: Include Plex (Debian)
-  ansible.builtin.include_tasks:
-    file: plex_debian.yml
-  when: ansible_facts['os_family'] == "Debian"
-
-- name: Mount NFS Truenas
-  ansible.builtin.include_role:
-    name: robertdebock.autofs
-  vars:
-    autofs_maps:
-      - name: linds_plex_mount_{{ server }}
-        mountpoint: /mnt/
-        options:
-          - --timeout 60
-          - --ghost
-        directories:
-          - server: "{{ server }}:{{ path }}"
-            options:
-              - fstype=nfs4
-              - dir_mode=0777
-              - file_mode=0777
-              - vers=4.2
-              - soft
-            path: nas
-          - server: ://{{ smb_server }}{{ smb_path }}/
-            options:
-              - fstype=cifs
-              - username={{ plex.smb_username }}
-              - password={{ plex.smb_password }}
-              - domain={{ plex.smb_domain }}
-              - vers=3.1.1
-              - dir_mode=0777
-              - file_mode=0777
-              - soft
-            path: cifs
-          - server: "{{ truenas_host }}:{{ truenas_path }}"
-            options:
-              - fstype=nfs4
-              - vers=4.2
-              - soft
-            path: truenas
-  when: inventory_hostname in groups['linds']
+- name: Mount the media shares
+  ansible.builtin.import_tasks: autofs.yml

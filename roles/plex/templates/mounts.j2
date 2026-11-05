@@ -1,0 +1,4 @@
+{{ ansible_managed | comment }}
+{% for mount in plex_mounts %}
+{{ mount.path }} -{{ mount.options | join(',') }} {{ mount.server }}
+{% endfor %}

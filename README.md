@@ -11,7 +11,7 @@ All text in this repository uses Simplified Technical English. See
 
 ## Start here
 
-1. Install the collections and roles: `ansible-galaxy install -r requirements.yml`.
+1. Install the collections: `ansible-galaxy collection install -r requirements.yml`.
 2. Put the vault password in the file `vault_password` in the repository root.
    Git ignores it.
 3. Run playbooks from the repository root. `ansible.cfg` reads the inventory
