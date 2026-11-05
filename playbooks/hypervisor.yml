@@ -20,3 +20,9 @@
   roles:
     - role: proxmox
       tags: proxmox
+
+- name: Weekly Backblaze run of the NAS
+  hosts: storage_hypervisors
+  roles:
+    - role: backblaze
+      tags: backblaze

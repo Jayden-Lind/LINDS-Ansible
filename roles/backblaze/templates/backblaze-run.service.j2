@@ -1,0 +1,16 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=Back up the NAS data disk with Backblaze, from a ZFS clone
+Documentation=https://github.com/Jayden-Lind/LINDS-Ansible/blob/main/roles/backblaze/README.md
+After=pve-guests.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/backblaze-run run
+# The script stops the VM itself after MAX_HOURS. This limit is for a script
+# that does not stop.
+TimeoutStartSec={{ backblaze_max_hours | int + 1 }}h
+# On a stop, only the script gets the TERM signal. It shuts down the VM (up to
+# ten minutes) and removes the clone.
+KillMode=mixed
+TimeoutStopSec=15min

@@ -94,8 +94,9 @@ that it deletes. Thus:
 owns `NAS:vm-102-disk-0`, and VM 113 uses it. Never delete VM 102 and never
 start it.
 
-**WARNING:** The LINDS-Backup VM (104) uses the same disk for its Backblaze
-runs. Stop VM 113 before you start VM 104, and the reverse.
+**WARNING:** The LINDS-Backup VM (104) also has this disk attached. It did
+the Backblaze runs until November 2026, and it is now a fallback that is kept
+switched off. Do not start VM 104 while VM 113 runs.
 
 **CAUTION:** Change the options of the shared disk on VM 104 or VM 113 only
 while that VM is stopped. On a running VM, Proxmox can unplug the disk.

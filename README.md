@@ -48,7 +48,7 @@ It stops for that playbook until the change is merged.
 
 | Playbook | Hosts | Roles |
 | --- | --- | --- |
-| [hypervisor](playbooks/hypervisor.md) | `jd-proxmox-02`, `linds-proxmox-01` | `proxmox_base`, `storage_health`, and `proxmox` on `jd-proxmox-02` |
+| [hypervisor](playbooks/hypervisor.md) | `jd-proxmox-02`, `linds-proxmox-01` | `proxmox_base`, `storage_health`, and `proxmox` and `backblaze` on `jd-proxmox-02` |
 | [router](playbooks/router.md) | `jd-router-01`, `linds-router-01` (always with `--limit`) | `router` |
 | [nas](playbooks/nas.md) | `linds-truenas-01` | `truenas` |
 | [media](playbooks/media.md) | The Plex host and the qBittorrent hosts | `common`, `plex`, `torrent` |
