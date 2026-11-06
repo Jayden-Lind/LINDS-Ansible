@@ -53,6 +53,11 @@ the storage health metrics (role `storage_health`). The alert
   data to it.
 - Sleep is off in the Backblaze VM (`powercfg /change standby-timeout-ac 0`).
   A VM that sleeps stops the backup until the time limit.
+- UAC is off in the Backblaze VM (`EnableLUA` = 0 in
+  `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System`, then a
+  restart). The Backblaze window runs as the logged-on administrator. With
+  UAC on, it runs without the administrator rights, and the NAS folders of the
+  clone deny it access.
 - The role `storage_health` makes `/run/node-exporter-textfile`. Without it,
   the script writes no metrics.
 
