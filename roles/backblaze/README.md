@@ -20,7 +20,9 @@ timer. A run does these steps:
 2. It clones the snapshot to `<pool>/vm-<Backblaze VM>-nas-clone`, and
    attaches the clone to the Backblaze VM as `scsi1`.
 3. It starts the Backblaze VM. If the drive does not show the Backblaze
-   volume ID within 15 minutes, the run fails.
+   volume ID within 15 minutes, the run fails. It gives Authenticated Users
+   read access to the root of the clone and to `.bzvol` (see "Safety"). If
+   Backblaze does not have the drive selected for backup, the run fails.
 4. It waits until Backblaze has scanned the drive again, and has written a
    finished backup in `bzstat_lastbackupcompleted.xml` after that scan. The
    scanner writes the file list of the drive at the end of a scan. Backblaze
@@ -103,6 +105,13 @@ clone.
 **CAUTION:** Do not change the disks of the Backblaze VM while a run is
 active. Proxmox can unplug a disk from a running VM. Use
 `backblaze-run status` first.
+
+**CAUTION:** The Backblaze window runs as the logged-on user, without
+elevation. The root of the data disk lets only `SYSTEM`, `Administrators`
+and domain groups in. Without read access there, the window cannot read the
+drive, and if you save its settings, Backblaze un-selects the drive. The
+script gives Authenticated Users read access to the root of each clone (that
+folder only) and to `.bzvol`. The live disk does not change.
 
 **NOTE:** Changes that the Backblaze VM makes to the clone are lost when the
 run ends. This includes the Backblaze scratch files, which Backblaze keeps on
