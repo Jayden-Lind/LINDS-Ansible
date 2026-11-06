@@ -20,7 +20,9 @@ timer. A run does these steps:
 2. It clones the snapshot to `<pool>/vm-<Backblaze VM>-nas-clone`, and
    attaches the clone to the Backblaze VM as `scsi1`.
 3. It starts the Backblaze VM. If the drive does not show the Backblaze
-   volume ID within 15 minutes, the run fails.
+   volume ID within 15 minutes, the run fails. It gives Authenticated Users
+   read access to the root of the clone and to `.bzvol` (see "Safety"). If
+   Backblaze does not have the drive selected for backup, the run fails.
 4. It waits until Backblaze has scanned the drive again, and has written a
    finished backup in `bzstat_lastbackupcompleted.xml` after that scan. The
    scanner writes the file list of the drive at the end of a scan. Backblaze
@@ -51,6 +53,11 @@ the storage health metrics (role `storage_health`). The alert
   data to it.
 - Sleep is off in the Backblaze VM (`powercfg /change standby-timeout-ac 0`).
   A VM that sleeps stops the backup until the time limit.
+- UAC is off in the Backblaze VM (`EnableLUA` = 0 in
+  `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System`, then a
+  restart). The Backblaze window runs as the logged-on administrator. With
+  UAC on, it runs without the administrator rights, and the NAS folders of the
+  clone deny it access.
 - The role `storage_health` makes `/run/node-exporter-textfile`. Without it,
   the script writes no metrics.
 
@@ -104,6 +111,13 @@ clone.
 active. Proxmox can unplug a disk from a running VM. Use
 `backblaze-run status` first.
 
+**CAUTION:** The Backblaze window runs as the logged-on user, without
+elevation. The root of the data disk lets only `SYSTEM`, `Administrators`
+and domain groups in. Without read access there, the window cannot read the
+drive, and if you save its settings, Backblaze un-selects the drive. The
+script gives Authenticated Users read access to the root of each clone (that
+folder only) and to `.bzvol`. The live disk does not change.
+
 **NOTE:** Changes that the Backblaze VM makes to the clone are lost when the
 run ends. This includes the Backblaze scratch files, which Backblaze keeps on
 the backed-up drive.
@@ -144,3 +158,9 @@ To continue the same backup on a new data disk:
 - If the file server does not freeze, the run continues with a
   crash-consistent snapshot. Windows repairs the file system of the clone
   when it mounts it.
+- If the VM stops responding during a run, look in its System and
+  Application logs for event 2004 ("low virtual memory condition") and for
+  crashes of `bztransmit.exe`. The VM has 16 GB and no page file. A run with
+  a very large number of changed files can use all of it. Give the VM a page
+  file or more memory, then restart it. The script forces off a VM that does
+  not respond at `backblaze_max_hours`.

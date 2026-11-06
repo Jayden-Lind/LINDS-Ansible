@@ -5,7 +5,8 @@
 #   1. Freeze the file systems of the file server (QEMU guest agent, VSS),
 #      take a ZFS snapshot of its data zvol, and thaw them.
 #   2. Clone the snapshot, and attach the clone to the Backblaze VM.
-#   3. Start the Backblaze VM. Make sure that Backblaze sees its drive. Stop
+#   3. Start the Backblaze VM. Make sure that Backblaze sees its drive, and
+#      that it still has the drive selected for backup. Stop
 #      the VM when Backblaze has scanned the drive again and has finished a
 #      backup after that scan, or at the time limit.
 #   4. Detach and destroy the clone, and destroy the snapshot.
@@ -112,6 +113,29 @@ check_drive() {
   [ "$(attr vguid <<<"$id")" = "$VOLUME_GUID" ] ||
     fail "Drive $DRIVE: of VM $BACKUP_VMID is not the Backblaze volume $VOLUME_GUID."
   log "Drive $DRIVE: of VM $BACKUP_VMID is the Backblaze volume $VOLUME_GUID."
+}
+
+# The Backblaze window runs as the logged-on user without elevation. The data
+# disk lets only SYSTEM, Administrators and domain groups open its root, so
+# the window cannot read the drive. If its settings are saved in that state,
+# Backblaze un-selects the drive (seen on 2026-11-06). Give Authenticated
+# Users read access to the root of the clone (that folder only) and to
+# .bzvol. The NAS folders keep their permissions. The clone is not kept, so
+# the live disk does not change.
+open_drive_root() {
+  guest_ps "icacls '${DRIVE}:\\' /grant '*S-1-5-11:(RX)' | Out-Null; if (\$LASTEXITCODE) { exit 1 }; icacls '${DRIVE}:\\.bzvol' /grant '*S-1-5-11:(OI)(CI)(RX)' | Out-Null; exit \$LASTEXITCODE" >/dev/null ||
+    log "WARNING: Could not give Authenticated Users read access to ${DRIVE}:\\ in VM $BACKUP_VMID."
+}
+
+# Backblaze backs up only the drives in hard_drives_to_backup of bzinfo.xml.
+check_selected() {
+  local info
+  info=$(guest_read 'C:\ProgramData\Backblaze\bzdata\bzinfo.xml') || info=""
+  grep -q "bzVolumeGuid=\"$VOLUME_GUID\"" <<<"$info" || {
+    echo "ERROR: Backblaze does not have drive $DRIVE: selected for backup. Select it in the Backblaze settings of VM $BACKUP_VMID." >&2
+    return 1
+  }
+  log "Backblaze has drive $DRIVE: selected for backup."
 }
 
 # When Backblaze last finished a scan of the drive (epoch seconds). The scanner
@@ -298,6 +322,8 @@ case "$command" in
     attach_clone
     start_vm
     check_drive
+    open_drive_root
+    check_selected
     wait_for_backup
     ;;
   start)
@@ -311,6 +337,8 @@ case "$command" in
     attach_clone
     start_vm
     check_drive
+    open_drive_root
+    check_selected || true
     log "VM $BACKUP_VMID runs with the clone. When Backblaze is done, use 'backblaze-run finish'."
     ;;
   finish)
