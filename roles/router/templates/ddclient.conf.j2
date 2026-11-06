@@ -1,6 +1,11 @@
 # Rendered by LINDS-Ansible from the vault (cf_dyn_dns_*, dyn_host) plus the
 # plaintext dyn_host_v4. Cloudflare dynamic DNS for the WAN.
-daemon=300
+#
+# The other site's strongSwan dials this name, and accepts a dial only from
+# the address the name gives. After an address change, the tunnel thus waits
+# for DNS. Check each minute and publish with a TTL of 60 s (the Cloudflare
+# minimum; "auto" is 300 s). On 2026-11-06 the wait was about 10 minutes.
+daemon=60
 syslog=yes
 pid=/run/ddclient.pid
 ssl=yes
@@ -22,11 +27,18 @@ ssl=yes
 # and input rule 3 is family-agnostic, so road warriors reach IKE over IPv6
 # on this name. Never drop it to fix an IPv4-only service — publish an
 # A-only name for that service instead, which is what dyn_host_v4 is for.
+# A site with no road warriors publishes no AAAA: its tunnel is IPv4 only
+# (input rules 3 and 3a), and its name has no AAAA record to set.
 usev4=webv4, webv4=https://cloudflare.com/cdn-cgi/trace, webv4-skip='ip='
+{% if router_road_warrior %}
 usev6=webv6, webv6=https://cloudflare.com/cdn-cgi/trace, webv6-skip='ip='
+{% else %}
+usev6=disabled
+{% endif %}
 
 protocol=cloudflare
 zone={{ cf_dyn_dns_zone }}
+ttl=60
 login=token
 password={{ cf_dyn_dns_key }}
 {{ dyn_host }}

@@ -26,8 +26,8 @@ check() { local want=$1; shift; local desc=$1; shift; if "$@" >/dev/null 2>&1; t
 mkns() { unshare -n sleep 600 >/dev/null 2>&1 & echo $!; }
 in_() { local pid=$1; shift; nsenter -t "$pid" -n "$@"; }
 
-TRUNK=$(mkns); C300=$(mkns); C80=$(mkns); C110=$(mkns); C36=$(mkns); INET=$(mkns); MGMT=$(mkns)
-trap 'kill $TRUNK $C300 $C80 $C110 $C36 $INET $MGMT 2>/dev/null' EXIT
+TRUNK=$(mkns); C300=$(mkns); C80=$(mkns); C110=$(mkns); C36=$(mkns); INET=$(mkns); MGMT=$(mkns); JD=$(mkns)
+trap 'kill $TRUNK $C300 $C80 $C110 $C36 $INET $MGMT $JD 2>/dev/null' EXIT
 sleep 0.3
 ip link set lo up
 # --- LAN trunk: lan0 (R) <-> lanc0 (TRUNK = the untagged LAN client 192.168.6.50)
@@ -53,9 +53,16 @@ ip addr add 203.0.113.2/24 dev wan0; ip link set wan0 up
 in_ $INET ip link set lo up; in_ $INET ip link set wanp up; in_ $INET ip addr add 203.0.113.1/24 dev wanp
 in_ $INET ip link add inet0 type dummy; in_ $INET ip link set inet0 up; in_ $INET ip addr add 198.51.100.10/32 dev inet0
 in_ $INET sysctl -qw net.ipv4.ip_forward=1
-# --- tunnels as dummies, the build's management NIC as a veth
+# --- wg101 as a dummy; ipsec0 and the build's management NIC as veths
 ip link add wg101 type dummy; ip link set wg101 up; ip addr add 10.5.0.2/32 dev wg101
-ip link add ipsec0 type dummy; ip link set ipsec0 up; ip addr add 10.255.0.2/30 dev ipsec0
+# ipsec0 <-> ipsecp (JD = jd-router-01, with a node address 10.0.53.203 and
+# jd-jump-01's 10.0.50.20). The routes are the ones BGP gives.
+ip link add ipsec0 type veth peer name ipsecp; ip link set ipsecp netns $JD
+ip addr add 10.255.0.2/30 dev ipsec0; ip link set ipsec0 up
+in_ $JD ip link set lo up; in_ $JD ip link set ipsecp up; in_ $JD ip addr add 10.255.0.1/30 dev ipsecp
+in_ $JD ip addr add 10.0.53.203/32 dev ipsecp; in_ $JD ip addr add 10.0.50.20/32 dev ipsecp
+in_ $JD ip route add 10.3.1.0/24 via 10.255.0.2
+ip route add 10.0.53.0/24 via 10.255.0.1 dev ipsec0; ip route add 10.0.50.0/24 via 10.255.0.1 dev ipsec0
 ip link add mgmt0 type veth peer name mgmtp; ip link set mgmtp netns $MGMT
 ip addr add 10.9.9.250/24 dev mgmt0; ip link set mgmt0 up
 in_ $MGMT ip link set lo up; in_ $MGMT ip link set mgmtp up; in_ $MGMT ip addr add 10.9.9.1/24 dev mgmtp
@@ -114,6 +121,7 @@ echo "== input from the WAN"
 check yes "ping the WAN address" in_ $INET ping -c1 -W2 203.0.113.2
 tcp() { in_ $1 python3 -c "
 import socket,sys; s=socket.socket(); s.settimeout(2)
+if '${4:-}': s.bind(('${4:-}',0))
 try:
     s.connect(('$2',$3)); print('open')
 except ConnectionRefusedError: print('refused')
@@ -135,6 +143,10 @@ r=$(tcp $C300 10.3.1.1 179); [ "$r" = refused ] && ok "BGP from VLAN 300: let in
 r=$(udpprobe $C110 10.0.110.1 53); [ "$r" = refused ] && ok "DNS from VLAN 110: let in" || bad "DNS from VLAN 110: $r"
 r=$(udpprobe $TRUNK 192.168.6.1 1900); [ "$r" = refused ] && ok "UPnP SSDP from the main LAN: let in" || bad "SSDP from LAN: $r"
 r=$(udpprobe $C300 10.3.1.1 1900); [ "$r" = silent ] && ok "UPnP SSDP from VLAN 300: no answer" || bad "SSDP from VLAN 300: $r"
+r=$(tcp $C300 10.3.1.1 9100); [ "$r" = refused ] && ok "metrics from VLAN 300: let in" || bad "metrics from VLAN 300: $r"
+r=$(tcp $JD 10.3.1.1 9342 10.0.53.203); [ "$r" = refused ] && ok "metrics from a JD node through the tunnel: let in" || bad "metrics from a JD node: $r"
+r=$(tcp $JD 10.3.1.1 9100 10.0.50.20); [ "$r" = silent ] && ok "metrics from another JD network: no answer" || bad "metrics from 10.0.50.20: $r"
+r=$(tcp $C36 10.0.36.1 9100); [ "$r" = silent ] && ok "metrics from VLAN 36: no answer" || bad "metrics from VLAN 36: $r"
 check yes "ping the router from the LAN" in_ $TRUNK ping -c1 -W2 192.168.6.1
 echo "== VLAN 36 policy routing"
 g() { ip route get "$1" from 10.0.36.2 iif lan0.36 2>&1 | grep -o "dev [a-z0-9.]*" | head -1; }
