@@ -3,11 +3,12 @@
 # Addresses appear with carrier, as on any Linux box. Daemons that bind the
 # service addresses before the link is up (a router still being built with
 # lan0 held down at the hypervisor) rely on net.ipv4.ip_nonlocal_bind=1 from
-# sysctl.d/90-router.conf. Do NOT add ConfigureWithoutCarrier here: with it,
-# 10.3.1.1 exists on the link-down lan0.300 while the build management leg
-# on VLAN 300 uses linds-vyos-01 at 10.3.1.1 as its gateway, and the kernel
-# discards VyOS's ARP requests as martian-source (they come from a "local"
-# address).
+# sysctl.d/90-router.conf. Do NOT add ConfigureWithoutCarrier here: this
+# router was built beside the one it replaced, through a management NIC on
+# VLAN 300 with that router at 10.3.1.1 as its gateway. With the address on
+# a link-down lan0.300 the kernel would have discarded the old router's ARP
+# requests as martian-source (they come from a "local" address), and a
+# rebuild beside a live router would meet the same.
 # No IPv6AcceptRA: this is the interface the router sends RAs on; accepting
 # them would let a rogue RA on the LAN install a default route on the router.
 [Match]

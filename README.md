@@ -24,7 +24,7 @@ All text in this repository uses Simplified Technical English. See
 ## Deploy on merge
 
 Merging to `main` applies the playbooks in `deploy/playbooks` to their
-hosts: `jd-router-01`, the Proxmox hosts, the TrueNAS, the Plex and torrent
+hosts: both routers, the Proxmox hosts, the TrueNAS, the Plex and torrent
 hosts, and the Windows servers. The deploy runs on `jd-jump-01`. See
 [deploy/README.md](deploy/README.md).
 

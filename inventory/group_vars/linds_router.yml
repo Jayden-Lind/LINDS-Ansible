@@ -37,8 +37,7 @@ router_wireguard_tunnels:
       public_key: "{{ wg_pub_key }}"
 
 # Every interface files/linds/etc/systemd/network defines; validate.yml fails
-# the run if networkd is not showing one of them. mgmt0 is the NIC the router
-# is built through: take it out of this list when it is taken out of the VM.
+# the run if networkd is not showing one of them.
 router_expected_interfaces:
   - lan0
   - wan0
@@ -48,7 +47,6 @@ router_expected_interfaces:
   - lan0.300
   - wg101
   - ipsec0
-  - mgmt0
 
 # What else validate.yml prints for this site (the one connection it checks
 # for, LINDS, is the role's default).
