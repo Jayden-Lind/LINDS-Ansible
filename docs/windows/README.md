@@ -19,7 +19,7 @@ Run every command from the top directory of the repository.
 
    ```shell
    /usr/bin/python3 -m venv .venv
-   .venv/bin/pip install -r requirements-windows.txt
+   .venv/bin/pip install -r requirements.txt
    ansible-galaxy collection install -r requirements.yml
    ```
 

@@ -12,11 +12,6 @@ enable_list:
   - galaxy-version-incorrect # opt-in
   - yaml
 
-# Exclude paths that should be ignored by the linter
-exclude_paths:
-  - roles/robertdebock*
-  - roles/claranet*
-
 offline: true
 
 write_list: [all]

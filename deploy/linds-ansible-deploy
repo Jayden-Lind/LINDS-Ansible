@@ -67,11 +67,10 @@ LOG_DAYS = 30
 # Files that change no host. A merge that changes only these runs no playbook.
 IGNORED = re.compile(
     r"\.md$|^docs/|^deploy/|^\.github/|^\.gitignore$|^\.ansible-lint$|^renovate\.json5$"
-    r"|^Makefile$|^local_setup\.sh$|^requirements\.txt$"
 )
 # Files that every playbook uses: the configuration and the versions of
-# Ansible, the collections and the Galaxy roles.
-SHARED = {"ansible.cfg", "requirements.yml", "requirements-windows.txt"}
+# Ansible and the collections.
+SHARED = {"ansible.cfg", "requirements.yml", "requirements.txt"}
 # A check that shows one of these as changed means that the apply would
 # reboot a host. The deploy does not do that.
 REBOOTS = {"ansible.builtin.reboot", "reboot", "ansible.windows.win_reboot", "win_reboot"}
@@ -220,15 +219,15 @@ def read_entries(tree):
 # --- the Ansible environment --------------------------------------------------
 
 def ensure_env(tree):
-    """The Python environment, collections and Galaxy roles that the
-    requirements files of TREE pin. Makes it if it does not exist."""
-    reqs = [tree / "requirements-windows.txt", tree / "requirements.yml"]
+    """The Python environment and the collections that the requirements
+    files of TREE pin. Makes it if it does not exist."""
+    reqs = [tree / "requirements.txt", tree / "requirements.yml"]
     digest = hashlib.sha256(b"".join(p.read_bytes() for p in reqs)).hexdigest()[:12]
     env = STATE / "env" / digest
     if (env / "ready").exists():
         env.touch()
         return env
-    log(f"Installing the Ansible environment {digest} from requirements-windows.txt and requirements.yml")
+    log(f"Installing the Ansible environment {digest} from requirements.txt and requirements.yml")
     shutil.rmtree(env, ignore_errors=True)
     env.mkdir(parents=True)
     galaxy = {**os.environ, "ANSIBLE_COLLECTIONS_PATH": str(env / "collections"),
@@ -386,7 +385,7 @@ def roles_of(tree, playbook):
         if "{{" in name:
             return None
         role = tree / "roles" / name
-        if name in found or not role.is_dir():  # Galaxy roles come with requirements.yml
+        if name in found or not role.is_dir():  # not a role of this repository
             continue
         found.add(name)
         meta = load_yaml(role / "meta/main.yml") if (role / "meta/main.yml").exists() else None
