@@ -1,11 +1,11 @@
 ---
-# jd-router-01 — the Debian 13 replacement for jd-vyos-01 (roles/router).
+# jd-router-01, the router of the JD site (roles/router).
 #
 # Nearly everything is a plain file: roles/router/files/jd/etc/ for what is
 # this site's, roles/router/files/etc/ for what every router gets (edit
 # those). What is here is what the few remaining templates need: the
 # WireGuard tunnels (their endpoint and public key are vaulted in
-# inventory/router.yml), which of the role's optional parts this site has,
+# host_vars/jd-router-01/secrets.yml), which of the role's optional parts this site has,
 # and what the validator checks for.
 
 router_hostname: jd-router-01
@@ -82,3 +82,14 @@ router_routing_tables:
   - {id: 1002, name: lan0.99}
   - {id: 90, name: wg10}
   - {id: 100, name: wg101}
+
+# A-only companion to dyn_host, in plaintext because its whole purpose
+# is to be publicly resolvable and there is nothing to hide. Anything
+# that is IPv4-only behind this router points at this name instead of
+# dyn_host, so it never inherits an AAAA that leads nowhere. Valheim
+# (UDP 2456-2457 -> 172.16.1.10, nftables rule 22) is the first user:
+# point valheim.linds.com.au here, not at dyn_host.
+#
+# Create the A record in Cloudflare before the first run - ddclient
+# PATCHes existing records and never creates them.
+dyn_host_v4: jd.linds.com.au

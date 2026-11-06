@@ -1,7 +1,0 @@
----
-# NordVPN egress tunnels + the policy routing that steers a VLAN into each.
-# SNAT for the VLAN→tunnel egress lives in the NAT rule table (group_vars).
-
-- name: WireGuard tunnels, tunnel routing tables and policy routes
-  vyos.vyos.vyos_config:
-    lines: "{{ lookup('template', 'jd_wireguard.j2').splitlines() | select | list }}"

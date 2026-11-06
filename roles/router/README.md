@@ -21,13 +21,12 @@ JD's; where LINDS differs, the LINDS section says so.
 | The failover daemon, the WireGuard endpoint re-resolver, miniupnpd's table script, the Kubernetes port-forward daemon | `files/usr/local/sbin/`, unit files in `files/etc/systemd/system/` |
 | The few rendered files (they carry vault secrets) | `templates/`: WireGuard `.netdev` (peer endpoint + key), `swanctl/conf.d/secrets.conf` (EAP users), `ddclient.conf` (Cloudflare token), `wg-reresolve/*.conf` |
 | Certificates / keys | rendered from the vault by `tasks/ipsec.yml` (VyOS's bare-base64 PKI blobs, wrapped as PEM by `filter_plugins/router_filters.py`) |
-| Secrets | `inventory/router.yml` (copied from `inventory/vyos.yml`, same vault password) |
+| Secrets | `inventory/router.yml` (ansible-vault values, inherited from the VyOS routers) |
 | What a site is: its name, which optional parts it has, its tunnels, what the validator expects | `inventory/group_vars/jd_router.yml`, `inventory/group_vars/linds_router.yml` |
 | Task flow | `tasks/main.yml` → one task file per area, in dependency order |
 | Failover and port-forward daemon tests | `tests/` — `python3 -m unittest discover -s roles/router/tests` |
 | What the LINDS ruleset does to packets, in throwaway network namespaces | `tests/linds-ruleset-netns.sh` — `sudo unshare -n bash roles/router/tests/linds-ruleset-netns.sh roles/router/files/linds/etc/nftables.conf` |
 | What the JD ruleset does to packets, in throwaway network namespaces | `tests/jd-ruleset-netns.sh` — `sudo unshare -n bash roles/router/tests/jd-ruleset-netns.sh roles/router/files/linds/etc/nftables.conf` |
-| The swap from VyOS at LINDS, as a script for the hypervisor | `cutover/linds-router-cutover` (not installed by the role) |
 
 To change something, **edit the file under `files/<site>/etc/` (or
 `files/etc/` if every router should get it) and run the playbook for that
@@ -888,26 +887,6 @@ alerts on this router are `ET INFO`, and those are normal traffic.
   a ULA pool — never one carved from the delegated prefix — and `::/0` to
   `local_ts`.
 
-## Cutover of jd-router-01 (manual)
-
-Done on 2026-09-06 and kept for reference; linds-router-01's is in its own
-section below.
-
-1. `qm shutdown 1100` — VyOS off. Nothing else has changed yet.
-2. In LINDS-Terraform `proxmox/vms-jd-router.tf`: `net1`/`net2`
-   `disconnected = false`, `net0` `disconnected = true`,
-   `prevent_destroy = true`; `terraform apply -target=proxmox_virtual_environment_vm.jd_router`.
-   (Or `qm set 1101 -net1 …,link_down=0 -net2 …,link_down=0 -net0 …,link_down=1`.)
-3. `inventory/router.yml`: `ansible_host: 10.0.50.1`. Remove `10.0.53.250`
-   from `files/etc/ssh/sshd_config.d/10-router.conf`. Run the playbook.
-4. Watch: `journalctl -fu wan-failover` (default route installed within
-   ~10 s of carrier), `swanctl --list-sas` (LINDS up), `vtysh -c 'show bgp summary'`
-   (k8s peers + LINDS), `networkctl status wan0` (lease + PD),
-   `ip -6 route` (v6 default from RA), `suricatasc -c dump-counters /var/run/suricata/suricata-command.socket | grep wrong_thread`.
-
-**Rollback:** the reverse — links down, VyOS on. The VyOS VM stays intact
-until this has run for a while.
-
 ## The WAN is the ConnectX-4 VF
 
 Since 2026-09-06 `wan0` is VF 0 (`0000:c2:00.2`) of the ConnectX-4 Lx port
@@ -932,10 +911,9 @@ guest changes.
 ## linds-router-01
 
 The router of the LINDS site: VM 114 on linds-proxmox-01
-(`LINDS-Terraform/proxmox/vms-linds-router.tf`), replacing linds-vyos-01
-(VM 101). Its files are `files/linds/`, its data
-`inventory/group_vars/linds_router.yml`, and it gets everything under
-`files/etc/` that jd-router-01 gets.
+(`LINDS-Terraform/proxmox/vms-linds-router.tf`). Its files are
+`files/linds/`, its data `inventory/group_vars/linds_router.yml`, and it
+gets everything under `files/etc/` that jd-router-01 gets.
 
 | Interface | What | Address |
 |---|---|---|
@@ -948,14 +926,11 @@ The router of the LINDS site: VM 114 on linds-proxmox-01
 | `ipsec0` | site-to-site to JD (VyOS `vti0`), BGP to 10.255.0.1 | 10.255.0.2/30 |
 | `wg101` | NordVPN, table 100 | 10.5.0.2/32 |
 
-It was built through a fourth NIC, `mgmt0` on VLAN 300 (10.3.1.250), which
-has been link-down at the hypervisor since the cutover. Its two networkd
-files, its sshd listen address and its entry in `router_expected_interfaces`
-were removed afterwards; "Building it" below describes the build as it was
-done, and a rebuild beside a live router needs them back (the commit that
-removed them shows what they were).
+To build it again beside a running router, get the build-time management
+NIC and the steps from the history:
+`git log -p -- roles/router/files/linds/etc/systemd/network/30-mgmt0.network`.
 
-### What it has that linds-vyos-01 did not
+### What runs at this site
 
 Everything jd-router-01 has that does not need hardware this site lacks. The
 sections above describe each; what is particular to LINDS:
@@ -987,11 +962,9 @@ route is the one in the DHCP lease), remote access for phones and laptops
 the router advertisement (the RA is as VyOS sent it; clients use the
 resolver DHCPv4 hands them).
 
-### Where it deliberately differs from linds-vyos-01
+### Design choices
 
-The port was made from the running config (`show configuration commands`,
-FRR's and kea's generated files), not from `roles/vyos`, which had drifted
-from the box. Everything that VyOS did and this router does differently:
+Where this site's configuration is not JD's, or not what VyOS did, and why:
 
 * **The router no longer answers the internet.** VyOS's input chain was
   default-accept (its two rules, IKE and port 32400, therefore did nothing),
@@ -1039,228 +1012,7 @@ from the box. Everything that VyOS did and this router does differently:
   buffer, which only touched the router's own connections, are not carried.
 * **The tunnel asks for IPv4 only** inside it. VyOS offered both families
   and JD only ever agreed to IPv4.
-* **New MAC addresses.** The WAN lease, and so the public address and the
-  delegated prefix, may change at cutover. ddclient updates
-  `linds-pfsense.linds.com.au` within minutes and JD's end follows the name.
-  JD also accepts this end only from the address that name has, so
-  whichever end dials, the tunnel waits for the record.
 
-### Building it
-
-The build touches nothing that is live: the VM's LAN and WAN NICs are
-link-down at the hypervisor, and it is reached through `mgmt0` on VLAN 300
-with linds-vyos-01 still the gateway. It can be done days ahead and from
-anywhere, and the router then sits idle until the swap.
-
-1. The VM (LINDS-Terraform, `proxmox/`):
-
-       terraform apply \
-         -target=proxmox_storage_directory.linds_local \
-         -target=proxmox_virtual_environment_vm.linds_router
-
-   The plan on 2026-10-13 was 1 to import, 3 to add, 1 to change: the
-   hypervisor's `local` storage gains the `import` and `snippets` content
-   types, then the Debian image, the cloud-init snippet and VM 114. First
-   boot installs the guest agent and upgrades the image; allow five minutes
-   before the next step.
-2. The router:
-
-       ansible-playbook playbooks/router.yml --limit linds-router-01
-
-   One reboot on the way (interface names, backports kernel); the test
-   build took six minutes. A green run has passed `validate.yml`. It can be
-   run from jd-jump-01: the route back
-   to JD's LAN is a static into the tunnel, which is down on a router being
-   built, and `30-mgmt0.network` keeps the management address's answers out
-   of the main table for exactly that reason.
-3. Look at it while it is idle:
-
-   | Check | Expect |
-   |---|---|
-   | `systemctl --failed` | nothing |
-   | `networkctl` | `lan0`, `wan0` and the VLANs `no-carrier`; `ipsec0` configured; `wg101` *configuring*, because its policy rules name `lan0.36` and networkd holds them until that interface is up |
-   | `swanctl --list-conns` | `LINDS` |
-   | `wg show wg101` | no handshake, ever, while wan0 is down |
-   | `nft list chain inet router output` | the three "only by the WAN" counters climbing: charon and WireGuard keep trying, the packets go nowhere |
-   | `journalctl -u isc-kea-dhcp4-server` | `the interface lan0 is not running`, once a minute (kea keeps trying to open its sockets for 24 h, `service-sockets-max-retries`) |
-
-   Nothing the idle router does reaches the live network: kea, the RA
-   sender, avahi and miniupnpd are bound to `lan0` and its VLANs, charon may
-   only use `wan0`, and the output chain keeps WireGuard and IKE off
-   `mgmt0`. It does log to Loki, and ddclient does run: it sees the site's
-   public address through VyOS and so publishes what is already there.
-
-Re-run step 2 on the day, with `--check --diff` first; it should change
-nothing.
-
-**Getting in when the network is the problem.** The router accepts one SSH
-key, the fleet key that jd-jump-01 holds, and the cloud image's user has no
-password, so the serial console (`qm terminal 114`) offers a login nobody
-can use. From the hypervisor the guest agent works whatever state the
-network is in:
-
-    qm guest exec 114 -- networkctl status wan0
-    qm guest exec 114 -- journalctl -b -p warning --no-pager
-
-A machine on the LAN that holds the fleet key can also `ssh
-jayden@192.168.6.1`. Without the tunnel, jd-jump-01 is not such a machine.
-
-### Cutover
-
-On linds-proxmox-01, with `cutover/linds-router-cutover` copied to `/root`.
-`status` changes nothing and shows both VMs and the three links.
-
-1. Optional, and worth the two minutes: carry the DHCP leases over, so every
-   client keeps its address and nothing is handed an address still in use.
-   VyOS runs kea too and the subnet ids here are the same. kea keeps its
-   leases in two files, the last compacted set (`.2`) and what has changed
-   since; both are needed, in that order. With VyOS still up, minutes before
-   the swap:
-
-       # on jd-jump-01, or anywhere that reaches both
-       ssh vyos@192.168.6.1 "sudo awk 'FNR==1 && NR!=1 {next} {print}' \
-         /config/dhcp/dhcp4-leases.csv.2 /config/dhcp/dhcp4-leases.csv" > leases.csv
-       scp leases.csv jayden@10.3.1.250:/tmp/
-       ssh jayden@10.3.1.250 'sudo systemctl stop isc-kea-dhcp4-server &&
-         sudo install -o _kea -g _kea -m 0640 /tmp/leases.csv /var/lib/kea/kea-leases4.csv &&
-         sudo systemctl start isc-kea-dhcp4-server'
-
-   (If there is no `.2` file at that moment, awk says so and the one file is
-   the whole set.)
-2. The swap:
-
-       ./linds-router-cutover cutover
-
-   It sets VM 101 not to start with the host, shuts it down, takes the new
-   router's management NIC link-down, brings its LAN and WAN up and reboots
-   it. The reboot is not a courtesy: a router built with its links down
-   may have daemons that gave up on them (kea did, before it retried for
-   24 h), and a boot with the links up is what every later boot will be. The site is offline from the
-   shutdown until the new router has booted and its WAN has a lease; on the
-   test VM the links and the reboot together took about half a minute.
-   `./linds-router-cutover cutover --revert-after 15` does the same and
-   rolls back by itself unless `confirm` is run within 15 minutes; that is
-   the form to use if this is ever done from the other end of the tunnel.
-
-   By hand it is five commands, in this order:
-
-       qm set 101 --onboot 0
-       qm shutdown 101
-       qm set 114 --net0 'virtio=BC:24:11:06:01:00,bridge=vmbr0,firewall=0,tag=300,link_down=1'
-       qm set 114 --net1 'virtio=BC:24:11:06:01:01,bridge=vmbr0,firewall=0,queues=4' \
-                  --net2 'virtio=BC:24:11:06:01:02,bridge=vmbr1,firewall=0,queues=4'
-       qm reboot 114
-
-   Copy each `netN` value from `qm config 114` and change only `link_down`:
-   Proxmox applies that to the running guest, but a line that differs in
-   anything else (queues, MAC, model) unplugs the NIC and plugs in a new
-   one.
-3. Watch it come up (prefix each with `qm guest exec 114 --` from the
-   hypervisor, or ssh to 192.168.6.1 from a machine with the key):
-
-   | Check | Expect |
-   |---|---|
-   | `networkctl status wan0` | a lease, and a delegated prefix on `lan0` |
-   | `ip route show default` | `default via … dev wan0 proto dhcp`; `ip -6 route show default` has the RA's |
-   | `swanctl --list-sas` | `LINDS` ESTABLISHED. If the public address changed, the tunnel waits for the DNS record of `linds-pfsense.linds.com.au` (ddclient checks every five minutes, and the record's TTL is five minutes): JD dials that name and accepts this end only from its address |
-   | `vtysh -c 'show bgp summary'` | 10.3.1.100, 10.3.1.101 and 10.255.0.1 established with prefixes |
-   | `wg show wg101` | a recent handshake; from 10.0.36.2, `curl ifconfig.me` is NordVPN's address |
-   | a LAN client | renews its lease, resolves an outside name and `linds-dc.linds.com.au`, has IPv6 |
-   | from outside | Plex on port 32400 |
-   | `systemctl --failed` | nothing |
-
-4. From jd-jump-01, once the tunnel is back, check the other direction:
-   `ssh jayden@192.168.6.1`, and on jd-router-01 `vtysh -c 'show ip bgp
-   neighbors 10.255.0.2 routes'` has LINDS's five networks.
-
-**Rollback** is `./linds-router-cutover rollback`: the new router's LAN and
-WAN go link-down, its management NIC comes back, VM 101 starts (and starts
-with the host again). VyOS routes again once it has booted, with the leases
-it had. Nothing on the new router needs undoing; it is back to being built.
-
-### What was tested before it ever saw LINDS, and what was not
-
-On 2026-10-13 the whole build was run on a scratch VM on jd-proxmox-02: the
-same Debian image and cloud-init, the same three MAC addresses, the LAN and
-WAN NICs link-down in VLANs the bridge's uplink does not carry, the
-management NIC on JD's VLAN 53 instead of LINDS's VLAN 300, and a random
-WireGuard key and an invalid DDNS token so the test box could not speak for
-linds-vyos-01 anywhere. The VMs were deleted afterwards. (Those VLANs were
-not as private as intended: on a VLAN-aware Proxmox bridge every guest NIC
-without a tag carries all of them, so six other guests on that host were
-handed the test LAN's frames, tagged, for the thirteen minutes its link was
-up. Checked afterwards on the two Windows servers and the jump box: none had
-taken an address, a route or a neighbour from it. A test segment that is
-really private is a bridge of its own with no ports.)
-
-On 2026-10-20, after the package upgrades (kernel 7.2.9, FRR 10.7.1,
-Suricata 8, ISC Kea 3.2.1, Recursor 5.4.7, lldpd 1.0.22), the build was
-run again the same way on a scratch VM (VM 9101, deleted afterwards):
-159 tasks ok and none failed from a fresh image, a second run that changed
-one file (it found `xfrm_acq_expires` in the `swanctl` section of the LINDS
-`strongswan.d/router.conf`, where charon does not read it), a third run
-that changed nothing. A 95-second capture on the VM's management NIC saw
-no IKE, ESP or WireGuard packet leave (the output guard dropped 18 IKE and
-84 WireGuard packets). linds-vyos-01's lease files, merged as in step 1 of
-the cutover, loaded into Kea 3.2.1: 26 leases, every address in the files.
-
-* **The build**: one run from a fresh image to a green `validate.yml`
-  (152 tasks ok, none failed), a second run that changed nothing,
-  `--check --diff` clean.
-* **Two faults it found**, both fixed before this was committed. FRR's
-  static route for JD's LAN sent the answers to Ansible's own SSH session
-  into the tunnel, which is down during a build (hence table 250 in
-  `30-mgmt0.network`). And DHCP stayed dead when the LAN link came up,
-  because kea had long stopped trying to open its sockets (hence the reboot
-  in the cutover).
-* **The idle router keeps to itself**: with the links down, charon and
-  WireGuard tried every few minutes and a 200-second capture on the
-  management NIC saw no IKE, ESP or WireGuard packet leave.
-* **The swap script**, against that VM and a stand-in for the old router:
-  cutover, rollback, the timed rollback firing by itself, `confirm`
-  cancelling it. Link changes were applied to the running guest without
-  replacing the NIC. After the scripted swap a client VM on the isolated LAN
-  got its lease from kea (192.168.6.2); before the reboot was added it got
-  nothing.
-* **The lease file**: linds-vyos-01's two lease files, merged as in step 1
-  of the cutover, loaded into this kea: 27 leases in subnets 1, 2 and 4,
-  the same 27 VyOS listed.
-* **The ruleset**, in network namespaces
-  (`tests/linds-ruleset-netns.sh`, 36 checks): source NAT for the main LAN,
-  VLAN 300 and 10.0.80.4 and nothing leaving for VLAN 110 or the rest of
-  VLAN 80; unreachable private destinations answered by the router and kept
-  off the WAN; the Plex forward; what the input chain takes from the WAN and
-  from the LAN side; where VLAN 36 is routed, the WAN's own network
-  included; the tunnel guards; and 40 MiB transfers through the flowtable on
-  every offloaded pair, of which the forward chain saw 3 packets (1,042
-  with the offload rules removed).
-* **The Terraform**: `plan` against linds-proxmox-01, not `apply`.
-
-Not tested, because only the site can: the WAN against Telstra (the lease,
-its router, the delegated prefix, the RA), the tunnel to jd-router-01 and
-BGP over it, BGP with the two Talos workers, the NordVPN handshake, the Plex
-forward from outside, UPnP and the mDNS reflector with real devices, kea's
-updates into AD DNS, and Suricata on real traffic. The cutover table above
-is that list as checks.
-
-### After the cutover
-
-Once it has run for as long as it takes to trust it:
-
-1. **LINDS-Ansible**: `ansible_host` set to 192.168.6.1, and the management
-   NIC's files, its sshd listen address and its entry in
-   `router_expected_interfaces` removed. Done by the commit that wrote this
-   sentence; run the playbook once after merging it.
-2. **LINDS-Terraform**, branch `proxmox/linds-router-after-cutover`: the three
-   `disconnected` flags written as the cutover left them, and
-   `prevent_destroy`. Terraform ignores the link states of this VM once it
-   has created it, so nothing is at risk before this is merged and its plan
-   changes nothing on the VM.
-3. **Delete linds-vyos-01**: `qm destroy 101 --purge` on linds-proxmox-01. It
-   was made by hand and is in no Terraform state.
-4. **LINDS-Ansible**, branch `router/remove-vyos`: `roles/vyos`, its playbook
-   and inventory, and the `vyos.vyos` collection, which nothing uses once
-   both routers are Debian.
 
 ## IPsec certificate rotation
 
@@ -1271,7 +1023,7 @@ shows what is loaded and when it expires.
 | File | Vault var(s) | Subject | Used by | Expires |
 |---|---|---|---|---|
 | `x509ca/LINDS-CA.pem` | `files/linds-ca.cer` (vault-encrypted file) | `CN=linds-CA` | both connections verify peers against it; every host trusts it via `roles/common` | 2029-12-01 |
-| `x509/IPSEC.pem` + `private/IPSEC.pem` | `pub_key`, `priv_key` | `C=AU, ST=Victoria, L=Langwarrin, O=LINDS-IPSEC, CN=LINDS-IPSEC` | `LINDS` site-to-site. **One cert, both ends**: LINDS VyOS carries the same vault values | 2053-08-26 |
+| `x509/IPSEC.pem` + `private/IPSEC.pem` | `pub_key`, `priv_key` | `C=AU, ST=Victoria, L=Langwarrin, O=LINDS-IPSEC, CN=LINDS-IPSEC` | `LINDS` site-to-site. **One cert, both ends**: both routers take it from the same vault values | 2053-08-26 |
 | `x509/ipsec_remote.pem` + `private/ipsec_remote.pem` | `ipsec_remote_pub`, `ipsec_remote_priv` | `CN=jd-pfsense.linds.com.au`, SAN `jd-pfsense.linds.com.au`, `thezneaks.duckdns.org` | `LINDS_MOBILE` road warriors | **2027-08-21** |
 
 The vault values are VyOS PKI blobs (bare base64 DER, one line). `to_pem`
@@ -1301,9 +1053,7 @@ its own subject):
        openssl pkey -in ipsec_remote.key -outform DER | base64 -w0   # -> ipsec_remote_priv
        ansible-vault encrypt_string --name ipsec_remote_pub "$(...)"
 
-   Replace the values in `inventory/router.yml` (`router` group vars). The
-   VyOS groups carry copies of the same variables; update them too if VyOS
-   is still a rollback target, otherwise let them go.
+   Replace the values in `inventory/router.yml` (`router` group vars).
 4. `ansible-playbook playbooks/router.yml`. The role writes the PEMs, prunes
    anything else in the credential directories, and the handler runs
    `swanctl --load-all --clear` so the old key is gone from charon.
@@ -1316,9 +1066,9 @@ its own subject):
 
 **Site-to-site specifics.** `remote.id` on both ends pins the DN, so the
 subject must not change. Authentication is "signed by LINDS-CA with that DN",
-not "this exact cert", so the two ends can rotate one at a time: rotate here,
-LINDS keeps presenting its old (still valid) cert until its own `set pki
-certificate IPSEC …` is updated from the same vault values.
+not "this exact cert", so the two ends can rotate one at a time: run the
+playbook with `--limit` for one router, and the other keeps presenting the
+old (still valid) cert until its own run.
 
 **CA rotation (2029).** A new CA breaks every client that only trusts the old
 one, so order matters: install the new CA everywhere first (client profiles,
@@ -1380,7 +1130,7 @@ alerts go to Discord (LINDS-Kubernetes `base/monitoring/router-metrics.yaml`):
 The cluster's general node alerts (memory, disk, CPU) apply to the router
 too.
 
-## Status: VyOS op-mode to here
+## Commands, by their VyOS op-mode name
 
 Most of these answers are a `router` command now (see Troubleshooting).
 

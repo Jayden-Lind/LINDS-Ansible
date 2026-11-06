@@ -54,7 +54,6 @@ It stops for that playbook until the change is merged.
 | [media](playbooks/media.md) | The Plex host and the qBittorrent hosts | `common`, `plex`, `torrent` |
 | [windows](playbooks/windows.md) | The Windows servers and the domain. Run it at any time. | The `windows_*` roles |
 | [certificates](playbooks/certificates.md) | The devices that get a TLS certificate from the cluster CA | `cluster_cert` |
-| [vyos](playbooks/vyos.md) | `linds-vyos-01`, until `linds-router-01` replaces it | `vyos` |
 
 The steps for one Windows server are in `playbooks/windows/`:
 
