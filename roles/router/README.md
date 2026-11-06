@@ -824,7 +824,8 @@ alerts on this router are `ET INFO`, and those are normal traffic.
   `timers connect 10` to 10.255.0.1): JD refuses a dial from an address that
   `linds-pfsense.linds.com.au` does not have yet, as right after the cutover.
   That wait was about 10 minutes. To make it short, ddclient checks the
-  address each minute and publishes it with a TTL of 60 s.
+  address each minute, and the records have a TTL of 60 s. The TTL is set in
+  Cloudflare: ddclient 3.11 sends only the address and keeps the TTL.
 * **The BGP session between the sites holds for 30 s** (`timers 10 30`;
   the default is 180 s). At a reboot, the tunnel can go down before the
   router's Cease goes through it. On 2026-11-06 JD then kept the old session

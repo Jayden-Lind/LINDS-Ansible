@@ -3,8 +3,10 @@
 #
 # The other site's strongSwan dials this name, and accepts a dial only from
 # the address the name gives. After an address change, the tunnel thus waits
-# for DNS. Check each minute and publish with a TTL of 60 s (the Cloudflare
-# minimum; "auto" is 300 s). On 2026-11-06 the wait was about 10 minutes.
+# for DNS (about 10 minutes on 2026-11-06). ddclient checks each minute. The
+# records have a TTL of 60 s (the Cloudflare minimum; "auto" is 300 s), set
+# in Cloudflare on 2026-11-06. ddclient 3.11 sends only the address, so it
+# cannot set the TTL, and an update keeps the TTL that is there.
 daemon=60
 syslog=yes
 pid=/run/ddclient.pid
@@ -38,7 +40,6 @@ usev6=disabled
 
 protocol=cloudflare
 zone={{ cf_dyn_dns_zone }}
-ttl=60
 login=token
 password={{ cf_dyn_dns_key }}
 {{ dyn_host }}
@@ -65,7 +66,8 @@ password={{ cf_dyn_dns_key }}
 # ddclient does not create records: it looks the name up and PATCHes it,
 # and fails with "cannot set IPv4 to <ip>: no 'A' record at Cloudflare" if
 # it is absent. Create the A record in Cloudflare first (any placeholder
-# address will do — the next run within `daemon` seconds corrects it).
+# address will do — the next run within `daemon` seconds corrects it), with
+# a TTL of 60 s (see the top of this file).
 #
 # Comma-separate the value for more than one name.
 usev4=webv4, webv4=https://cloudflare.com/cdn-cgi/trace, webv4-skip='ip='
