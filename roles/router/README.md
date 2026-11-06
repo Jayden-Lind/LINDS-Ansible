@@ -823,6 +823,12 @@ alerts on this router are `ET INFO`, and those are normal traffic.
   linds-router-01 has the same two settings (its `strongswan.d/router.conf`,
   `timers connect 10` to 10.255.0.1): JD refuses a dial from an address that
   `linds-pfsense.linds.com.au` does not have yet, as right after the cutover.
+  That wait was about 10 minutes. To make it short, ddclient checks the
+  address each minute and publishes it with a TTL of 60 s.
+* **The BGP session between the sites holds for 30 s** (`timers 10 30`;
+  the default is 180 s). At a reboot, the tunnel can go down before the
+  router's Cease goes through it. On 2026-11-06 JD then kept the old session
+  and its routes for the full 180 s: 3 min 18 s to recover.
 * **Two `LINDS` SAs at once** happen when both ends dial at the same moment;
   a VyOS IPsec commit does that, since VyOS dials again on reload while JD's
   trap does too. While LINDS is still linds-vyos-01, never terminate one of
@@ -1106,7 +1112,9 @@ deletes it at the end.
 The router reports to the cluster's Prometheus: node-exporter (with the
 `router_*` metrics that `router metrics` writes every 30 s, Unbound's
 counters among them), and the FRR and smokeping exporters. They listen on the cluster
-network only (input rule 16). node-exporter has only the collectors that
+network only (input rule 16). Prometheus runs at JD, so linds-router-01
+also lets in JD's node network through the tunnel (rule 16a): Cilium
+masquerades the scrapes to the node address. node-exporter has only the collectors that
 the dashboard and the alerts use (`files/<site>/etc/default/prometheus-node-exporter`).
 The smokeping prober and Unbound start after `wan-online.service`, which
 waits at most 30 s for the WAN default routes. A prober that starts before

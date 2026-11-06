@@ -2,4 +2,4 @@
 run_dhclient="false"
 run_ipup="false"
 run_daemon="true"
-daemon_interval="300"
+daemon_interval="60"
