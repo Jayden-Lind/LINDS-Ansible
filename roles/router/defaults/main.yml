@@ -70,3 +70,8 @@ router_timezone: Australia/Melbourne
 # Hostname-endpoint WireGuard tunnels get `wg set … endpoint` re-run when the
 # last handshake is older than this many seconds (timer: every 60s).
 router_wg_reresolve_stale: 150
+
+# TTL of the router's DDNS records in Cloudflare (60 is the minimum; "auto"
+# is 300). The other site's strongSwan accepts the tunnel only from the
+# address that this name gives, so after an address change it waits for DNS.
+router_ddns_ttl: 60

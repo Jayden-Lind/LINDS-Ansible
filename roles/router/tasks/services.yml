@@ -42,6 +42,63 @@
     mode: '0644'
   notify: restart ddclient
 
+# ddclient 3.11 sends only the address, so it cannot set a TTL. This block
+# keeps the TTL of the router's DDNS records at router_ddns_ttl through the
+# Cloudflare API, with ddclient's token. Check mode reads the records and
+# reports one with another TTL as a change. If Cloudflare does not answer,
+# the block warns and the run goes on.
+- name: DDNS records have a TTL of {{ router_ddns_ttl }} s
+  block:
+    - name: DDNS TTL - read the Cloudflare zone
+      ansible.builtin.uri:
+        url: "https://api.cloudflare.com/client/v4/zones?name={{ cf_dyn_dns_zone }}"
+        headers:
+          Authorization: "Bearer {{ cf_dyn_dns_key }}"
+      register: router_ddns_zone
+      check_mode: false
+      no_log: true
+
+    - name: DDNS TTL - read the records
+      ansible.builtin.uri:
+        url: "https://api.cloudflare.com/client/v4/zones/{{ router_ddns_zone.json.result[0].id }}/dns_records?name={{ item }}"
+        headers:
+          Authorization: "Bearer {{ cf_dyn_dns_key }}"
+      loop: "{{ [dyn_host] + ([dyn_host_v4] if dyn_host_v4 is defined else []) }}"
+      register: router_ddns_records
+      check_mode: false
+      no_log: true
+
+    - name: DDNS TTL - the records with another TTL
+      ansible.builtin.set_fact:
+        router_ddns_wrong_ttl: >-
+          {{ router_ddns_records.results | map(attribute='json.result') | flatten
+             | selectattr('type', 'in', ['A', 'AAAA'])
+             | rejectattr('ttl', 'equalto', router_ddns_ttl | int) | list }}
+      no_log: true
+
+    - name: DDNS TTL - set it
+      ansible.builtin.uri:
+        url: "https://api.cloudflare.com/client/v4/zones/{{ router_ddns_zone.json.result[0].id }}/dns_records/{{ item.id }}"
+        method: PATCH
+        headers:
+          Authorization: "Bearer {{ cf_dyn_dns_key }}"
+        body_format: json
+        body: "{{ {'ttl': router_ddns_ttl | int} }}"
+      loop: "{{ router_ddns_wrong_ttl }}"
+      when: not ansible_check_mode
+      changed_when: true
+      no_log: true
+
+    - name: DDNS TTL - the records that would change (check mode)
+      ansible.builtin.debug:
+        msg: "{{ router_ddns_wrong_ttl | map(attribute='name') | list }}"
+      when: ansible_check_mode and router_ddns_wrong_ttl | length > 0
+      changed_when: true
+  rescue:
+    - name: DDNS TTL - Cloudflare did not answer
+      ansible.builtin.debug:
+        msg: Could not read or set the DDNS TTLs. The run goes on; ddclient is not affected.
+
 - name: Services enabled
   ansible.builtin.systemd_service:
     name: "{{ item }}"
