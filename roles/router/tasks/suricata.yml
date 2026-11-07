@@ -56,15 +56,24 @@
     dest: /etc/logrotate.d/suricata
     mode: '0644'
 
-# Per site: HOME_NET (suricata.yaml includes this file) and the alert
-# suppressions.
+# Per site: HOME_NET (suricata.yaml includes this file).
 - name: Suricata site files
   ansible.builtin.copy:
     src: "{{ router_site }}/etc/suricata/{{ item }}"
     dest: "/etc/suricata/{{ item }}"
     mode: '0644'
-  loop: [site-address-groups.yaml, threshold.config]
+  loop: [site-address-groups.yaml]
   notify: restart suricata
+
+# Per site: the alert suppressions. suricata-update turns threshold.in into
+# /etc/suricata/threshold.config (a `re:` line becomes one suppression per
+# matching rule), and the handler's run reloads the rules with it.
+- name: Suricata alert suppressions (threshold.in, read by suricata-update)
+  ansible.builtin.copy:
+    src: "{{ router_site }}/etc/suricata/threshold.in"
+    dest: /etc/suricata/threshold.in
+    mode: '0644'
+  notify: suricata-update
 
 - name: suricata.yaml
   ansible.builtin.copy:
@@ -141,7 +150,10 @@
 
 # A fresh box has no rules and the daemon would start with nothing to load.
 - name: Fetch ET Open (first run only)
-  ansible.builtin.command: suricata-update --no-reload
+  ansible.builtin.command: >-
+    suricata-update --no-reload
+    --threshold-in /etc/suricata/threshold.in
+    --threshold-out /etc/suricata/threshold.config
   when: not router_suricata_rules.stat.exists
   changed_when: true
   notify: restart suricata

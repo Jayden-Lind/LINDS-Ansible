@@ -1,8 +1,14 @@
-# Managed by LINDS-Ansible: roles/router/files/jd/etc/suricata/threshold.config.
+# Managed by LINDS-Ansible: roles/router/files/jd/etc/suricata/threshold.in.
+# Alert suppressions for jd-router-01. suricata-update reads this file at each
+# rule refresh and writes /etc/suricata/threshold.config, which Suricata
+# loads: a `suppress re:"<regex>", ...` line becomes one suppression for every
+# enabled rule whose text matches, other lines are copied as they are. Edit
+# this file, not threshold.config.
+#
 # jd-torrent-01 (10.0.50.24, a Kea reservation) is the torrent client. These
 # rules fire on its normal work: 11,345 of the 20,957 alerts in the 24 h to
 # 2026-10-20 13:30. Suppressed for that host only; every other host still
-# raises them. Suricata reads this file on a rule reload.
+# raises them.
 # P2P policy rules
 suppress gen_id 1, sig_id 2102181, track by_src, ip 10.0.50.24
 suppress gen_id 1, sig_id 2008581, track by_src, ip 10.0.50.24
