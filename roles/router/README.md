@@ -562,12 +562,12 @@ alerts on this router are `ET INFO`, and those are normal traffic.
   * No DNSSEC validation (`module-config: "iterator"`): Quad9 validates.
     So `etc/default/unbound` turns off the root trust anchor update, and
     the resolvconf hook (the router's own `resolv.conf` is a fixed file).
-  * At JD the router itself asks this Unbound: `resolv.conf` lists
-    127.0.0.1, then Quad9 (9.9.9.9) in plain text for when Unbound is not
-    running. `linds-pfsense.linds.com.au`, the name the tunnel dials, goes
-    to Quad9 and not to the DCs: the DCs hold it as a CNAME to itself. At
-    LINDS, `resolv.conf` still lists public resolvers: LINDS dials
-    `jd.linds.com.au`, and the DCs answer that name with 10.0.52.7.
+  * The router itself asks this Unbound: `resolv.conf` lists 127.0.0.1,
+    then Quad9 (9.9.9.9) in plain text for when Unbound is not running. The
+    name each tunnel end dials goes to Quad9 and not to the DCs: at JD
+    `linds-pfsense.linds.com.au` (the DCs hold it as a CNAME to itself), at
+    LINDS `jd.linds.com.au` (the DCs answer it with 10.0.52.7, the UniFi
+    console). LAN clients at LINDS get the public address for that name too.
   * Debian confines `/usr/sbin/unbound` with AppArmor: it reads its config
     under `/etc/unbound` only. A test config elsewhere fails with
     "Permission denied".
