@@ -7,7 +7,9 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/suricata-update --no-reload
+# The site's alert suppressions (threshold.in, from the role) become
+# threshold.config here, matched against the new rules.
+ExecStart=/usr/bin/suricata-update --no-reload --threshold-in /etc/suricata/threshold.in --threshold-out /etc/suricata/threshold.config
 ExecStart=-/usr/bin/suricatasc -c ruleset-reload-nonblocking
 # The blocking Suricata takes its rules from these. Only a site with it has this.
 ExecStart=-/usr/local/sbin/suricata-ips-rules

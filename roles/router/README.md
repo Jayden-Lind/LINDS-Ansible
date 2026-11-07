@@ -754,11 +754,26 @@ alerts on this router are `ET INFO`, and those are normal traffic.
   Without IPv6 in HOME_NET, most rules (a `$HOME_NET` source) never matched
   IPv6 traffic, about a third of the LAN's. `validate.yml` fails when lan0
   has a global address outside HOME_NET: add the new prefix to the site file.
-* **Suricata alert suppressions are per site** (`files/<site>/etc/suricata/threshold.config`).
-  At JD it suppresses the P2P and protocol-anomaly rules that jd-torrent-01
-  (10.0.50.24, a Kea reservation) raises in normal work, for that host only:
-  more than half of all alerts before. `suricatasc -c dump-counters` shows
-  `detect.alerts_suppressed`.
+* **Suricata alert suppressions are per site** (`files/<site>/etc/suricata/threshold.in`).
+  suricata-update reads the file at each rule refresh and writes
+  `/etc/suricata/threshold.config`, which Suricata loads. A line
+  `suppress re:"<regex>", track ..., ip ...` becomes one suppression for
+  every enabled rule whose text matches, so a whole rule family stays
+  suppressed while ET Open adds and removes rules. Edit `threshold.in`, not
+  the generated file; the role runs suricata-update (and the reload) when it
+  changes. `suricatasc -c dump-counters` shows `detect.alerts_suppressed`.
+  * At JD it suppresses the P2P and protocol-anomaly rules that
+    jd-torrent-01 (10.0.50.24, a Kea reservation) raises in normal work, for
+    that host only: more than half of all alerts before.
+  * At LINDS it suppresses, for VLAN 36 only (LINDS-Torrent-02, behind
+    NordVPN), the P2P, Tor, reputation-list (DROP, CINS, COMPROMISED),
+    engine-anomaly (`SURICATA`) and ET DNS families, plus eight single
+    rules: 10,581 alerts a day before, about 1,700 generated suppressions.
+    Whole families are expanded only where they are small: ET INFO (4,548
+    rules) and ET DYN_DNS (6,100) are listed rule by rule.
+* **STUN rules are off at both sites** (`etc/suricata/disable.conf`,
+  `re:Session Traversal Utilities for NAT`). Every video call, game and
+  WebRTC page sends STUN; it was 86% of JD's alerts and a third of LINDS's.
 * **EVE reaches Loki through rsyslog imfile.** Suricata 8's
   `logrotate.d/suricata` renames `eve.json`, creates a new one and sends
   Suricata a HUP; imfile follows the new file by its inode. Suricata 7's

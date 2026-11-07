@@ -1,0 +1,42 @@
+# Managed by LINDS-Ansible: roles/router/files/linds/etc/suricata/threshold.in.
+# Alert suppressions for linds-router-01. suricata-update reads this file at
+# each rule refresh and writes /etc/suricata/threshold.config, which Suricata
+# loads: a `suppress re:"<regex>", ...` line becomes one suppression for every
+# enabled rule whose text matches, other lines are copied as they are. Edit
+# this file, not threshold.config.
+#
+# VLAN 36 is LINDS-Torrent-02 (10.0.36.2), which leaves by NordVPN (wg101).
+# Its peers and trackers set off these rules all day: 10,581 alerts in the 24 h
+# to 2026-11-07 13:40, from 58 rules, all of them torrent traffic or the
+# VM's own housekeeping. They are
+# suppressed for VLAN 36 only, in either direction: every other network still
+# raises them, and VLAN 36 still raises everything else (malware, exploits,
+# scans, policy).
+#
+# Whole rule families, so that a new Tor or reputation group (ET Open adds
+# them often) stays quiet too. At the time of writing they come to 1,720
+# rules.
+# P2P protocols (85 rules; GPL P2P BitTorrent transfer alone was 5,966 alerts)
+suppress re:"msg:\"(ET|GPL) P2P ", track by_either, ip 10.0.36.0/24
+# Peers that are also Tor relays (832 rules, one per group of relay addresses)
+suppress re:"msg:\"ET TOR ", track by_either, ip 10.0.36.0/24
+# Peers on the reputation lists: Spamhaus DROP, CINS, compromised hosts (388)
+suppress re:"msg:\"ET (DROP|CINS|COMPROMISED) ", track by_either, ip 10.0.36.0/24
+# Protocol anomalies in peer traffic: TLS records, HTTP, TCP stream, QUIC (395)
+suppress re:"msg:\"SURICATA ", track by_either, ip 10.0.36.0/24
+# Tracker names in odd TLDs: .tk, .pw, .to, .cc, .top (20 rules)
+suppress re:"msg:\"ET DNS ", track by_either, ip 10.0.36.0/24
+#
+# Single rules from families too large to take whole (ET DYN_DNS has 6,100
+# rules, ET INFO 4,548).
+# Trackers on duckdns
+suppress gen_id 1, sig_id 2022918, track by_either, ip 10.0.36.0/24
+suppress gen_id 1, sig_id 2042936, track by_either, ip 10.0.36.0/24
+# Package updates (APT user agent), a .cf tracker, and lookups of its own
+# public address (db-ip.com, ifconfig.me) in DNS and TLS
+suppress gen_id 1, sig_id 2013504, track by_either, ip 10.0.36.0/24
+suppress gen_id 1, sig_id 2025107, track by_either, ip 10.0.36.0/24
+suppress gen_id 1, sig_id 2063061, track by_either, ip 10.0.36.0/24
+suppress gen_id 1, sig_id 2063062, track by_either, ip 10.0.36.0/24
+suppress gen_id 1, sig_id 2063074, track by_either, ip 10.0.36.0/24
+suppress gen_id 1, sig_id 2063075, track by_either, ip 10.0.36.0/24
