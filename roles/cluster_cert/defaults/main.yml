@@ -12,7 +12,8 @@ cluster_cert_duration: 8760h
 cluster_cert_renew_before_days: 30
 
 # The kind of device, which decides how the certificate is installed. One of:
-# proxmox, truenas, unifi, redfish.
+# proxmox, truenas, unifi, ami (the SR635/SR655 baseboard controller), idrac8
+# (skipped: no install method works yet).
 cluster_cert_kind: proxmox
 
 # The name and the subject alternative names that go in the certificate. The
@@ -29,9 +30,16 @@ cluster_cert_default_ports:
   proxmox: "8006"
   truenas: "443"
   unifi: "443"
-  redfish: "443"
+  ami: "443"
+  idrac8: "443"
 
-# Redfish (iDRAC, BMC) login. Left empty on purpose: a redfish host is skipped
+# How many times, 3 seconds apart, the new certificate is looked for after the
+# install. A baseboard controller restarts its web server and takes about 20
+# seconds.
+cluster_cert_verify_retries: 20
+
+# Baseboard controller login. Left empty on purpose: an ami host is skipped
 # until these are set, in the vault, per host.
-cluster_cert_redfish_user: ""
-cluster_cert_redfish_password: ""
+cluster_cert_bmc_user: ""
+cluster_cert_bmc_password: ""
+cluster_cert_bmc_login_set: "{{ cluster_cert_bmc_user | length > 0 and cluster_cert_bmc_password | length > 0 }}"
