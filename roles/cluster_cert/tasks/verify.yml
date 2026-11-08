@@ -1,8 +1,17 @@
 ---
-# Read the certificate the device serves now and check it is the vended one:
-# issued by linds-CA and carrying the common name. Runs from the control node
-# against the device's TLS port, and waits, because some devices swap the
-# certificate a few seconds after they are told to.
+# Read the certificate the device serves now and check it is the one just
+# vended, by its SHA-256 fingerprint. Checking the issuer alone is not enough:
+# on a renewal the old certificate has the same issuer and name, and a device
+# can keep serving it for a while after the install. Runs from the control node
+# against the device's TLS port, and waits, because a device can take some
+# seconds to restart its web server.
+
+- name: Work out the fingerprint of the new certificate
+  ansible.builtin.command:
+    argv: [openssl, x509, -in, "{{ cluster_cert_tmp.path }}/tls.crt", -noout, -fingerprint, -sha256]
+  delegate_to: localhost
+  register: cluster_cert_new_fingerprint
+  changed_when: false
 
 - name: Read the served certificate until it is the new one
   ansible.builtin.command:
@@ -13,12 +22,11 @@
   delegate_to: localhost
   register: cluster_cert_served
   changed_when: false
-  retries: 10
+  retries: "{{ cluster_cert_verify_retries }}"
   delay: 3
   until:
     - cluster_cert_served.rc == 0
-    - "'linds-CA' in cluster_cert_served.stdout"
-    - cluster_cert_common_name in cluster_cert_served.stdout
+    - cluster_cert_new_fingerprint.stdout | trim in cluster_cert_served.stdout
 
 - name: Show what the device now serves
   ansible.builtin.debug:

@@ -15,8 +15,9 @@ certificate, or replaces it with a new one from the cluster. See
 1. `kubectl` on the control node, set to the homelab cluster.
 2. The `device-certs` namespace in the cluster, with the `linds-ca` issuer.
 3. SSH to each `proxmox`, `truenas` and `unifi` device.
-4. A vault login for each `redfish` device (a baseboard controller), or the
-   device is skipped.
+4. A vault login for each `ami` device (an SR635/SR655 baseboard controller),
+   or the device is skipped. An `idrac8` device is always skipped for now: see
+   `roles/cluster_cert/README.md`.
 
 ## How to use it
 

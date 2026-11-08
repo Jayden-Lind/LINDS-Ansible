@@ -9,24 +9,27 @@
 
 - name: Check the kind is one this role knows
   ansible.builtin.assert:
-    that: cluster_cert_kind in ['proxmox', 'truenas', 'unifi', 'redfish']
+    that: cluster_cert_kind in ['proxmox', 'truenas', 'unifi', 'ami', 'idrac8']
     fail_msg: "cluster_cert_kind '{{ cluster_cert_kind }}' is not supported."
     quiet: true
 
+# Each line gives a reason if it applies to this host, or an empty string. The
+# first reason that applies is used. No reason means the host is done.
 - name: Decide whether this host can be done yet
+  vars:
+    cluster_cert_skip_reasons:
+      - "{{ 'no install method works on an iDRAC8 yet' if cluster_cert_kind == 'idrac8' else '' }}"
+      - "{{ 'no controller login is set in the vault yet' if cluster_cert_kind == 'ami' and not (cluster_cert_bmc_login_set | bool) else '' }}"
   ansible.builtin.set_fact:
-    cluster_cert_skip: >-
-      {{ cluster_cert_kind == 'redfish'
-         and (cluster_cert_redfish_user | length == 0
-              or cluster_cert_redfish_password | length == 0) }}
+    cluster_cert_skip_reason: "{{ cluster_cert_skip_reasons | select | first | default('') }}"
 
-- name: Report a host that is waiting for a login
+- name: Report a host that cannot be done yet
   ansible.builtin.debug:
-    msg: "{{ inventory_hostname }}: skipped, no Redfish login set yet."
-  when: cluster_cert_skip | bool
+    msg: "{{ inventory_hostname }}: skipped, {{ cluster_cert_skip_reason }}."
+  when: cluster_cert_skip_reason | length > 0
 
 - name: Vend and install
-  when: not (cluster_cert_skip | bool)
+  when: cluster_cert_skip_reason | length == 0
   block:
     - name: Make a scratch directory on the control node
       ansible.builtin.tempfile:

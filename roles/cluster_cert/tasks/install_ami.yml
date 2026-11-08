@@ -1,0 +1,46 @@
+---
+# Install the certificate on an AMI MegaRAC controller (the SR635 or SR655
+# baseboard controller) through its own web API. The key was made on the
+# control node with the certificate. The upload holds the certificate followed
+# by the CA certificate: see files/ami-upload.sh. The controller's web server
+# restarts and serves again in about 20 seconds. IPMI, SSH and the host are not
+# touched.
+
+- name: Build the chain file and the key in the format the controller takes
+  ansible.builtin.shell:
+    cmd: >-
+      cat tls.crt ca.crt > chain.crt &&
+      openssl rsa -in tls.key -traditional -out key.pem 2>/dev/null &&
+      chmod 600 key.pem
+    chdir: "{{ cluster_cert_tmp.path }}"
+  delegate_to: localhost
+  changed_when: false
+
+# no_log keeps the password, which is in the environment, out of the log. The
+# result is checked in the next tasks so that a failure still shows the
+# controller's replies, which hold no secrets.
+- name: Upload the chain and the key, and apply them
+  ansible.builtin.command:
+    argv:
+      - "{{ role_path }}/files/ami-upload.sh"
+      - "{{ cluster_cert_endpoint_host }}"
+      - "{{ cluster_cert_bmc_user }}"
+      - "{{ cluster_cert_tmp.path }}/chain.crt"
+      - "{{ cluster_cert_tmp.path }}/key.pem"
+  environment:
+    CLUSTER_CERT_BMC_PASSWORD: "{{ cluster_cert_bmc_password }}"
+  delegate_to: localhost
+  register: cluster_cert_ami
+  changed_when: "'UPLOADED' in cluster_cert_ami.stdout"
+  failed_when: false
+  no_log: true
+
+- name: Show the controller's replies
+  ansible.builtin.debug:
+    msg: "{{ cluster_cert_ami.stdout_lines }}"
+
+- name: Stop if the controller did not take the certificate
+  ansible.builtin.assert:
+    that: "'UPLOADED' in cluster_cert_ami.stdout"
+    fail_msg: "{{ inventory_hostname }}: the controller did not take the certificate. See the replies above."
+    quiet: true
