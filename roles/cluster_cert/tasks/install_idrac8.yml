@@ -1,0 +1,83 @@
+---
+# Install the certificate on a Dell iDRAC8 through the calls its own web GUI
+# makes (files/idrac8.sh). The iDRAC makes the key and the signing request
+# itself, so its key never leaves it; the cluster signs the request. After the
+# upload the iDRAC resets, which takes about 3 minutes. The host and its
+# guests are not touched.
+#
+# no_log keeps the password, which is in the environment, out of the log. The
+# result of each call is checked in the next tasks, so a failure still shows
+# the iDRAC's replies, which hold no secrets.
+
+- name: Have the iDRAC make a key and a signing request
+  ansible.builtin.command:
+    argv:
+      - "{{ role_path }}/files/idrac8.sh"
+      - csr
+      - "{{ cluster_cert_endpoint_host }}"
+      - "{{ cluster_cert_bmc_user }}"
+      - "{{ cluster_cert_tmp.path }}/device.csr"
+      - "{{ cluster_cert_common_name }}"
+      - "{{ cluster_cert_device_subject.organization }}"
+      - "{{ cluster_cert_device_subject.organizational_unit }}"
+      - "{{ cluster_cert_device_subject.locality }}"
+      - "{{ cluster_cert_device_subject.state }}"
+      - "{{ cluster_cert_device_subject.country }}"
+      - "{{ cluster_cert_device_subject.email }}"
+      - "{{ (cluster_cert_dns_names + cluster_cert_ip_addresses) | join(',') }}"
+  environment:
+    CLUSTER_CERT_BMC_PASSWORD: "{{ cluster_cert_bmc_password }}"
+  delegate_to: localhost
+  register: cluster_cert_idrac_csr
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Show the iDRAC's reply to the signing request
+  ansible.builtin.debug:
+    msg: "{{ cluster_cert_idrac_csr.stdout_lines }}"
+
+- name: Stop if the iDRAC made no signing request
+  ansible.builtin.assert:
+    that: "'CSR MADE' in cluster_cert_idrac_csr.stdout"
+    fail_msg: "{{ inventory_hostname }}: the iDRAC made no signing request. See the reply above."
+    quiet: true
+
+- name: Have the cluster sign the request
+  ansible.builtin.command:
+    argv:
+      - "{{ role_path }}/files/sign-csr.sh"
+      - "{{ cluster_cert_tmp.path }}/device.csr"
+      - "{{ cluster_cert_tmp.path }}"
+      - "{{ cluster_cert_duration }}"
+      - "{{ cluster_cert_issuer }}"
+      - "{{ cluster_cert_namespace }}"
+  delegate_to: localhost
+  register: cluster_cert_sign
+  changed_when: "'SIGNED' in cluster_cert_sign.stdout"
+
+- name: Upload the certificate and reset the iDRAC
+  ansible.builtin.command:
+    argv:
+      - "{{ role_path }}/files/idrac8.sh"
+      - install
+      - "{{ cluster_cert_endpoint_host }}"
+      - "{{ cluster_cert_bmc_user }}"
+      - "{{ cluster_cert_tmp.path }}/tls.crt"
+  environment:
+    CLUSTER_CERT_BMC_PASSWORD: "{{ cluster_cert_bmc_password }}"
+  delegate_to: localhost
+  register: cluster_cert_idrac_install
+  changed_when: "'UPLOADED' in cluster_cert_idrac_install.stdout"
+  failed_when: false
+  no_log: true
+
+- name: Show the iDRAC's replies to the upload
+  ansible.builtin.debug:
+    msg: "{{ cluster_cert_idrac_install.stdout_lines }}"
+
+- name: Stop if the iDRAC did not take the certificate
+  ansible.builtin.assert:
+    that: "'UPLOADED' in cluster_cert_idrac_install.stdout"
+    fail_msg: "{{ inventory_hostname }}: the iDRAC did not take the certificate. See the replies above."
+    quiet: true
