@@ -18,8 +18,7 @@
 - name: Decide whether this host can be done yet
   vars:
     cluster_cert_skip_reasons:
-      - "{{ 'no install method works on an iDRAC8 yet' if cluster_cert_kind == 'idrac8' else '' }}"
-      - "{{ 'no controller login is set in the vault yet' if cluster_cert_kind == 'ami' and not (cluster_cert_bmc_login_set | bool) else '' }}"
+      - "{{ 'no controller login is set in the vault yet' if cluster_cert_kind in ['ami', 'idrac8'] and not (cluster_cert_bmc_login_set | bool) else '' }}"
   ansible.builtin.set_fact:
     cluster_cert_skip_reason: "{{ cluster_cert_skip_reasons | select | first | default('') }}"
 
@@ -40,6 +39,8 @@
       delegate_to: localhost
       changed_when: false
 
+    # An iDRAC8 makes its own key and signing request (install_idrac8.yml), so
+    # for it the script only decides whether a new certificate is due.
     - name: Vend a certificate, unless the current one is still good
       ansible.builtin.command:
         argv:
@@ -53,6 +54,7 @@
           - "{{ cluster_cert_namespace }}"
           - "{{ cluster_cert_renew_before_days | string }}"
           - "{{ cluster_cert_endpoint_host }}:{{ cluster_cert_endpoint_port }}"
+          - "{{ 'check' if cluster_cert_kind == 'idrac8' else 'vend' }}"
       delegate_to: localhost
       register: cluster_cert_vend
       changed_when: "'VENDED' in cluster_cert_vend.stdout"

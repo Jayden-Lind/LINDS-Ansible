@@ -15,9 +15,8 @@ certificate, or replaces it with a new one from the cluster. See
 1. `kubectl` on the control node, set to the homelab cluster.
 2. The `device-certs` namespace in the cluster, with the `linds-ca` issuer.
 3. SSH to each `proxmox`, `truenas` and `unifi` device.
-4. A vault login for each `ami` device (an SR635/SR655 baseboard controller),
-   or the device is skipped. An `idrac8` device is always skipped for now: see
-   `roles/cluster_cert/README.md`.
+4. A vault login for each `ami` device (an SR635/SR655 baseboard controller)
+   and each `idrac8` device (a Dell iDRAC8), or the device is skipped.
 
 ## How to use it
 
@@ -32,7 +31,8 @@ certificate, or replaces it with a new one from the cluster. See
 ## Safety
 
 - **CAUTION:** Each install restarts the device web service, which drops the
-  web interface for a few seconds.
+  web interface for a few seconds. An iDRAC8 resets as a whole and is away for
+  about 3 minutes.
 - **NOTE:** This playbook is not part of the merge-to-deploy set. A renewal is
   a change the deploy would read as drift. Run it by hand, or from its own
   timer.

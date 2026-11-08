@@ -9,24 +9,28 @@
 #
 # Usage:
 #   vend.sh <out-dir> <common-name> <dns-names> <ip-addresses> <duration> \
-#           <issuer> <namespace> <renew-before-days> <endpoint>
+#           <issuer> <namespace> <renew-before-days> <endpoint> [<mode>]
 #
 #   dns-names, ip-addresses  Comma separated. Either may be empty ("").
 #   endpoint                 host:port that already serves TLS, or "" for none.
 #                            If it serves a certificate from <issuer> that is
 #                            not due to renew, the script stops with RC 10 and
 #                            vends nothing.
+#   mode                     "vend" (the default), or "check" for a device that
+#                            makes its own key and signing request: the script
+#                            then only decides. It prints "DUE" and stops with
+#                            RC 0 when a new certificate is needed.
 #
 # Output files in <out-dir>: tls.key, tls.crt (leaf), ca.crt (issuer),
 # serve.crt (leaf plus any issuer that is not a self-signed root).
 set -euo pipefail
 
-OUT=$1 CN=$2 DNS=$3 IPS=$4 DUR=$5 ISSUER=$6 NS=$7 RENEW_DAYS=$8 ENDPOINT=${9:-}
+OUT=$1 CN=$2 DNS=$3 IPS=$4 DUR=$5 ISSUER=$6 NS=$7 RENEW_DAYS=$8 ENDPOINT=${9:-} MODE=${10:-vend}
 RENEW_SECS=$(( RENEW_DAYS * 86400 ))
 
 # Is the certificate already good? Keeps re-runs from re-issuing needlessly.
 if [ -n "$ENDPOINT" ]; then
-  served=$(echo | openssl s_client -connect "$ENDPOINT" -servername "${CN}" 2>/dev/null </dev/null || true)
+  served=$(echo | timeout 15 openssl s_client -connect "$ENDPOINT" -servername "${CN}" 2>/dev/null </dev/null || true)
   if [ -n "$served" ]; then
     leaf=$(printf '%s' "$served" | openssl x509 2>/dev/null || true)
     if [ -n "$leaf" ] \
@@ -36,6 +40,11 @@ if [ -n "$ENDPOINT" ]; then
       exit 10
     fi
   fi
+fi
+
+if [ "$MODE" = check ]; then
+  echo "DUE"
+  exit 0
 fi
 
 mkdir -p "$OUT"; chmod 700 "$OUT"

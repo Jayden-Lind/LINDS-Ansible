@@ -36,8 +36,7 @@ cluster_cert:
       cluster_cert_common_name: jd-unifi-01.linds.com.au
       cluster_cert_dns_names: [jd-unifi-01.linds.com.au]
       cluster_cert_ip_addresses: [10.0.52.7]
-    # Baseboard controllers. Their login is in the vault, in host_vars. The
-    # iDRAC8 is listed but skipped: no install method works on it yet.
+    # Baseboard controllers. Their login is in the vault, in host_vars.
     jd-proxmox-02-bmc-cert:
       ansible_host: 10.0.50.240
       ansible_connection: local

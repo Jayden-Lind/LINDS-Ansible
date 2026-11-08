@@ -7,15 +7,16 @@ authority.
 
 1. Reads the certificate the device serves now.
 2. Stops, if the certificate is already from `linds-CA` and is not near expiry.
-3. Makes a private key and a signing request on the control node.
+3. Makes a private key and a signing request on the control node. An iDRAC8
+   makes its own key and signing request.
 4. Asks cert-manager in the cluster to sign the request.
-5. Installs the key and the certificate on the device, the way that device
-   needs.
+5. Installs the certificate on the device, the way that device needs, with
+   the key if the control node made it.
 6. Reads the device again until it serves the new certificate. The check
    compares the SHA-256 fingerprint, so a renewal is proved too.
 
-The private key stays on the control node. Only the signing request, which
-holds the public key, goes to the cluster.
+The private key stays on the control node, or on the iDRAC8. Only the signing
+request, which holds the public key, goes to the cluster.
 
 ## Requirements
 
@@ -24,8 +25,8 @@ holds the public key, goes to the cluster.
 - `openssl`, `base64`, `curl` and `python3` on the control node.
 - For a `proxmox`, `truenas` or `unifi` device: SSH to the device as a user
   that can install the certificate.
-- For an `ami` device: the controller login in the vault, in `host_vars`. The
-  device is skipped until it is set.
+- For an `ami` or `idrac8` device: the controller login in the vault, in
+  `host_vars`. The device is skipped until it is set.
 
 ## Variables
 
@@ -35,13 +36,14 @@ holds the public key, goes to the cluster.
 | `cluster_cert_common_name` | `{{ inventory_hostname }}` | The name in the certificate. |
 | `cluster_cert_dns_names` | `[{{ cluster_cert_common_name }}]` | The DNS names in the certificate. |
 | `cluster_cert_ip_addresses` | `[]` | The IP addresses in the certificate. |
+| `cluster_cert_device_subject` | LINDS values | The rest of the subject (organization, unit, locality, state, country, email), for an `idrac8` signing request. |
 | `cluster_cert_issuer` | `linds-ca` | The cluster issuer that signs. |
 | `cluster_cert_namespace` | `device-certs` | The namespace for the signing request. |
 | `cluster_cert_duration` | `8760h` | How long the certificate is valid. |
 | `cluster_cert_renew_before_days` | `30` | Replace the certificate inside this window. |
 | `cluster_cert_endpoint_host` | `{{ ansible_host }}` | The address read to check and prove the certificate. |
 | `cluster_cert_endpoint_port` | per kind | The TLS port read. |
-| `cluster_cert_verify_retries` | `20` | How many times, 3 seconds apart, the new certificate is looked for. |
+| `cluster_cert_verify_retries` | per kind | How many times, 3 seconds apart, the new certificate is looked for: 20, or 100 for `idrac8`. |
 | `cluster_cert_bmc_user` | `""` | The baseboard controller login name. |
 | `cluster_cert_bmc_password` | `""` | The baseboard controller login password. |
 
@@ -53,7 +55,7 @@ holds the public key, goes to the cluster.
 | `truenas` | TrueNAS SCALE | `midclt`: import, set as the web interface certificate, restart the interface. |
 | `unifi` | UniFi OS console | Copies the files to `/data/unifi-core/config`, restarts `unifi-core`. |
 | `ami` | SR635/SR655 baseboard controller (AMI MegaRAC) | The controller web API, the same call as its "Upload SSL" page (`files/ami-upload.sh`). |
-| `idrac8` | Dell iDRAC8 | None. The host is skipped. |
+| `idrac8` | Dell iDRAC8 | The calls of its web GUI (`files/idrac8.sh`): "Generate CSR", then "Upload Server Certificate", then an iDRAC reset. |
 
 ## How to use it
 
@@ -65,6 +67,9 @@ the `cluster_cert` group.
 - **CAUTION:** The install restarts the device web service. The web interface
   drops for a few seconds. SSH, IPMI, API tokens and running guests are not
   touched.
+- **CAUTION:** An iDRAC8 resets as a whole. Its web interface is away for
+  about 3 minutes, and Redfish for about 7. SSH and IPMI to the iDRAC also stop
+  during the reset. The host and its guests are not touched.
 - **NOTE:** The role is safe to re-run. A device with a current certificate is
   left alone.
 
@@ -94,16 +99,16 @@ the `cluster_cert` group.
 
 ### Dell iDRAC8 (`idrac8`)
 
-- No install method works yet, so the role skips the host.
-- The WS-Man method `GenerateSSLCSR` makes a good signing request, from the
-  `iDRAC.Security.Csr*` settings. It needs `CsrEmailAddr` set. Write
-  `CsrSubjectAltName` as `name,address`, without `DNS:` or `IP:`.
-- The WS-Man method `ImportSSLCertificate` refuses every certificate with
-  "Certificate import operation failed" (`LC011`). The SSH `racadm` cannot
-  upload a certificate. Dell's remote `racadm` can, but the role does not use
-  it.
-- The iDRAC8 signing request asks for no extended key usage. A certificate made
-  from it has none, and Apple devices refuse such a server certificate.
+- The role uses the calls of the iDRAC web GUI. Do not use WS-Man: its
+  `ImportSSLCertificate` method refuses every certificate with "Certificate
+  import operation failed" (`LC011`). The SSH `racadm` cannot upload a
+  certificate, and Redfish on the iDRAC8 has no certificate service.
+- The iDRAC signing request asks for no extended key usage, so the certificate
+  has none. Apple devices (Safari on macOS and iOS) refuse such a server
+  certificate. Other browsers, `curl` and Redfish clients accept it.
+- The iDRAC takes at most 4 names and addresses in the signing request.
+- To go back to the Dell certificate, run `racadm sslresetcfg` over SSH on the
+  iDRAC.
 
 ## Files
 
@@ -112,4 +117,5 @@ the `cluster_cert` group.
 | `files/vend.sh` | Makes a key and a signing request, and gets the cluster to sign it. |
 | `files/sign-csr.sh` | Gets the cluster to sign a request that a device made itself. Takes the usages from the request. |
 | `files/ami-upload.sh` | Uploads a certificate chain and key to an `ami` controller. |
+| `files/idrac8.sh` | Gets a signing request from an `idrac8`, and uploads the signed certificate to it. |
 | `files/read-served.sh` | Prints the certificate a TLS endpoint serves, with its fingerprint. |

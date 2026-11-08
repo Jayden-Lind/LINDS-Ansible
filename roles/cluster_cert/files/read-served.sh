@@ -7,5 +7,5 @@
 # dropped; the result is openssl x509's.
 set -euo pipefail
 EP=$1 SRV=$2
-{ echo | openssl s_client -connect "$EP" -servername "$SRV" 2>/dev/null || true; } \
+{ echo | timeout 15 openssl s_client -connect "$EP" -servername "$SRV" 2>/dev/null || true; } \
   | openssl x509 -noout -issuer -subject -ext subjectAltName -enddate -fingerprint -sha256

@@ -1,7 +1,7 @@
 ---
-# The iDRAC8 of linds-proxmox-01 (Dell PowerEdge T630). Kept for the day an
-# install method works on it; the role skips it now. The password is
-# vault-encrypted.
+# The iDRAC8 of linds-proxmox-01 (Dell PowerEdge T630). The role makes the
+# signing request on it and installs the certificate through the calls of its
+# web GUI. The password is vault-encrypted.
 cluster_cert_bmc_user: root
 cluster_cert_bmc_password: !vault |
   $ANSIBLE_VAULT;1.1;AES256
