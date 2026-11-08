@@ -60,6 +60,14 @@
   type: A
   data: 10.0.50.246
   ttl: 3600
+- name: jd-proxmox-02
+  type: A
+  data: 10.0.50.246
+  ttl: 3600
+- name: jd-proxmox-02-bmc
+  type: A
+  data: 10.0.50.240
+  ttl: 3600
 - name: jd-s3-01
   type: A
   data: 10.0.53.20
@@ -67,6 +75,10 @@
 - name: jd-truenas-01
   type: A
   data: 10.0.53.246
+  ttl: 3600
+- name: jd-unifi-01
+  type: A
+  data: 10.0.52.7
   ttl: 3600
 - name: linds-dc
   type: A
@@ -91,6 +103,10 @@
 - name: linds-proxmox-01
   type: A
   data: 192.168.6.205
+  ttl: 3600
+- name: linds-proxmox-01-bmc
+  type: A
+  data: 192.168.6.240
   ttl: 3600
 - name: linds-truenas-01
   type: A
