@@ -1,0 +1,11 @@
+---
+# The DNS records that the code owns (role windows_dns). Apply with
+# `ansible-playbook playbooks/windows.yml --tags dns`.
+
+windows_dns_records:
+  # The names in the certificates from the cluster (playbooks/certificates.yml)
+  # that no machine registers for itself.
+  - { zone: linds.com.au, name: jd-proxmox-02, type: A, value: 10.0.50.246 }
+  - { zone: linds.com.au, name: jd-proxmox-02-bmc, type: A, value: 10.0.50.240 }
+  - { zone: linds.com.au, name: linds-proxmox-01-bmc, type: A, value: 192.168.6.240 }
+  - { zone: linds.com.au, name: jd-unifi-01, type: A, value: 10.0.52.7 }

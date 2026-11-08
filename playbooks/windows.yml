@@ -7,7 +7,7 @@
 #
 #   --limit <fqdn>   one server only (the domain settings are then skipped)
 #   --tags <tag>     one part only: baseline, logs, dc, ca, fileserver,
-#                    topology, recovery, dfsr, gpo or directory
+#                    topology, recovery, dfsr, gpo, directory or dns
 #
 # To build or to remove a server, see docs/windows/README.md.
 # Read playbooks/windows.md before you use it.
@@ -85,3 +85,8 @@
         name: windows_directory
         tasks_from: links
       tags: directory
+
+    - name: The DNS records that the code owns
+      ansible.builtin.import_role:
+        name: windows_dns
+      tags: dns
