@@ -1,0 +1,7 @@
+---
+# The DNS records that the code owns. Set them in the inventory. With the
+# empty list here the role changes nothing.
+
+# Records: {zone: <zone>, name: <name in the zone>, type: <A, CNAME, ...>,
+# value: <a value or a list of values>, ttl: <seconds, 3600 if not set>}.
+windows_dns_records: []

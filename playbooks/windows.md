@@ -19,6 +19,7 @@ It has two plays:
 | | | `directory` | `windows_directory` | OUs, groups, users, membership, password policy |
 | | | `gpo` | `windows_gpo` | The GPOs that the code owns: the server baseline, the time hierarchy, the service accounts' logon rights |
 | | | `directory` | `windows_directory` (`tasks/links.yml`) | The GPO links, after the GPOs exist |
+| | | `dns` | `windows_dns` | The DNS records that the code owns |
 
 A server gets the settings of each group that it is in: `windows_dc`,
 `windows_ca` and `windows_fileserver`. Only the servers in `windows_managed`

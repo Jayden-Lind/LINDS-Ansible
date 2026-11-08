@@ -109,6 +109,14 @@ the `cluster_cert` group.
 - The iDRAC takes at most 4 names and addresses in the signing request.
 - To go back to the Dell certificate, run `racadm sslresetcfg` over SSH on the
   iDRAC.
+- The iDRAC refuses a web request for a name that is not its own DNS name. It
+  answers HTTP 400 (its host header check). To open it by the name in the
+  certificate, add that name one time, over SSH on the iDRAC:
+
+      racadm set iDRAC.WebServer.ManualDNSEntry <name>
+
+  The role does not need this, because it connects to the address.
+  linds-proxmox-01-bmc has had this setting since 2026-11-08.
 
 ## Files
 

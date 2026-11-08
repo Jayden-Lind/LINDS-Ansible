@@ -1,0 +1,19 @@
+---
+# Runs on one domain controller. The zones are stored in AD, so the other
+# domain controllers get the records by replication.
+#
+# For each name and type in the list, the module makes the values equal to the
+# list. It finds the name with -Node, so the names below it are not touched.
+# Records that are not in the list are not touched.
+
+- name: Make the DNS records
+  ansible.windows.win_dns_record:
+    zone: "{{ item.zone }}"
+    name: "{{ item.name }}"
+    type: "{{ item.type }}"
+    value: "{{ item.value }}"
+    ttl: "{{ item.ttl | default(3600) }}"
+    state: present
+  loop: "{{ windows_dns_records }}"
+  loop_control:
+    label: "{{ item.name }}.{{ item.zone }} {{ item.type }} {{ item.value }}"
