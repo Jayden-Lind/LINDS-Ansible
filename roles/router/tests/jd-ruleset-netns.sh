@@ -130,6 +130,33 @@ except ConnectionRefusedError: print('refused')
 except Exception: print('silent')"); [ "$r" = silent ] && ok "VLAN 52 -> router SSH: no answer" || bad "VLAN 52 -> router SSH: $r"
 echo "== a private destination with no route"
 out=$(in_ $TRUNK ping -c1 -W2 10.99.99.99 2>&1); echo "$out" | grep -q "Net Unreachable" && ok "LAN -> 10.99.99.99: Destination Net Unreachable" || bad "LAN -> 10.99.99.99: $out"
+echo "== input: a private source address on the WAN is not the LAN"
+# spoofed inet-pid src sink-pid -> how many answers the owner of the address
+# saw. The WAN client opens TCP 22 and sends to UDP 53 of the router with the
+# source address of a LAN host. The router sends an answer (a TCP reset, an
+# ICMP error) to that LAN host only if the input chain let the packet in.
+spoofed() {
+  in_ $3 nft add table ip t; in_ $3 nft add chain ip t c '{ type filter hook prerouting priority -300; }'
+  in_ $3 nft add rule ip t c ip saddr 203.0.113.2 counter
+  in_ $1 ip addr add $2/32 dev inet0
+  in_ $1 python3 -c "
+import socket
+s=socket.socket(); s.settimeout(1); s.bind(('$2',0))
+try: s.connect(('203.0.113.2',22))
+except Exception: pass
+u=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); u.bind(('$2',0)); u.sendto(b'x',('203.0.113.2',53))"
+  sleep 0.2; in_ $1 ip addr del $2/32 dev inet0
+  in_ $3 nft list chain ip t c | grep -oE 'packets [0-9]+' | awk '{print $2}'
+  in_ $3 nft delete table ip t; }
+n=$(spoofed $INET 10.0.50.20 $TRUNK); [ "${n:-0}" = 0 ] && ok "from the WAN with the address of a LAN host: no answer goes to that host" || bad "from the WAN with a LAN source address: let in, $n answers went to the LAN host"
+tcp() { in_ $1 python3 -c "
+import socket; s=socket.socket(); s.settimeout(2)
+try:
+    s.connect(('$2',$3)); print('open')
+except ConnectionRefusedError: print('refused')
+except Exception: print('silent')"; }
+r=$(tcp $TRUNK 10.0.50.1 22); [ "$r" = refused ] && ok "SSH from the LAN: let in" || bad "SSH from the LAN: $r"
+r=$(tcp $C53 10.0.53.1 53); [ "$r" = refused ] && ok "DNS from VLAN 53: let in" || bad "DNS from VLAN 53: $r"
 echo "== invalid packets"
 n=$(synfin $INET 203.0.113.1 10.0.50.20 $TRUNK); [ "${n:-0}" = 0 ] && ok "from the WAN: dropped" || bad "from the WAN: $n reached the LAN"
 n=$(synfin $TRUNK 10.0.50.20 198.51.100.10 $INET); [ "${n:-0}" = 0 ] && ok "to the WAN: dropped, no private source leaves" || bad "to the WAN: $n reached the internet"

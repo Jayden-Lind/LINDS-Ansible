@@ -129,6 +129,25 @@ except Exception: print('silent')"; }
 r=$(tcp $INET 203.0.113.2 22); [ "$r" = silent ] && ok "SSH from the WAN: no answer" || bad "SSH from the WAN: $r"
 r=$(tcp $INET 203.0.113.2 179); [ "$r" = silent ] && ok "BGP from the WAN: no answer" || bad "BGP from the WAN: $r"
 r=$(tcp $INET 203.0.113.2 53); [ "$r" = silent ] && ok "DNS from the WAN: no answer" || bad "DNS from the WAN: $r"
+# A private source address on the WAN is not the LAN (input rule 3b).
+# spoofed inet-pid src sink-pid -> how many answers the owner of the address
+# saw. The WAN client opens TCP 22 and sends to UDP 53 of the router with the
+# source address of a LAN host. The router sends an answer (a TCP reset, an
+# ICMP error) to that LAN host only if the input chain let the packet in.
+spoofed() {
+  in_ $3 nft add table ip t; in_ $3 nft add chain ip t c '{ type filter hook prerouting priority -300; }'
+  in_ $3 nft add rule ip t c ip saddr 203.0.113.2 counter
+  in_ $1 ip addr add $2/32 dev inet0
+  in_ $1 python3 -c "
+import socket
+s=socket.socket(); s.settimeout(1); s.bind(('$2',0))
+try: s.connect(('203.0.113.2',22))
+except Exception: pass
+u=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); u.bind(('$2',0)); u.sendto(b'x',('203.0.113.2',53))"
+  sleep 0.2; in_ $1 ip addr del $2/32 dev inet0
+  in_ $3 nft list chain ip t c | grep -oE 'packets [0-9]+' | awk '{print $2}'
+  in_ $3 nft delete table ip t; }
+n=$(spoofed $INET 192.168.6.50 $TRUNK); [ "${n:-0}" = 0 ] && ok "from the WAN with the address of a LAN host: no answer goes to that host" || bad "from the WAN with a LAN source address: let in, $n answers went to the LAN host"
 r=$(tcp $INET 203.0.113.2 500); [ "$r" = refused ] && ok "IKE port from the WAN: let in (refused only because nothing listens here)" || bad "IKE from the WAN: $r"
 udpprobe() { in_ $1 python3 -c "
 import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.settimeout(2); s.connect(('$2',$3)); s.send(b'x')
