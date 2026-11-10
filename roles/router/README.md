@@ -916,9 +916,23 @@ Since 2026-09-06 `wan0` is VF 0 (`0000:c2:00.2`) of the ConnectX-4 Lx port
 `ens5f0np0` on jd-proxmox-02, passed through as `hostpci0` (see
 `proxmox/vms-jd-router.tf`), driven by `mlx5_core` in the guest. The host's
 `sriov-wan-setup.service` creates the VF at boot with wan0's MAC
-(`BC:24:11:01:11:02`, so `10-wan0.link` needed no change), `trust on`,
-`spoofchk off`, bound to `vfio-pci`. The VyOS VM no longer has a `hostpci`
-entry, so it cannot grab the VF if it is ever started.
+(`BC:24:11:01:11:02`, so `10-wan0.link` needed no change), `trust off`,
+`spoofchk on`, `state auto`, bound to `vfio-pci`. The VyOS VM no longer has
+a `hostpci` entry, so it cannot grab the VF if it is ever started.
+
+Since 2026-11-10 the VF is not trusted and the NIC drops frames from the
+guest that do not have wan0's MAC. The router does not need more: it uses
+one MAC, no promiscuous mode and no VLANs on wan0. If wan0 gets a second MAC
+(a macvlan, a bridge) or must change its MAC, set `trust on` and
+`spoofchk off` again in the script. The script
+(`/usr/local/sbin/sriov-wan-setup.sh`) and its unit are only on the host;
+they are in no repository.
+
+On the same day the unused WAN bridge `vmbr1` was removed from the host
+(LINDS-Terraform `proxmox/network.tf`). The PF `ens5f0np0` has no bridge and
+no address, and IPv6 is disabled on it (`pre-up` line in
+`/etc/network/interfaces`), so the host itself sends nothing to the WAN. The
+PF must stay up: the link state of the VF follows it.
 
 Consequences: the VM is pinned to this host and vfio locks its memory;
 `hostpci` changes need a cold start; the VF's queue count is what the
@@ -927,9 +941,9 @@ firmware gives (`ethtool -l wan0`: 4). The move also got a new ISP lease
 why `retry_initiate_interval` exists in `strongswan.d/router.conf`: charon
 initiated LINDS before the lease landed and would never have tried again.
 
-**Back to virtio if needed:** drop the `hostpci` block, add a `net1`
-`network_device` on `vmbr1` with the same MAC, cold start. Nothing in the
-guest changes.
+**Back to virtio if needed:** make a bridge on `ens5f0np0` again (the
+former `vmbr1`), drop the `hostpci` block, add a `net1` `network_device` on
+that bridge with the same MAC, cold start. Nothing in the guest changes.
 
 ## linds-router-01
 
