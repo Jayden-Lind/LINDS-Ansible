@@ -116,6 +116,21 @@
     mode: '0644'
   notify: restart journald
 
+# The watchdog device itself is part of the VM (LINDS-Terraform). Without
+# the device the setting does nothing.
+- name: systemd manager conf dir
+  ansible.builtin.file:
+    path: /etc/systemd/system.conf.d
+    state: directory
+    mode: '0755'
+
+- name: systemd uses the hardware watchdog
+  ansible.builtin.copy:
+    src: etc/systemd/system.conf.d/90-watchdog.conf
+    dest: /etc/systemd/system.conf.d/90-watchdog.conf
+    mode: '0644'
+  notify: daemon-reload
+
 - name: GRUB settings (mitigations, console)
   ansible.builtin.copy:
     src: etc/default/grub.d/90-router.cfg
