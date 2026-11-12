@@ -70,7 +70,7 @@ Set the first six for the host in
 | --- | --- | --- |
 | `backblaze_vmid` | `""` | The Backblaze VM. |
 | `backblaze_source_vmid` | `""` | The file server VM. |
-| `backblaze_source_zvol` | `""` | The zvol of the data disk, for example `NAS-SSD/vm-1113-disk-0`. |
+| `backblaze_source_zvol` | `""` | The zvol of the data disk, for example `NAS-SSD/vm-1113-disk-1`. |
 | `backblaze_storage` | `""` | The Proxmox storage of the pool that holds the zvol. |
 | `backblaze_volume_guid` | `""` | The Backblaze volume ID of the drive (`vguid` in `bzvol_id.xml`). |
 | `backblaze_drive_letter` | `D` | The drive letter of the clone in the Backblaze VM. |
