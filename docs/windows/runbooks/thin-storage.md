@@ -1,6 +1,6 @@
 # Thin storage: a data disk uses more space on the host than Windows shows
 
-The data disks are thin: a ZFS zvol at JD (`NAS-SSD/vm-1113-disk-0`) and an
+The data disks are thin: a ZFS zvol at JD (`NAS-SSD/vm-1113-disk-1`) and an
 LVM thin volume at LINDS (`NAS/vm-102-disk-0`). The host frees space only when
 Windows sends TRIM.
 
@@ -21,7 +21,7 @@ free):
 
 ```shell
 lvs -o lv_name,lv_size,data_percent NAS/vm-102-disk-0      # LINDS
-zfs get logicalreferenced NAS-SSD/vm-1113-disk-0           # JD
+zfs get logicalreferenced NAS-SSD/vm-1113-disk-1           # JD
 ```
 
 **NOTE:** At JD, compare `logicalreferenced`, not `used`. The pool is a
@@ -50,7 +50,7 @@ The host counts the TRIM that gets to the zvol. While the procedure below
 deletes its files, read the counter on `jd-proxmox-02`:
 
 ```shell
-dev=$(basename "$(readlink -f /dev/zvol/NAS-SSD/vm-1113-disk-0)")
+dev=$(basename "$(readlink -f /dev/zvol/NAS-SSD/vm-1113-disk-1)")
 awk '{printf "%.1f GiB\n", $14 * 512 / 2^30}' /sys/block/$dev/stat
 ```
 

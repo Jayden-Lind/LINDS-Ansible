@@ -96,8 +96,8 @@ windows:
             id: 1113
             data_disks:
               - slot: scsi1
-                volume: NAS-SSD:vm-1113-disk-0
-                options: backup=0,discard=on,iothread=1
+                volume: NAS-SSD:vm-1113-disk-1
+                options: backup=0,discard=on,iothread=1,ssd=1
                 never_running_with: []
         linds-dc.linds.com.au:
 
