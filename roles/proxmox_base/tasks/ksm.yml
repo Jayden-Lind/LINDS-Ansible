@@ -1,0 +1,28 @@
+---
+# KSM (kernel samepage merging) puts equal memory pages of the VMs in one
+# shared page. A shared page is 4 KiB, so KSM splits the 2 MiB pages of the
+# VMs. ksmtuned starts KSM when free memory is low.
+
+- name: Read the services
+  ansible.builtin.service_facts:
+
+- name: Stop and disable ksmtuned
+  ansible.builtin.systemd_service:
+    name: ksmtuned.service
+    enabled: false
+    state: stopped
+  when:
+    - not proxmox_base_ksm_enabled
+    - "'ksmtuned.service' in ansible_facts.services"
+
+# The value 2 stops KSM and gives each VM its own copy of the shared pages.
+# The copy module cannot write to sysfs, so the task uses the shell.
+- name: Stop KSM and split the shared pages
+  ansible.builtin.shell: |
+    if [ "$(cat /sys/kernel/mm/ksm/run)" = 1 ] || [ "$(cat /sys/kernel/mm/ksm/pages_shared)" != 0 ]; then
+      echo 2 > /sys/kernel/mm/ksm/run
+      echo changed
+    fi
+  when: not proxmox_base_ksm_enabled
+  register: proxmox_base_ksm_split
+  changed_when: "'changed' in proxmox_base_ksm_split.stdout"

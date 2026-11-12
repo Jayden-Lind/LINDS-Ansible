@@ -15,3 +15,11 @@
 - name: Set the CPU governor and the ring buffers at boot
   ansible.builtin.import_tasks: tuning.yml
   tags: tuning
+
+- name: Stop KSM on the hosts that have free memory
+  ansible.builtin.import_tasks: ksm.yml
+  tags: ksm
+
+- name: Write the kernel settings of the host
+  ansible.builtin.import_tasks: sysctl.yml
+  tags: sysctl

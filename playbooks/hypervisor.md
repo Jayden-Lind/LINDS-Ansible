@@ -5,7 +5,7 @@ The playbook configures the Proxmox hosts at both sites, `jd-proxmox-02` and
 
 | Role | Hosts | What it does |
 | --- | --- | --- |
-| [proxmox_base](../roles/proxmox_base/README.md) | Both | Logs to Alloy, unused services off, CPU governor and ring buffers |
+| [proxmox_base](../roles/proxmox_base/README.md) | Both | Logs to Alloy, unused services off, CPU governor and ring buffers, KSM, kernel settings |
 | [storage_health](../roles/storage_health/README.md) | Both | Disk patrols, and storage health metrics for Prometheus |
 | [proxmox](../roles/proxmox/README.md) | `jd-proxmox-02` | ZFS, NFS, iSCSI, sanoid and fan control |
 | [backblaze](../roles/backblaze/README.md) | `jd-proxmox-02` | The weekly Backblaze run of the NAS, from a ZFS clone of the data disk |
