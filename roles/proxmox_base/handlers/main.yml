@@ -7,3 +7,7 @@
 - name: Reload systemd
   ansible.builtin.systemd_service:
     daemon_reload: true
+
+- name: Load the kernel settings
+  ansible.builtin.command: sysctl -p /etc/sysctl.d/90-proxmox-base.conf
+  changed_when: true

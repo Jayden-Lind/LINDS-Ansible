@@ -22,3 +22,13 @@ proxmox_base_cpu_governor: ""
 # empty, the role does not install the unit.
 proxmox_base_nic_ring_interfaces: []
 proxmox_base_nic_ring_size: 4096
+
+# If false, the role stops and disables ksmtuned, stops KSM and splits the
+# shared pages. Then the VMs keep their 2 MiB pages. Set it to false only on a
+# host that has more free memory than KSM saves.
+proxmox_base_ksm_enabled: true
+
+# The kernel settings that the role writes to
+# /etc/sysctl.d/90-proxmox-base.conf, as name and value. If the value is
+# empty, the role does not write the file.
+proxmox_base_sysctl: {}

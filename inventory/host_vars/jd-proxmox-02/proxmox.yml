@@ -35,6 +35,11 @@ proxmox_zfs_datasets:
       # land alongside it. Set live on 2026-09-02 (pool root too).
       compression: lz4
       atime: "off"
+      # Clients read small parts of large records. The ARC keeps each
+      # record, so the disks read it one time only. The pool root has
+      # primarycache=metadata.
+      direct: standard
+      primarycache: all
 
 proxmox_sanoid_policies:
   - dataset: VM/truenas-nas
