@@ -95,7 +95,9 @@ attach_clone() {
 }
 
 start_vm() {
-  qm start "$BACKUP_VMID"
+  # Without 9>&-, kvm and swtpm keep the lock file open for as long as the VM
+  # runs, and "finish" after a "start" cannot get the lock (seen 2026-11-15).
+  qm start "$BACKUP_VMID" 9>&-
   date +%s >"$STATE/started"
   log "Started VM $BACKUP_VMID."
 }
@@ -303,11 +305,20 @@ status() {
   fi
 }
 
+# The processes other than this one that have the lock file open, as
+# "pid name" pairs.
+lock_holders() {
+  fuser "$STATE/lock" 2>/dev/null | tr -s ' ' '\n' | grep -v -x -e '' -e "$$" |
+    xargs -r ps -o pid=,comm= -p | awk '{print $1 " " $2}' | paste -sd ',' -
+}
+
 command=${1:-run}
 mkdir -p "$STATE"
 if [ "$command" != status ]; then
   exec 9>"$STATE/lock"
-  flock -n 9 || fail "Another backblaze-run is active."
+  if ! flock -n 9; then
+    fail "Another backblaze-run is active. Processes with $STATE/lock open: $(lock_holders)."
+  fi
 fi
 
 case "$command" in
