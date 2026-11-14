@@ -149,6 +149,9 @@ To continue the same backup on a new data disk:
 ## If it fails
 
 - Read the log: `journalctl -u backblaze-run`.
+- If a command says "Another backblaze-run is active", the message names the
+  processes that have the lock file open. If it is a run, wait for it to end,
+  or stop it with `systemctl stop backblaze-run`.
 - If a run stops on an error, the script stops the VM and removes the clone.
   If the script cannot remove them, it tells why. Correct the cause, then run
   `backblaze-run finish`.
