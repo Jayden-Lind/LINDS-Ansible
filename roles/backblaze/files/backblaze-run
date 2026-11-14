@@ -56,10 +56,27 @@ guest_read() {
 }
 
 # Run PowerShell in the Backblaze VM through the QEMU guest agent, and print
-# its output. Fail if the command fails.
+# its output. If the command fails, or the agent does not answer, print the
+# errors too, and fail.
 guest_ps() {
-  qm guest exec "$BACKUP_VMID" --timeout 60 -- powershell -NoProfile -NonInteractive -Command "$1" 2>/dev/null |
-    python3 -c 'import json, sys; d = json.load(sys.stdin); print(d.get("out-data", "").strip()); sys.exit(1 if d.get("exitcode") else 0)' 2>/dev/null
+  local reply err
+  err=$(mktemp)
+  if ! reply=$(qm guest exec "$BACKUP_VMID" --timeout 60 -- powershell -NoProfile -NonInteractive -Command "$1" 2>"$err"); then
+    cat "$err"
+    rm -f "$err"
+    return 1
+  fi
+  rm -f "$err"
+  python3 -c 'import json, sys
+try:
+    d = json.loads(sys.argv[1])
+except ValueError:
+    print(sys.argv[1])
+    sys.exit(1)
+ok = d.get("exitcode") == 0
+out = d.get("out-data", "").strip()
+print(out if ok else (out + " " + d.get("err-data", "")).strip())
+sys.exit(0 if ok else 1)' "$reply"
 }
 
 # Print the value of the first XML attribute $1 in stdin, or nothing.
@@ -125,8 +142,14 @@ check_drive() {
 # .bzvol. The NAS folders keep their permissions. The clone is not kept, so
 # the live disk does not change.
 open_drive_root() {
-  guest_ps "icacls '${DRIVE}:\\' /grant '*S-1-5-11:(RX)' | Out-Null; if (\$LASTEXITCODE) { exit 1 }; icacls '${DRIVE}:\\.bzvol' /grant '*S-1-5-11:(OI)(CI)(RX)' | Out-Null; exit \$LASTEXITCODE" >/dev/null ||
-    log "WARNING: Could not give Authenticated Users read access to ${DRIVE}:\\ in VM $BACKUP_VMID."
+  local try out
+  for try in 1 2 3; do
+    if out=$(guest_ps "icacls '${DRIVE}:\\' /grant '*S-1-5-11:(RX)'; if (\$LASTEXITCODE) { exit 1 }; icacls '${DRIVE}:\\.bzvol' /grant '*S-1-5-11:(OI)(CI)(RX)'; exit \$LASTEXITCODE"); then
+      return 0
+    fi
+    sleep 10
+  done
+  log "WARNING: Could not give Authenticated Users read access to ${DRIVE}:\\ in VM $BACKUP_VMID: $(tr -s '\r\n' ' ' <<<"$out")"
 }
 
 # Backblaze backs up only the drives in hard_drives_to_backup of bzinfo.xml.
