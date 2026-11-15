@@ -921,7 +921,7 @@ alerts on this router are `ET INFO`, and those are normal traffic.
   send (for example `watch`) has the A record of the device that renewed
   last, but each device's address has its own PTR record. A new record is on
   the DC that took the update at once. The other DCs get it by AD
-  replication, after about 3 minutes at the same site and 8-15 minutes at
+  replication, after about 3 minutes at the same site and 5-15 minutes at
   the other site. Until then, a lookup can give NXDOMAIN, and Unbound keeps
   that answer for up to 5 minutes (`unbound-control flush_zone <zone>`
   removes it).
