@@ -79,12 +79,50 @@ with the file `paused`.
 `windows.yml` uses Kerberos. The deploy gets a ticket in one of two ways:
 
 - If the file `~/.local/state/linds-ansible-deploy/windows.keytab` exists, the
-  deploy gets a ticket of its own with it.
+  deploy gets a ticket of its own with it, for each run. This is the usual
+  way. The ticket does not go away after a restart of `jd-jump-01`.
 - If not, it uses the ticket of the person on `jd-jump-01`
   (`kinit -f Administrator@LINDS.COM.AU`). It renews that ticket if it can.
+  That ticket stops after 10 hours, and a restart removes it.
 
 If there is no ticket, the deploy does not apply `windows.yml`, and it sets
 the status to failure. When a ticket exists again, the next poll tries again.
+
+### The account of the deploy
+
+The keytab holds the key of the domain account `svc-ansible-deploy`. The role
+`windows_directory` makes the account from
+`inventory/group_vars/windows/directory.vault.yml`:
+
+- It is in the same administrator groups as `Administrator`, because
+  `windows.yml` changes the domain and the forest.
+- It is in the group `Service Accounts`, so it can only log on over the
+  network.
+- Its password does not expire. The password is in
+  `windows_directory_initial_passwords` in the same file.
+
+**WARNING:** The keytab is the key of a domain administrator. Keep its mode
+at `0600`. Do not copy it to a different computer.
+
+To make the keytab:
+
+1. Run `ktutil`.
+2. Type
+   `addent -password -p svc-ansible-deploy@LINDS.COM.AU -k 1 -e aes256-cts-hmac-sha1-96 -f`.
+3. Type the password of the account.
+4. Type `wkt /home/jayden/.local/state/linds-ansible-deploy/windows.keytab`,
+   then `quit`.
+5. Run `chmod 600 ~/.local/state/linds-ansible-deploy/windows.keytab`.
+6. Run `linds-ansible-deploy --retry`.
+
+To change the password:
+
+1. Set the new password of the account in the domain.
+2. Put the new password in `windows_directory_initial_passwords`.
+3. Remove the keytab, then make it again.
+
+To stop the access of the deploy, disable the account in the domain and
+remove the keytab.
 
 **NOTE:** A change to `windows.yml` takes about 40 minutes: two checks of
 about 12 minutes each, then the apply.
@@ -195,7 +233,8 @@ The commands are in `~/.local/state/linds-ansible-deploy/repo/deploy/`.
 | `failed.json` | For each entry that stopped or failed: the commit and why |
 | `paused` | If it exists, the deploy does nothing |
 | `paused.<name>` | If it exists, the deploy does not apply that entry |
-| `windows.keytab` | Optional: the keytab for the Windows playbooks |
+| `windows.keytab` | The keytab of `svc-ansible-deploy` for the Windows playbooks. See [Windows](#windows). |
+| `krb5cc` | The Kerberos ticket that the deploy gets with the keytab |
 
 ## If it fails
 
@@ -207,7 +246,10 @@ The commands are in `~/.local/state/linds-ansible-deploy/repo/deploy/`.
   `--retry`.
 - **"the change reboots ..."**: apply the playbook by hand at a good time.
   Then run `--retry`.
-- **"no Kerberos ticket"**: run `kinit -f Administrator@LINDS.COM.AU` on
+- **"no Kerberos ticket"**: the keytab is not there. Make it again (see
+  [Windows](#windows)), or run `kinit -f Administrator@LINDS.COM.AU` on
   `jd-jump-01`. The next poll tries again.
+- **"kinit -f -k failed"**: the keytab does not match the account. Make sure
+  that the account is enabled, then make the keytab again and run `--retry`.
 - **"the apply failed"**: read the output in `logs/`. Fix the cause, then run
   `--retry`.
