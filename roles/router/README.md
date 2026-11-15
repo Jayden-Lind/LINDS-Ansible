@@ -121,7 +121,7 @@ layout above), and the notes are JD's.
 | Static + BGP | FRR (`bgpd`, `staticd`), from deb.frrouting.org | `etc/frr/frr.conf` | Same dialect as VyOS's `protocols`; `systemctl reload frr` diffs |
 | Dual-WAN failover | `wan-failover` | `etc/wan-failover.json` | Per-WAN default in tables 1001/1002 for the health check (90/100 are the WireGuard tunnels'); hysteresis; carrier check; SNAT conntrack flush on switch |
 | IPsec | strongSwan (swanctl) | `etc/swanctl/swanctl.conf` | `LINDS` site-to-site over `ipsec0`, `LINDS_MOBILE` road-warrior over `ipsec10`; `encap = yes` is a line here, not a template patch |
-| DHCP | Kea, from ISC's repository (services `isc-kea-dhcp4-server`, `isc-kea-dhcp-ddns-server`) | `etc/kea/` | DDNS into AD DNS |
+| DHCP | Kea, from ISC's repository (services `isc-kea-dhcp4-server`, `isc-kea-dhcp-ddns-server`) | `etc/kea/` | DDNS into AD DNS: the A record of each lease, and its PTR record (see "Reverse DNS for leases") |
 | DNS forwarder | Unbound (Debian's) | `etc/unbound/unbound.conf`, `etc/default/unbound` | Upstream Quad9 over DNS over TLS; expired answers served at once and refreshed behind the client: see below |
 | NTP / SNMP / LLDP / DDNS | chrony, snmpd, lldpd (from its author's OBS repository), ddclient | `etc/chrony/`, `etc/snmp/`, `etc/default/` | |
 | mDNS reflector | avahi-daemon | `etc/avahi/avahi-daemon.conf` | Repeats mDNS between `lan0`, `lan0.52`, `lan0.53` and `lan0.58` so devices on one can be found from the others; publishes nothing itself |
@@ -899,6 +899,30 @@ alerts on this router are `ET INFO`, and those are normal traffic.
 * **DHCP hostnames reach DNS via kea DDNS → AD**, not a hostfile: there is no
   `hostfile-update` equivalent, and the forwarder's `linds.com.au` stub asks
   AD anyway.
+* **Reverse DNS for leases.** kea-dhcp-ddns also writes the PTR record of
+  each lease, into the reverse zones in `reverse-ddns` of
+  `files/<site>/etc/kea/kea-dhcp-ddns.conf`. A lease whose address is in no
+  zone of that list gets no PTR record. To add a subnet:
+  1. Make its reverse zone on the DCs first. Kea sends updates to a zone
+     that does not exist, and they fail.
+  2. Add the zone to `reverse-ddns` at the site of the subnet.
+  3. Add the zone to the `local-zone` and `forward-zone` lists in
+     `unbound.conf` at BOTH sites. Otherwise Unbound answers NXDOMAIN for it
+     (its default for private reverse zones).
+  4. Existing leases get their PTR at their next renewal
+     (`ddns-update-on-renew`). To do it at once, send
+     `{"command":"lease4-resend-ddns","arguments":{"ip-address":"<address>"}}`
+     to `/var/run/kea/kea4-ctrl-socket` for each lease.
+
+  Kea writes the PTR record only after the A record update succeeds, and it
+  replaces all PTR records of that address. A name that several devices
+  send (for example `watch`) has the A record of the device that renewed
+  last, but each device's address has its own PTR record. A new record is on
+  the DC that took the update at once. The other DCs get it by AD
+  replication, after about 3 minutes at the same site and 8-15 minutes at
+  the other site. Until then, a lookup can give NXDOMAIN, and Unbound keeps
+  that answer for up to 5 minutes (`unbound-control flush_zone <zone>`
+  removes it).
 * **VLAN 52 gets its delegated /64 but no RA** — mirrors VyOS, which had
   `pd interface eth1.52` without a router-advert entry. Set `IPv6SendRA=yes`
   and `Announce=yes` in `30-lan0.52.network` to change that.
