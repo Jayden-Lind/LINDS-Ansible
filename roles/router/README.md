@@ -531,7 +531,7 @@ alerts on this router are `ET INFO`, and those are normal traffic.
     after about 10 s, so at this query rate most upstream lookups open a new
     one. With expired answers served from the cache (below), clients seldom
     wait for one.
-  * The internal forwarders (`linds.com.au`, `k8s.linds.com.au`, the four
+  * The internal forwarders (`linds.com.au`, `k8s.linds.com.au`, the
     reverse zones) stay on plain DNS, port 53.
   * DoT does not apply to VLAN 51 and VLAN 52. DHCP gives them Quad9
     directly, so they do not use the router for DNS.
@@ -903,8 +903,10 @@ alerts on this router are `ET INFO`, and those are normal traffic.
   each lease, into the reverse zones in `reverse-ddns` of
   `files/<site>/etc/kea/kea-dhcp-ddns.conf`. A lease whose address is in no
   zone of that list gets no PTR record. To add a subnet:
-  1. Make its reverse zone on the DCs first. Kea sends updates to a zone
-     that does not exist, and they fail.
+  1. Make its reverse zone on the DCs first: add it to `windows_dns_zones`
+     in `inventory/group_vars/windows/dns.yml`, then run
+     `ansible-playbook playbooks/windows.yml --tags dns`. If the zone does
+     not exist, Kea's updates to it fail.
   2. Add the zone to `reverse-ddns` at the site of the subnet.
   3. Add the zone to the `local-zone` and `forward-zone` lists in
      `unbound.conf` at BOTH sites. Otherwise Unbound answers NXDOMAIN for it

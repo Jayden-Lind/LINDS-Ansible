@@ -1,7 +1,43 @@
 ---
 # Runs on one domain controller. The zones are stored in AD, so the other
-# domain controllers get the records by replication.
-#
+# domain controllers get the zones and the records by replication.
+
+# win_dns_zone cannot do check mode for a zone that does not exist: after
+# its -WhatIf create, it looks for the zone and fails. So in check mode the
+# role gets the list of zones first. It gives the zones that do not exist to
+# the next task, which only shows them as changed, and the other zones to
+# the module.
+- name: Find the DNS zones that exist (check mode only)
+  ansible.windows.win_powershell:
+    script: |
+      $Ansible.Changed = $false
+      @(Get-DnsServerZone | ForEach-Object { $_.ZoneName })
+  check_mode: false
+  changed_when: false
+  register: windows_dns_zones_found
+  when: ansible_check_mode
+
+- name: Show the DNS zones that the role would make (check mode only)
+  ansible.builtin.debug:
+    msg: "The role would make the zone {{ item.name }}"
+  changed_when: true
+  loop: "{{ windows_dns_zones | rejectattr('name', 'in', windows_dns_zones_found.output | default([])) | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: ansible_check_mode
+
+- name: Make the DNS zones
+  ansible.windows.win_dns_zone:
+    name: "{{ item.name }}"
+    type: primary
+    replication: "{{ item.replication }}"
+    dynamic_update: "{{ item.dynamic_update }}"
+    state: present
+  loop: "{{ windows_dns_zones }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: not ansible_check_mode or item.name in (windows_dns_zones_found.output | default([]))
+
 # For each name and type in the list, the module makes the values equal to the
 # list. It finds the name with -Node, so the names below it are not touched.
 # Records that are not in the list are not touched.

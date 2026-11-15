@@ -86,7 +86,7 @@
         tasks_from: links
       tags: directory
 
-    - name: The DNS records that the code owns
+    - name: The DNS zones and records that the code owns
       ansible.builtin.import_role:
         name: windows_dns
       tags: dns
