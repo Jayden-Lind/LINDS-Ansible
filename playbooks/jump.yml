@@ -1,0 +1,29 @@
+---
+# The jump host: the hardening and the trim of the role `common`.
+#
+#   ansible-playbook playbooks/jump.yml --check --diff
+#
+# Read playbooks/jump.md before you use it.
+
+- name: Harden and trim the jump host
+  hosts: jump
+  become: true
+  tasks:
+    # The connection is local. On a different computer the play would change
+    # that computer.
+    - name: Make sure that this is the jump host
+      ansible.builtin.assert:
+        that: ansible_facts.hostname == 'jd-jump-01'
+        fail_msg: Run this playbook on jd-jump-01.
+
+    - name: Apply the hardening of the role common
+      ansible.builtin.include_role:
+        name: common
+        tasks_from: hardening.yml
+      tags: [hardening]
+
+    - name: Apply the trim of the role common
+      ansible.builtin.include_role:
+        name: common
+        tasks_from: trim.yml
+      tags: [trim]

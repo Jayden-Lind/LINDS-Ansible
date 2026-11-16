@@ -1,0 +1,4 @@
+---
+# k9s is a snap.
+common_packages_keep:
+  - snapd
