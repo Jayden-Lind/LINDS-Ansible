@@ -30,5 +30,95 @@ common_sysctl_highmem:
   net.ipv4.tcp_keepalive_probes: 5
   net.ipv4.tcp_max_syn_backlog: 4096
 
-common_ubuntu_hwe_enabled: true
-common_ubuntu_hwe_package: linux-generic-hwe-{{ ansible_facts['distribution_version'] }}
+# The kernel package for a VM: the HWE kernel without firmware and microcode.
+common_ubuntu_vm_kernel: true
+common_ubuntu_vm_kernel_package: linux-image-virtual-hwe-{{ ansible_facts['distribution_version'] }}
+# The kernel packages for hardware. A name with * is a pattern.
+common_ubuntu_hardware_kernel_packages:
+  - linux-generic
+  - linux-generic-hwe-*
+  - linux-image-generic
+  - linux-image-generic-hwe-*
+  - linux-headers-*
+  - linux-tools-*
+  - linux-firmware
+  - intel-microcode
+  - amd64-microcode
+  - firmware-sof-signed
+
+# Hardening (tasks/hardening.yml).
+# These accounts keep their SSH keys and lose their password.
+common_password_locked_users:
+  - jayden
+# cloud-init makes `ubuntu` on a clone of the template.
+common_absent_users:
+  - ubuntu
+
+# Trim (tasks/trim.yml).
+common_cloud_init_disabled: true
+# Packages that a VM does not use. See the README for the reason of each group.
+common_packages_absent:
+  # Services for hardware that a VM does not have.
+  - modemmanager
+  - usbmuxd
+  - bolt
+  - upower
+  - udisks2
+  - fwupd
+  - fwupd-signed
+  - thermald
+  - ubuntu-drivers-common
+  - open-vm-tools
+  # Storage that these hosts do not have.
+  - multipath-tools
+  - open-iscsi
+  - mdadm
+  - bcache-tools
+  - btrfs-progs
+  - xfsprogs
+  - ntfs-3g
+  # snap and LXD.
+  - snapd
+  - lxd-installer
+  - lxd-agent-loader
+  # Crash reports and crash dumps. kdump-tools keeps 512 MB of memory.
+  - apport
+  - apport-symptoms
+  - apport-core-dump-handler
+  - python3-apport
+  - kdump-tools
+  - kexec-tools
+  - makedumpfile
+  # Timers and services that collect data or get news.
+  - sysstat
+  - landscape-common
+  - motd-news-config
+  - update-notifier-common
+  - sos
+  - packagekit
+  - networkd-dispatcher
+  # The telnet client. (ubuntu-standard needs an FTP client, so that stays.)
+  - telnet
+  - inetutils-telnet
+  # Kernel trace tools.
+  - bpftrace
+  - bpfcc-tools
+  - trace-cmd
+  # NTP servers. chrony keeps the time.
+  - ntpsec
+  - ntp
+# Packages of common_packages_absent that a host keeps.
+common_packages_keep: []
+# Units that stay installed, because other packages need their package.
+common_units_masked:
+  # Gets news from motd.ubuntu.com.
+  - motd-news.timer
+  - motd-news.service
+  # Ubuntu Pro. The hosts are not attached.
+  - ua-timer.timer
+  - ubuntu-advantage.service
+  - esm-cache.service
+  - apt-news.service
+  # Only NFS version 3 uses rpcbind. The hosts mount with NFS version 4.
+  - rpcbind.socket
+  - rpcbind.service

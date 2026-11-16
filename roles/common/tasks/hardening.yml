@@ -1,0 +1,60 @@
+---
+# Settings that make the host harder to attack: SSH logins, accounts, kernel
+# settings and kernel modules.
+
+- name: Install the SSH settings (keys only)
+  ansible.builtin.copy:
+    src: 01-hardening.conf
+    dest: /etc/ssh/sshd_config.d/01-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Restart ssh
+
+# The account keeps its SSH keys. A locked password stops the logins that
+# use the password: the console and su.
+- name: Lock the passwords of the accounts
+  ansible.builtin.user:
+    name: "{{ item }}"
+    password_lock: true
+  loop: "{{ common_password_locked_users }}"
+
+# cloud-init makes the account `ubuntu` on a clone, with sudo and no key.
+- name: Remove the accounts that nobody uses
+  ansible.builtin.user:
+    name: "{{ item }}"
+    state: absent
+    remove: true
+  loop: "{{ common_absent_users }}"
+
+- name: Find the sudo rules of cloud-init
+  ansible.builtin.stat:
+    path: /etc/sudoers.d/90-cloud-init-users
+  register: common_cloud_init_sudoers
+
+- name: Remove the sudo rules of the removed accounts
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers.d/90-cloud-init-users
+    regexp: "^{{ item | regex_escape }}\\s+ALL="
+    state: absent
+    validate: /usr/sbin/visudo -cf %s
+  loop: "{{ common_absent_users }}"
+  when: common_cloud_init_sudoers.stat.exists
+
+- name: Install the kernel settings
+  ansible.builtin.copy:
+    src: 90-common-hardening.conf
+    dest: /etc/sysctl.d/90-common-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Apply the kernel settings
+
+- name: Stop the kernel modules that no program uses
+  ansible.builtin.copy:
+    src: common-hardening-modules.conf
+    dest: /etc/modprobe.d/common-hardening-modules.conf
+    owner: root
+    group: root
+    mode: "0644"

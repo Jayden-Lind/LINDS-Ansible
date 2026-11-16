@@ -1,5 +1,17 @@
 ---
 # For Debian and Ubuntu hosts only.
+
+# The trim is first. The removal of a package also removes its configuration
+# files, and one of them (/etc/apt/apt.conf.d/10periodic, from
+# update-notifier-common) is a file that the tasks below install.
+- name: Common trim
+  ansible.builtin.import_tasks: trim.yml
+  tags: [trim]
+
+- name: Common hardening
+  ansible.builtin.import_tasks: hardening.yml
+  tags: [hardening]
+
 - name: Common core
   ansible.builtin.import_tasks: core.yml
 

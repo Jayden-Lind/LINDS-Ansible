@@ -89,6 +89,13 @@
   ansible.builtin.include_tasks:
     file: certificates.yml
 
+# The minimal server does not always have rsyslog.
+- name: Install rsyslog
+  ansible.builtin.apt:
+    name: rsyslog
+    state: present
+  when: common_rsyslog_remote_line | length > 0
+
 - name: Ensure remote rsyslog config
   ansible.builtin.copy:
     dest: /etc/rsyslog.d/90-remote.conf

@@ -1,0 +1,78 @@
+---
+# Remove the packages and stop the units that a VM does not use.
+
+- name: Read the state of the services
+  ansible.builtin.service_facts:
+
+# chrony only sets the clock of the host. ntpsec also answers NTP requests
+# from the network. The installation of chrony removes ntpsec.
+- name: Use chrony to keep the time
+  ansible.builtin.apt:
+    name: chrony
+    state: present
+  when: "'ntpsec.service' in ansible_facts.services"
+
+# If the removal of a package removes one that is not in the list, read
+# "Safety" in the README before you run the role.
+- name: Remove the packages that a VM does not use
+  ansible.builtin.apt:
+    name: "{{ common_packages_absent | difference(common_packages_keep) }}"
+    state: absent
+    purge: true
+  notify: Update GRUB
+
+# linux-image-virtual has the same kernel as linux-generic. It does not need
+# the firmware and the processor microcode, which only hardware uses.
+- name: Use the kernel package for a VM
+  when:
+    - common_ubuntu_vm_kernel | bool
+    - ansible_facts.distribution == 'Ubuntu'
+    - ansible_facts.virtualization_role | default('') == 'guest'
+  block:
+    - name: Install the kernel package for a VM
+      ansible.builtin.apt:
+        name: "{{ common_ubuntu_vm_kernel_package }}"
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Remove the kernel packages for hardware
+      ansible.builtin.apt:
+        name: "{{ common_ubuntu_hardware_kernel_packages }}"
+        state: absent
+        purge: true
+
+- name: Remove the packages that no other package needs
+  ansible.builtin.apt:
+    autoremove: true
+    purge: true
+
+- name: Stop the units that do no useful work
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+    masked: true
+  loop: "{{ common_units_masked | select('in', ansible_facts.services) | list }}"
+
+# A timer or a socket is not in the list of services.
+- name: Stop the timers and the sockets that do no useful work
+  ansible.builtin.file:
+    src: /dev/null
+    dest: "/etc/systemd/system/{{ item }}"
+    state: link
+    force: true
+  loop: "{{ common_units_masked | reject('search', '\\.service$') | list }}"
+  notify: Stop the masked timers and sockets
+
+# cloud-init configures a clone at its first start and has no work after
+# that. If the instance ID changes, it does the first-start work again: new
+# SSH host keys, for example. The file stops it at the next start.
+- name: Stop cloud-init after the first start
+  ansible.builtin.file:
+    path: /etc/cloud/cloud-init.disabled
+    state: touch
+    mode: "0644"
+    modification_time: preserve
+    access_time: preserve
+  when: common_cloud_init_disabled | bool

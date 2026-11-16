@@ -32,16 +32,6 @@
     line: GRUB_CMDLINE_LINUX_DEFAULT="{{ (common_disable_mitigations | bool) | ternary('mitigations=off', '') }}"
   notify: Update GRUB
 
-- name: Install Ubuntu HWE kernel
-  ansible.builtin.apt:
-    name: "{{ common_ubuntu_hwe_package }}"
-    state: present
-    update_cache: true
-    cache_valid_time: 3600
-  when:
-    - common_ubuntu_hwe_enabled | bool
-    - ansible_facts.distribution == 'Ubuntu'
-
 # cloud-init 26 moved its files to the cloud-init-base package. The old file
 # /etc/logrotate.d/cloud-init stays as an obsolete conffile. It names the
 # same log as /etc/logrotate.d/cloud-init-base, so logrotate fails every
