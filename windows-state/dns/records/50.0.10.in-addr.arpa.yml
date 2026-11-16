@@ -12,7 +12,3 @@
   type: NS
   data: linds-dc2.linds.com.au.
   ttl: 3600
-- name: '1'
-  type: PTR
-  data: jd-opnsense-01.linds.com.au.
-  ttl: 3600

@@ -1,6 +1,29 @@
 ---
-# The DNS records that the code owns (role windows_dns). Apply with
+# The DNS zones and records that the code owns (role windows_dns). Apply with
 # `ansible-playbook playbooks/windows.yml --tags dns`.
+
+# The reverse zones of the DHCP subnets at both sites. kea-dhcp-ddns on each
+# router writes the PTR record of each lease into them (`reverse-ddns` in
+# roles/router/files/<site>/etc/kea/kea-dhcp-ddns.conf), and Unbound at both
+# sites forwards them to the DCs (unbound.conf). Kea sends its updates
+# without TSIG, so the zones take non-secure updates, as linds.com.au does.
+# They are in the domain partition, as the reverse zones that were made by
+# hand. The role does not remove a zone that is not in the list:
+# 250.0.10.in-addr.arpa and 1.4.10.in-addr.arpa are not.
+windows_dns_zones:
+  # JD: the main LAN, VLAN 51 (torrent), 52 (IoT), 53 (cluster), 58 (US VPN).
+  - { name: 50.0.10.in-addr.arpa, replication: domain, dynamic_update: nonsecureandsecure }
+  - { name: 51.0.10.in-addr.arpa, replication: domain, dynamic_update: nonsecureandsecure }
+  - { name: 52.0.10.in-addr.arpa, replication: domain, dynamic_update: nonsecureandsecure }
+  - { name: 53.0.10.in-addr.arpa, replication: domain, dynamic_update: nonsecureandsecure }
+  - { name: 58.0.10.in-addr.arpa, replication: domain, dynamic_update: nonsecureandsecure }
+  # LINDS: the main LAN, VLAN 300 (servers), 36 (VPN), 80 (management),
+  # 110 (cameras).
+  - { name: 6.168.192.in-addr.arpa, replication: domain, dynamic_update: nonsecureandsecure }
+  - { name: 1.3.10.in-addr.arpa, replication: domain, dynamic_update: nonsecureandsecure }
+  - { name: 36.0.10.in-addr.arpa, replication: domain, dynamic_update: nonsecureandsecure }
+  - { name: 80.0.10.in-addr.arpa, replication: domain, dynamic_update: nonsecureandsecure }
+  - { name: 110.0.10.in-addr.arpa, replication: domain, dynamic_update: nonsecureandsecure }
 
 windows_dns_records:
   # The names in the certificates from the cluster (playbooks/certificates.yml)

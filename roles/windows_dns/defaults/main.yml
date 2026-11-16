@@ -1,6 +1,11 @@
 ---
-# The DNS records that the code owns. Set them in the inventory. With the
-# empty list here the role changes nothing.
+# The DNS zones and records that the code owns. Set them in the inventory.
+# With the empty lists here the role changes nothing.
+
+# Zones: {name: <zone>, replication: <forest or domain>, dynamic_update:
+# <secure, nonsecureandsecure or none>}. Each zone is a primary zone that is
+# stored in AD.
+windows_dns_zones: []
 
 # Records: {zone: <zone>, name: <name in the zone>, type: <A, CNAME, ...>,
 # value: <a value or a list of values>, ttl: <seconds, 3600 if not set>}.
