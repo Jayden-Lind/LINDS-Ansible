@@ -632,6 +632,11 @@ alerts on this router are `ET INFO`, and those are normal traffic.
   only its own children. Kernel addresses are hidden from all users, root too.
   **NOTE:** `perf` and `dropwatch` need those addresses. Run
   `sysctl kernel.kptr_restrict=0` while you use them, then set it back to 2.
+* **SSH logins use a key only, and `root` cannot log in.** The settings are
+  in the sshd drop-in of each site. Log in with your account and use `sudo`.
+  If SSH does not work, use `qm guest exec` on the Proxmox host.
+* **The role removes the packages of the cloud image that the router does not
+  use**: `reportbug`, `ssh-import-id` and `polkitd` (`tasks/system.yml`).
 * **A kernel fault restarts the router.** `kernel.panic_on_oops=1` makes an
   oops a panic, and `kernel.panic=10` restarts 10 seconds later. Without
   these, the router stays down until someone gets to the hypervisor.

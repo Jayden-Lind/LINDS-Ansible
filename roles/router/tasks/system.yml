@@ -138,6 +138,16 @@
     mode: '0644'
   notify: update-grub
 
+# Packages of the cloud image that the router does not use. reportbug sends
+# bug reports to Debian. ssh-import-id gets SSH keys from GitHub and
+# Launchpad. polkitd lets a user without sudo control services, and it has a
+# setuid program: the administrator uses sudo.
+- name: Unused packages of the cloud image absent
+  ansible.builtin.apt:
+    name: [reportbug, python3-reportbug, ssh-import-id, polkitd]
+    state: absent
+    purge: true
+
 # tuned is not used. Its network-throughput profile set only sysctls that
 # 90-router.conf sets too, and CPU frequency settings that a VM does not have.
 - name: tuned absent

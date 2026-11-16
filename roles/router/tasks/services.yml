@@ -20,11 +20,13 @@
     mode: '0644'
   notify: restart lldpd
 
-- name: sshd listen addresses
+# The listen addresses, logins with a key only, no login as root.
+- name: sshd settings
   ansible.builtin.copy:
     src: "{{ router_site }}/etc/ssh/sshd_config.d/10-router.conf"
     dest: /etc/ssh/sshd_config.d/10-router.conf
     mode: '0644'
+    validate: /usr/sbin/sshd -t -f %s
   notify: reload sshd
 
 - name: ddclient config (Cloudflare token from the vault)
