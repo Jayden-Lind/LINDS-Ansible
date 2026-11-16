@@ -5,6 +5,9 @@
       - curl
       - gnupg2
       - cifs-utils
+      # The module deb822_repository below needs it. It must be in this list:
+      # if not, the trim of the role common removes it as an unused package.
+      - python3-debian
     state: present
     update_cache: true
 
