@@ -77,6 +77,13 @@ common_packages_absent:
   - btrfs-progs
   - xfsprogs
   - ntfs-3g
+  # polkit lets a user without sudo control services. The administrator
+  # and Ansible use sudo. It has a setuid program.
+  - polkitd
+  # cron starts nothing here: logrotate, apt, the dpkg backup and e2scrub
+  # each have a systemd timer. The minimal server has no cron.
+  - cron
+  - cron-daemon-common
   # snap and LXD.
   - snapd
   - lxd-installer
