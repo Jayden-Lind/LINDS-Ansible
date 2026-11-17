@@ -25,7 +25,6 @@ windows_baseline_services_disabled:
   - Audiosrv             # Windows Audio: a VM has no sound device
   - AudioEndpointBuilder # Windows Audio Endpoint Builder
   - PcaSvc               # Program Compatibility Assistant
-  - RmSvc                # Radio Management: no Wi-Fi, no Bluetooth
   - ShellHWDetection     # AutoPlay for removable media
   - WpnService           # push notifications of Store apps
   - lfsvc                # Geolocation
@@ -48,6 +47,12 @@ windows_baseline_features_absent:
 # turns both off: the servers find names with DNS only. The change to mDNS
 # takes effect at the next restart.
 windows_baseline_multicast_names: true
+
+# Services that the role sets to Disabled but does not stop. Windows does
+# not stop them while they run ("stop failed"). They stop at the next
+# restart of the server. The GPO has these too.
+windows_baseline_services_disabled_at_restart:
+  - RmSvc                # Radio Management: no Wi-Fi, no Bluetooth
 
 # The maximum size of each event log. The Security log must keep more than
 # one day.
