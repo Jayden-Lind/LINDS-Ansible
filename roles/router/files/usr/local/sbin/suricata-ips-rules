@@ -14,11 +14,15 @@ SOURCE=/var/lib/suricata/rules/suricata.rules
 DIR=/var/lib/suricata/ips
 SOCKET=/run/suricata-ips/command.socket
 BLOCK='ET (DROP|CINS|COMPROMISED)'
+# The rule numbers that Emerging Threats gives these groups (2400000-2403599
+# and 2500000-2500036 on 2026-11-17). update.yaml has other rule sources too.
+# A rule from one of them does not block, whatever its name says.
+SIDS='sid: *(24|25)[0-9]{5};'
 
 mkdir -p "$DIR"
 tmp=$(mktemp "$DIR/.ips.rules.XXXXXX")
 trap 'rm -f "$tmp"' EXIT
-grep -E "^alert .*msg:\"$BLOCK " "$SOURCE" | sed -E 's/^alert /drop /; s/ threshold: *[^;]*;//' > "$tmp"
+grep -E "^alert .*msg:\"$BLOCK " "$SOURCE" | grep -E "$SIDS" | sed -E 's/^alert /drop /; s/ threshold: *[^;]*;//' > "$tmp"
 # Keep the old rules if the source had none.
 [ -s "$tmp" ]
 chmod 0644 "$tmp"

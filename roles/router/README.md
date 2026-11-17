@@ -212,7 +212,9 @@ never enters the queue, so it stays on the flowtable.
 
 **What it blocks:** the `ET DROP`, `ET CINS` and `ET COMPROMISED` rules, about
 390. These rules are lists of bad addresses. `suricata-ips-rules` makes them
-from the weekly rule update. A site's own rules are in
+from the daily rule update, and only from the rule numbers that Emerging
+Threats uses for these groups: a rule from another source in `update.yaml`
+does not block. A site's own rules are in
 `etc/suricata/ips-local.rules`.
 
 **CAUTION:** Do not add rule groups without a look at what they match. Most
@@ -767,18 +769,51 @@ alerts on this router are `ET INFO`, and those are normal traffic.
   suppressed while ET Open adds and removes rules. Edit `threshold.in`, not
   the generated file; the role runs suricata-update (and the reload) when it
   changes. `suricatasc -c dump-counters` shows `detect.alerts_suppressed`.
-  * At JD it suppresses the P2P and protocol-anomaly rules that
-    jd-torrent-01 (10.0.50.24, a Kea reservation) raises in normal work, for
-    that host only: more than half of all alerts before.
-  * At LINDS it suppresses, for VLAN 36 only (LINDS-Torrent-02, behind
-    NordVPN), the P2P, Tor, reputation-list (DROP, CINS, COMPROMISED),
-    engine-anomaly (`SURICATA`) and ET DNS families, plus eight single
-    rules: 10,581 alerts a day before, about 1,700 generated suppressions.
-    Whole families are expanded only where they are small: ET INFO (4,548
-    rules) and ET DYN_DNS (6,100) are listed rule by rule.
-* **STUN rules are off at both sites** (`etc/suricata/disable.conf`,
-  `re:Session Traversal Utilities for NAT`). Every video call, game and
-  WebRTC page sends STUN; it was 86% of JD's alerts and a third of LINDS's.
+  * At JD it suppresses the P2P, Tor, reputation-list (DROP, CINS,
+    COMPROMISED) and ET DNS families for jd-torrent-01 only. The host has
+    three addresses in the file: 10.0.50.24 (a Kea reservation), its IPv6
+    address in the delegated prefix and its link-local address. If the
+    delegated prefix changes, change the second address.
+  * At LINDS it suppresses the same families, plus two ET DYN_DNS rules, for
+    VLAN 36 only (LINDS-Torrent-02, behind NordVPN).
+  * At both sites it suppresses "executable from a host with no name" for
+    the Windows servers (Windows Update), and it limits the IPFire DBL rules
+    to one alert an hour for each device and rule.
+  * A `threshold` line for one rule replaces the threshold in the rule. JD
+    uses this for "Potential SSH Scan OUTBOUND": 30 connections in 120 s, not
+    5, because the jump host fetches its git repositories over SSH.
+* **An alert is something to look at** (`etc/suricata/disable.conf`, both
+  sites, changed 2026-11-18). Before, jd-router-01 had about 5,200 alerts a
+  day and linds-router-01 1,100; more than half of JD's were "a device used
+  Discord". Disabled for every host:
+  * `ET INFO` (4,544 rules): informational by its own name. The DNS and TLS
+    logs keep every name, so a search loses nothing.
+  * The engine's own protocol events (`SURICATA ...`, 395 rules). Capture
+    problems still show in `suricatasc -c dump-counters`.
+  * Six single rules: lookups in `.to` and `.cc`, the Steam client, a user
+    agent that contains "hacker", the Python package index.
+  The same alerts, replayed with these settings, come to about 25 a day at
+  each site: scans and exploit attempts at the published services, reputation
+  hits, remote-access tools. To see what a change would remove, count
+  `{job="suricata", event_type="alert"}` by signature in Loki first.
+* **Rule sources** (`etc/suricata/update.yaml`): ET Open, the IPFire DBL
+  malware and phishing domain lists, and the Echap stalkerware indicators.
+  Most traffic is encrypted, so the additions match names (DNS, TLS and QUIC
+  server names), not content.
+  * IPFire DBL comes as Suricata datasets, one for each category.
+    `disable.conf` keeps only malware and phishing. Its rule names say
+    "Blocked": that is IPFire's text, and here the rule only alerts.
+  * suricata-update does not add ET Open by itself when the file has a
+    `sources` list. Keep ET Open in the list.
+  * A source was rejected if its rules matched names that normal devices use
+    all day (the file lists them). Test a new source the same way: collect
+    the `rrname` and `sni` values from `eve.json` for some days and compare.
+  * Dry run of a new configuration, without a change to the live rules:
+    `suricata-update -c <update.yaml> --disable-conf <file> -D <dir>/data
+    -o <dir>/out --no-reload --no-test --threshold-in <file> --threshold-out
+    <file>`, then `chmod 755 <dir>/out` (Suricata reads the rules as its own
+    user) and `suricata -T -S <dir>/out/suricata.rules -l <dir a suricata
+    user can write> --set threshold-file=<file>`.
 * **EVE reaches Loki through rsyslog imfile.** Suricata 8's
   `logrotate.d/suricata` renames `eve.json`, creates a new one and sends
   Suricata a HUP; imfile follows the new file by its inode. Suricata 7's
