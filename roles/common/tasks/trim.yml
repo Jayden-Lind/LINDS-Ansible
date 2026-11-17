@@ -16,7 +16,7 @@
 # "Safety" in the README before you run the role.
 - name: Remove the packages that a VM does not use
   ansible.builtin.apt:
-    name: "{{ common_packages_absent | difference(common_packages_keep) }}"
+    name: "{{ (common_packages_absent + common_tool_packages_absent) | difference(common_packages_keep) }}"
     state: absent
     purge: true
   notify: Update GRUB
