@@ -37,6 +37,18 @@ windows_baseline_services_disabled:
   - BalloonService       # VirtIO balloon: the VMs have no balloon device
   - UALSVC               # User Access Logging: counts clients for licences
 
+# Windows features that these servers do not use. The role removes them. A
+# removal is complete after the next restart of the server.
+windows_baseline_features_absent:
+  - Wireless-Networking # Wireless LAN Service: a VM has no Wi-Fi adapter
+  - XPS-Viewer          # a viewer for XPS documents
+
+# LLMNR and mDNS: a computer asks all computers on its network for a name,
+# and any of them can answer. true keeps the Windows default (both on). false
+# turns both off: the servers find names with DNS only. The change to mDNS
+# takes effect at the next restart.
+windows_baseline_multicast_names: true
+
 # The maximum size of each event log. The Security log must keep more than
 # one day.
 windows_baseline_event_logs:

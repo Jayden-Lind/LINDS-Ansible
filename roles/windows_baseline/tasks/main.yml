@@ -37,6 +37,46 @@
     start_mode: disabled
   when: windows_baseline_disable_spooler | bool
 
+- name: Remove the features that the server does not use
+  ansible.windows.win_feature:
+    name: "{{ windows_baseline_features_absent }}"
+    state: absent
+  register: windows_baseline_features
+  when: windows_baseline_features_absent | length > 0
+
+- name: Say that the removal of a feature needs a restart
+  ansible.builtin.debug:
+    msg: The removal of a feature is complete when {{ inventory_hostname }} next restarts.
+  when: windows_baseline_features.reboot_required | default(false)
+
+# LLMNR. The policy "Turn off multicast name resolution".
+- name: Set LLMNR on the server
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient
+    name: EnableMulticast
+    data: 0
+    type: dword
+    state: "{{ 'absent' if windows_baseline_multicast_names | bool else 'present' }}"
+
+# mDNS has two settings: the policy "Configure multicast DNS (mDNS) protocol"
+# and the value that the DNS Client service reads when it starts.
+- name: Set mDNS on the server
+  ansible.windows.win_regedit:
+    path: "{{ item }}"
+    name: EnableMDNS
+    data: 0
+    type: dword
+    state: "{{ 'absent' if windows_baseline_multicast_names | bool else 'present' }}"
+  loop:
+    - HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient
+    - HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters
+  register: windows_baseline_mdns
+
+- name: Say that the mDNS change needs a restart
+  ansible.builtin.debug:
+    msg: The change to mDNS takes effect when {{ inventory_hostname }} next restarts.
+  when: windows_baseline_mdns is changed
+
 - name: Find the services of the server
   ansible.windows.win_service_info:
   register: windows_baseline_services
