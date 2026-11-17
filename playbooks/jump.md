@@ -24,7 +24,8 @@ change before you merge it, or to apply a change by hand.
 
 - The group `jump` in `inventory/jump.yml`: `jd-jump-01`.
 - `inventory/host_vars/jd-jump-01/common.yml` keeps `snapd`, because `k9s`
-  is a snap.
+  is a snap. It also keeps the kernel package `linux-generic`: the file says
+  why, and when to remove that line.
 - See "Hardening" and "Trim" in
   [roles/common/README.md](../roles/common/README.md).
 
