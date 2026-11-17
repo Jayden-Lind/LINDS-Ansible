@@ -25,8 +25,8 @@ All text in this repository uses Simplified Technical English. See
 
 Merging to `main` applies the playbooks in `deploy/playbooks` to their
 hosts: both routers, the Proxmox hosts, the TrueNAS, the Plex and torrent
-hosts, and the Windows servers. The deploy runs on `jd-jump-01`. See
-[deploy/README.md](deploy/README.md).
+hosts, the jump host, and the Windows servers. The deploy runs on
+`jd-jump-01`. See [deploy/README.md](deploy/README.md).
 
 **NOTE:** If you change a host by hand, the deploy does not undo the change.
 It stops for that playbook until the change is merged.
@@ -52,6 +52,7 @@ It stops for that playbook until the change is merged.
 | [router](playbooks/router.md) | `jd-router-01`, `linds-router-01` (always with `--limit`) | `router` |
 | [nas](playbooks/nas.md) | `linds-truenas-01` | `truenas` |
 | [media](playbooks/media.md) | The Plex host and the qBittorrent hosts | `common`, `plex`, `torrent` |
+| [jump](playbooks/jump.md) | `jd-jump-01` | The hardening and the trim of `common` |
 | [windows](playbooks/windows.md) | The Windows servers and the domain. Run it at any time. | The `windows_*` roles |
 | [certificates](playbooks/certificates.md) | The devices that get a TLS certificate from the cluster CA | `cluster_cert` |
 

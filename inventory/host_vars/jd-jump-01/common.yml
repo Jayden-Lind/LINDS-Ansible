@@ -1,0 +1,10 @@
+---
+# k9s is a snap.
+common_packages_keep:
+  - snapd
+
+# The host keeps linux-generic for now. The change of the kernel package
+# updates the package lists first, and that update fails on this host: the
+# HashiCorp repository has a new signing key that the host does not trust.
+# Remove this line when `sudo apt-get update` has no error.
+common_ubuntu_vm_kernel: false

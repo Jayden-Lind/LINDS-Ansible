@@ -12,6 +12,11 @@
   ansible.builtin.import_tasks: hardening.yml
   tags: [hardening]
 
+# If a later task of the play fails, Ansible does not run the handlers. Run
+# them now: the restart of ssh, the kernel settings and update-grub.
+- name: Run the handlers of the trim and the hardening
+  ansible.builtin.meta: flush_handlers
+
 - name: Common core
   ansible.builtin.import_tasks: core.yml
 

@@ -1,0 +1,7 @@
+---
+# The jump host (playbooks/jump.yml). The playbooks and the deploy on merge
+# run on this host, so Ansible does not use SSH to connect to it.
+jump:
+  hosts:
+    jd-jump-01:
+      ansible_connection: local
