@@ -13,7 +13,7 @@ windows_gpo_definitions:
   - name: Server - Baseline
     comment: >-
       Firewall, Defender, event logs, Remote Desktop, SMB1, Print Spooler,
-      unused services, CPU mitigations and IPv6 of the servers. Made by LINDS-Ansible, role
+      unused services, LLMNR and mDNS, CPU mitigations and IPv6 of the servers. Made by LINDS-Ansible, role
       windows_gpo. Do not edit it in GPMC.
     # The computer names of the servers in the inventory group windows_managed.
     apply_to: "{{ groups['windows_managed'] | map('split', '.') | map('first') | map('upper') | list }}"
@@ -26,6 +26,18 @@ windows_gpo_definitions:
       - { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\EventLog\Security', name: MaxSize, type: DWord, value: 1048576 }
       - { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\EventLog\System', name: MaxSize, type: DWord, value: 262144 }
       - { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\EventLog\Application', name: MaxSize, type: DWord, value: 262144 }
+      # 0 turns off LLMNR and mDNS: the servers find names with DNS only.
+      # See windows_baseline_multicast_names.
+      - key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient'
+        name: EnableMulticast
+        type: DWord
+        value: 0
+        state: "{{ 'absent' if windows_baseline_multicast_names | default(true) | bool else 'present' }}"
+      - key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient'
+        name: EnableMDNS
+        type: DWord
+        value: 0
+        state: "{{ 'absent' if windows_baseline_multicast_names | default(true) | bool else 'present' }}"
       # Allow Remote Desktop, with Network Level Authentication.
       - { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services', name: fDenyTSConnections, type: DWord, value: 0 }
       - { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services', name: UserAuthentication, type: DWord, value: 1 }
@@ -35,6 +47,13 @@ windows_gpo_definitions:
       - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters', name: SMB1, type: DWord, value: 0 }
       # 4 is Disabled. The service stops at the next restart.
       - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\Spooler', name: Start, type: DWord, value: 4 }
+      # The DNS Client service reads this value when it starts. 0 turns off
+      # mDNS. The change takes effect at the next restart.
+      - key: 'HKLM\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters'
+        name: EnableMDNS
+        type: DWord
+        value: 0
+        state: "{{ 'absent' if windows_baseline_multicast_names | default(true) | bool else 'present' }}"
       # The services of windows_baseline_services_disabled (role
       # windows_baseline), also Disabled.
       - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\Audiosrv', name: Start, type: DWord, value: 4 }

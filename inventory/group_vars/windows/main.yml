@@ -49,3 +49,7 @@ windows_baseline_cpu_mitigations: false
 # IPv6 is off on the servers, by the decision of the owner (31 October 2026).
 # See roles/windows_baseline/README.md.
 windows_baseline_ipv6: false
+
+# LLMNR and mDNS are off on the servers, by the decision of the owner
+# (18 November 2026). See roles/windows_baseline/README.md.
+windows_baseline_multicast_names: false
