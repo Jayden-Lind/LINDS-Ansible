@@ -23,9 +23,8 @@ change before you merge it, or to apply a change by hand.
 ## What it changes
 
 - The group `jump` in `inventory/jump.yml`: `jd-jump-01`.
-- `inventory/host_vars/jd-jump-01/common.yml` keeps `snapd`, because `k9s`
-  is a snap, and the tools (`git`, the manual pages), because the host is
-  for interactive work.
+- `inventory/host_vars/jd-jump-01/common.yml` keeps the tools (`git`, the
+  manual pages), because the host is for interactive work.
 - See "Hardening" and "Trim" in
   [roles/common/README.md](../roles/common/README.md).
 

@@ -1,8 +1,4 @@
 ---
-# k9s is a snap.
-common_packages_keep:
-  - snapd
-
 # The jump host is for interactive work: it keeps git, the manual pages and
 # the other tools.
 common_tool_packages_absent: []

@@ -82,7 +82,8 @@ The packages in `common_packages_absent` are in these groups:
 | --- | --- | --- |
 | Hardware services | `modemmanager`, `usbmuxd`, `bolt`, `upower`, `udisks2`, `fwupd`, `thermald`, `ubuntu-drivers-common`, `open-vm-tools` | A Proxmox VM has no modem, Thunderbolt port, battery or firmware to update. |
 | Storage | `multipath-tools`, `open-iscsi`, `mdadm`, `bcache-tools`, `btrfs-progs`, `xfsprogs`, `ntfs-3g` | The hosts have one virtual disk with LVM and ext4. |
-| snap and LXD | `snapd`, `lxd-installer`, `lxd-agent-loader` | No host uses a snap, but for the jump host. |
+| snap and LXD | `snapd`, `lxd-installer`, `lxd-agent-loader` | No host uses a snap. |
+| Services with no work | `polkitd`, `cron` | The administrator and Ansible use `sudo`, not polkit. Each job that cron started has a systemd timer. |
 | Crash reports | `apport`, `kdump-tools`, `kexec-tools`, `makedumpfile` | `kdump-tools` keeps 512 MB of memory for a second kernel. |
 | Data collection | `sysstat`, `landscape-common`, `motd-news-config`, `update-notifier-common`, `sos`, `packagekit`, `networkd-dispatcher` | Timers and services whose output nobody reads. |
 | Clients | `telnet` | Not used. |

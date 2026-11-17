@@ -1,0 +1,110 @@
+---
+# systemd mounts each share under /mnt/ when a program first opens its path,
+# and unmounts it after plex_mount_idle_timeout seconds without use. Each
+# share is one line in /etc/fstab with the option x-systemd.automount.
+
+- name: Install the NFS and SMB clients
+  ansible.builtin.apt:
+    name:
+      - nfs-common
+      - cifs-utils
+    state: present
+
+# The role used autofs for these mounts until 2026-11. These tasks move a
+# host from autofs to systemd. They do nothing on a host without autofs.
+- name: Find autofs
+  ansible.builtin.stat:
+    path: /usr/sbin/automount
+  register: plex_autofs
+
+- name: Move the mounts from autofs to systemd
+  when: plex_autofs.stat.exists
+  block:
+    # Between the two, a folder under /mnt/ is empty for a moment. If Plex
+    # scans a library then, it can remove the library items.
+    - name: Stop Plex Media Server for the move
+      ansible.builtin.service:
+        name: plexmediaserver
+        state: stopped
+
+    - name: Stop autofs
+      ansible.builtin.service:
+        name: autofs
+        state: stopped
+        enabled: false
+
+    - name: Remove autofs
+      ansible.builtin.apt:
+        name: autofs
+        state: absent
+        purge: true
+        autoremove: true
+
+    # The map of the shares holds the SMB password.
+    - name: Find the autofs maps of the role
+      ansible.builtin.find:
+        paths: /etc
+        patterns: auto.linds_plex_mount_*
+      register: plex_autofs_maps
+
+    - name: Remove the autofs maps of the role
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ (plex_autofs_maps.files | map(attribute='path') | list) + ['/etc/auto.master.d'] }}"
+
+# /etc/fstab is readable by all users, so the SMB password is in a file that
+# only root reads.
+- name: Write the SMB account
+  ansible.builtin.copy:
+    dest: "{{ plex_smb_credentials_file }}"
+    content: |
+      username={{ plex.smb_username }}
+      password={{ plex.smb_password }}
+      domain={{ plex.smb_domain }}
+    owner: root
+    group: root
+    mode: "0600"
+  diff: false
+
+# No mode: if a share is mounted, the folder is the root of the share.
+- name: Make the mount points
+  ansible.builtin.file:
+    path: /mnt/{{ item.path }}
+    state: directory
+  loop: "{{ plex_mounts }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Add the media shares to /etc/fstab
+  ansible.posix.mount:
+    path: /mnt/{{ item.path }}
+    src: "{{ item.src }}"
+    fstype: "{{ item.fstype }}"
+    opts: "{{ (item.options + plex_mount_options) | join(',') }}"
+    state: present
+  loop: "{{ plex_mounts }}"
+  loop_control:
+    label: "{{ item.path }}"
+  notify:
+    - Read /etc/fstab again
+    - Start the automounts again
+
+- name: Run the handlers of the mounts
+  ansible.builtin.meta: flush_handlers
+
+# In check mode the units of a new line in /etc/fstab do not exist yet.
+- name: Keep the automounts running
+  ansible.builtin.systemd_service:
+    name: mnt-{{ item.path }}.automount
+    state: started
+  loop: "{{ plex_mounts }}"
+  loop_control:
+    label: "{{ item.path }}"
+  when: not ansible_check_mode
+
+- name: Start Plex Media Server after the move
+  ansible.builtin.service:
+    name: plexmediaserver
+    state: started
+  when: plex_autofs.stat.exists

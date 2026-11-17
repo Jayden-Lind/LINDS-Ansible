@@ -8,4 +8,4 @@
   ansible.builtin.import_tasks: install.yml
 
 - name: Mount the media shares
-  ansible.builtin.import_tasks: autofs.yml
+  ansible.builtin.import_tasks: mounts.yml

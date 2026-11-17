@@ -4,30 +4,35 @@
 # plex_truenas_server and plex_truenas_path. The SMB account comes from
 # vars/plex.yml (vault), loaded as the variable `plex`.
 
-# The name of the autofs map, in its two file names.
-plex_autofs_map: linds_plex_mount_{{ plex_nas_server }}
+# systemd unmounts a share after this number of seconds without use.
+plex_mount_idle_timeout: 60
 
-# How autofs mounts /mnt/: unmount after 60 s idle, show the folders before a
-# mount.
-plex_autofs_options:
-  - --timeout 60
-  - --ghost
+# The options that make each line of /etc/fstab an automount: no mount at
+# the start of the host, a mount at the first use, and the network first.
+plex_mount_options:
+  - noauto
+  - x-systemd.automount
+  - x-systemd.idle-timeout={{ plex_mount_idle_timeout }}
+  - _netdev
+
+# The file with the SMB user, password and domain. Only root reads it.
+plex_smb_credentials_file: /etc/plex-smb.credentials
 
 plex_mounts:
   - path: nas
-    server: "{{ plex_nas_server }}:{{ plex_nas_path }}"
-    options: [fstype=nfs4, dir_mode=0777, file_mode=0777, vers=4.2, soft]
+    src: "{{ plex_nas_server }}:{{ plex_nas_path }}"
+    fstype: nfs4
+    options: [vers=4.2, soft]
   - path: cifs
-    server: "://{{ plex_smb_server }}{{ plex_smb_path }}/"
+    src: "//{{ plex_smb_server }}{{ plex_smb_path }}/"
+    fstype: cifs
     options:
-      - fstype=cifs
-      - username={{ plex.smb_username }}
-      - password={{ plex.smb_password }}
-      - domain={{ plex.smb_domain }}
+      - credentials={{ plex_smb_credentials_file }}
       - vers=3.1.1
       - dir_mode=0777
       - file_mode=0777
       - soft
   - path: truenas
-    server: "{{ plex_truenas_server }}:{{ plex_truenas_path }}"
-    options: [fstype=nfs4, vers=4.2, soft]
+    src: "{{ plex_truenas_server }}:{{ plex_truenas_path }}"
+    fstype: nfs4
+    options: [vers=4.2, soft]

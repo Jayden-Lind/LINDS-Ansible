@@ -1,10 +1,14 @@
 ---
-- name: Restart autofs
-  ansible.builtin.service:
-    name: autofs
-    state: restarted
+# systemd makes the mount and automount units from /etc/fstab.
+- name: Read /etc/fstab again
+  ansible.builtin.systemd_service:
+    daemon_reload: true
 
-- name: Reload autofs
-  ansible.builtin.service:
-    name: autofs
-    state: reloaded
+- name: Start the automounts again
+  ansible.builtin.systemd_service:
+    name: mnt-{{ item.path }}.automount
+    state: restarted
+  loop: "{{ plex_mounts }}"
+  loop_control:
+    label: "{{ item.path }}"
+  when: not ansible_check_mode
