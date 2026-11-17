@@ -15,6 +15,28 @@ windows_baseline_defender_realtime: true
 # controller the spooler is a known attack path.
 windows_baseline_disable_spooler: true
 
+# Services that these servers do not use. The role stops each one and sets
+# it to Disabled. A name that the server does not have is skipped. A service
+# comes before the services that it needs (Audiosrv needs
+# AudioEndpointBuilder). The GPO `Server - Baseline` has the same list
+# (inventory/group_vars/windows/gpo.yml).
+windows_baseline_services_disabled:
+  # Microsoft: "OK to disable" on a server with Desktop Experience.
+  - Audiosrv             # Windows Audio: a VM has no sound device
+  - AudioEndpointBuilder # Windows Audio Endpoint Builder
+  - PcaSvc               # Program Compatibility Assistant
+  - RmSvc                # Radio Management: no Wi-Fi, no Bluetooth
+  - ShellHWDetection     # AutoPlay for removable media
+  - WpnService           # push notifications of Store apps
+  - lfsvc                # Geolocation
+  # Not in the guidance of Microsoft. Each has no work on these servers.
+  - DiagTrack            # telemetry to Microsoft (Connected User Experiences)
+  - SysMain              # preloads programs into memory (Superfetch)
+  - DPS                  # Diagnostic Policy: the troubleshooting wizards
+  - TrkWks               # Distributed Link Tracking: repairs shortcuts
+  - BalloonService       # VirtIO balloon: the VMs have no balloon device
+  - UALSVC               # User Access Logging: counts clients for licences
+
 # The maximum size of each event log. The Security log must keep more than
 # one day.
 windows_baseline_event_logs:

@@ -12,8 +12,8 @@ windows_gpo_definitions:
   # If you change a setting here, change it in that role too.
   - name: Server - Baseline
     comment: >-
-      Firewall, Defender, event logs, Remote Desktop, SMB1, Print Spooler, CPU
-      mitigations and IPv6 of the servers. Made by LINDS-Ansible, role
+      Firewall, Defender, event logs, Remote Desktop, SMB1, Print Spooler,
+      unused services, CPU mitigations and IPv6 of the servers. Made by LINDS-Ansible, role
       windows_gpo. Do not edit it in GPMC.
     # The computer names of the servers in the inventory group windows_managed.
     apply_to: "{{ groups['windows_managed'] | map('split', '.') | map('first') | map('upper') | list }}"
@@ -35,6 +35,21 @@ windows_gpo_definitions:
       - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters', name: SMB1, type: DWord, value: 0 }
       # 4 is Disabled. The service stops at the next restart.
       - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\Spooler', name: Start, type: DWord, value: 4 }
+      # The services of windows_baseline_services_disabled (role
+      # windows_baseline), also Disabled.
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\Audiosrv', name: Start, type: DWord, value: 4 }
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\AudioEndpointBuilder', name: Start, type: DWord, value: 4 }
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\PcaSvc', name: Start, type: DWord, value: 4 }
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\RmSvc', name: Start, type: DWord, value: 4 }
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\ShellHWDetection', name: Start, type: DWord, value: 4 }
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\WpnService', name: Start, type: DWord, value: 4 }
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\lfsvc', name: Start, type: DWord, value: 4 }
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\DiagTrack', name: Start, type: DWord, value: 4 }
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\SysMain', name: Start, type: DWord, value: 4 }
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\DPS', name: Start, type: DWord, value: 4 }
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\TrkWks', name: Start, type: DWord, value: 4 }
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\BalloonService', name: Start, type: DWord, value: 4 }
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\UALSVC', name: Start, type: DWord, value: 4 }
       # 3 turns off the mitigations for Spectre variant 2 and Meltdown. The
       # change takes effect at the next restart. See windows_baseline_cpu_mitigations.
       - key: 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management'
