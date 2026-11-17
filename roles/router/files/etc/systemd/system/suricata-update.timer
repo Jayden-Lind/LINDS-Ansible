@@ -1,9 +1,10 @@
-# Managed by LINDS-Ansible (roles/router). Weekly, like VyOS's task-scheduler entry.
+# Managed by LINDS-Ansible (roles/router). Daily: the phishing and malware
+# domain lists (etc/suricata/update.yaml) change each day.
 [Unit]
-Description=Weekly Suricata rule refresh
+Description=Daily Suricata rule refresh
 
 [Timer]
-OnCalendar=Mon *-*-* 04:00:00
+OnCalendar=*-*-* 04:00:00
 RandomizedDelaySec=10m
 Persistent=true
 

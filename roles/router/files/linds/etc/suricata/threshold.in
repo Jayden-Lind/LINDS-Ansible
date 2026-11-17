@@ -14,29 +14,34 @@
 # scans, policy).
 #
 # Whole rule families, so that a new Tor or reputation group (ET Open adds
-# them often) stays quiet too. At the time of writing they come to 1,720
-# rules.
+# them often) stays quiet too. The engine's own protocol events (SURICATA ...)
+# and ET INFO are disabled for every host in disable.conf.
 # P2P protocols (85 rules; GPL P2P BitTorrent transfer alone was 5,966 alerts)
 suppress re:"msg:\"(ET|GPL) P2P ", track by_either, ip 10.0.36.0/24
 # Peers that are also Tor relays (832 rules, one per group of relay addresses)
 suppress re:"msg:\"ET TOR ", track by_either, ip 10.0.36.0/24
 # Peers on the reputation lists: Spamhaus DROP, CINS, compromised hosts (388)
 suppress re:"msg:\"ET (DROP|CINS|COMPROMISED) ", track by_either, ip 10.0.36.0/24
-# Protocol anomalies in peer traffic: TLS records, HTTP, TCP stream, QUIC (395)
-suppress re:"msg:\"SURICATA ", track by_either, ip 10.0.36.0/24
-# Tracker names in odd TLDs: .tk, .pw, .to, .cc, .top (20 rules)
+# Tracker names in odd TLDs: .tk, .pw, .top
 suppress re:"msg:\"ET DNS ", track by_either, ip 10.0.36.0/24
 #
-# Single rules from families too large to take whole (ET DYN_DNS has 6,100
-# rules, ET INFO 4,548).
-# Trackers on duckdns
+# Single rules from a family too large to take whole (ET DYN_DNS has 6,100
+# rules): trackers on duckdns
 suppress gen_id 1, sig_id 2022918, track by_either, ip 10.0.36.0/24
 suppress gen_id 1, sig_id 2042936, track by_either, ip 10.0.36.0/24
-# Package updates (APT user agent), a .cf tracker, and lookups of its own
-# public address (db-ip.com, ifconfig.me) in DNS and TLS
-suppress gen_id 1, sig_id 2013504, track by_either, ip 10.0.36.0/24
-suppress gen_id 1, sig_id 2025107, track by_either, ip 10.0.36.0/24
-suppress gen_id 1, sig_id 2063061, track by_either, ip 10.0.36.0/24
-suppress gen_id 1, sig_id 2063062, track by_either, ip 10.0.36.0/24
-suppress gen_id 1, sig_id 2063074, track by_either, ip 10.0.36.0/24
-suppress gen_id 1, sig_id 2063075, track by_either, ip 10.0.36.0/24
+#
+# "Executable from a host with no name": Windows Update gives the two Windows
+# servers their files that way.
+suppress gen_id 1, sig_id 2021076, track by_either, ip [10.3.1.200,10.3.1.201]
+#
+# IPFire DBL, malware and phishing lists (DNS, HTTP, TLS, QUIC): one alert an
+# hour for each device and rule. A device that asks for a listed name often
+# asks for it all day. The DNS and TLS logs have every name.
+threshold gen_id 1, sig_id 12001201, type limit, track by_src, count 1, seconds 3600
+threshold gen_id 1, sig_id 12001202, type limit, track by_src, count 1, seconds 3600
+threshold gen_id 1, sig_id 12001203, type limit, track by_src, count 1, seconds 3600
+threshold gen_id 1, sig_id 12001204, type limit, track by_src, count 1, seconds 3600
+threshold gen_id 1, sig_id 12001901, type limit, track by_src, count 1, seconds 3600
+threshold gen_id 1, sig_id 12001902, type limit, track by_src, count 1, seconds 3600
+threshold gen_id 1, sig_id 12001903, type limit, track by_src, count 1, seconds 3600
+threshold gen_id 1, sig_id 12001904, type limit, track by_src, count 1, seconds 3600
