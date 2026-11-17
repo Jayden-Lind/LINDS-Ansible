@@ -107,7 +107,20 @@ common_packages_absent:
   # NTP servers. chrony keeps the time.
   - ntpsec
   - ntp
-# Packages of common_packages_absent that a host keeps.
+# Tools that the minimal server does not have. No service uses them. A host
+# for interactive work, such as the jump host, sets this list to [].
+common_tool_packages_absent:
+  - git
+  - git-man
+  - linux-perf
+  - bpftool
+  - lshw
+  - ufw
+  - iptables
+  - man-db
+  - manpages
+  - info
+# Packages of the two lists above that a host keeps.
 common_packages_keep: []
 # Units that stay installed, because other packages need their package.
 common_units_masked:

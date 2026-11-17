@@ -63,8 +63,9 @@ The tasks are in `tasks/trim.yml` and have the tag `trim`.
 
 1. If the host runs `ntpsec`, installs `chrony`. `chrony` sets the clock and
    does not answer NTP requests.
-2. Removes the packages in `common_packages_absent`, with their
-   configuration. A host keeps the packages in `common_packages_keep`.
+2. Removes the packages in `common_packages_absent` and
+   `common_tool_packages_absent`, with their configuration. A host keeps the
+   packages in `common_packages_keep`.
 3. On an Ubuntu VM, installs `common_ubuntu_vm_kernel_package` and removes
    `common_ubuntu_hardware_kernel_packages`. The kernel is the same HWE
    kernel. The firmware, the microcode and the kernel headers go.
@@ -87,6 +88,13 @@ The packages in `common_packages_absent` are in these groups:
 | Clients | `telnet` | Not used. |
 | Trace tools | `bpftrace`, `bpfcc-tools`, `trace-cmd` | Not used. With their libraries they are about 200 MB. |
 | NTP servers | `ntpsec`, `ntp` | `chrony` keeps the time. |
+
+The packages in `common_tool_packages_absent` are tools that the minimal
+server does not have: `git`, `linux-perf`, `bpftool`, `lshw`, `ufw`,
+`iptables`, `man-db`, the manual pages and `info`. No service uses them. The
+hosts keep `tmux`, `tcpdump`, `strace`, `rsync`, `lsof` and `dig` for
+troubleshooting. With `man-db` gone, apt also removes the collection
+`ubuntu-standard`, which installs nothing by itself.
 
 ## Requirements
 
@@ -114,7 +122,8 @@ All variables are in `defaults/main.yml`.
 | `common_password_locked_users` | `[jayden]` | The accounts with a locked password. |
 | `common_absent_users` | `[ubuntu]` | The accounts that the role removes. |
 | `common_packages_absent` | see `defaults/main.yml` | The packages that the role removes. |
-| `common_packages_keep` | `[]` | The packages of `common_packages_absent` that this host keeps. |
+| `common_tool_packages_absent` | see `defaults/main.yml` | The tools that the role removes. `[]` on a host for interactive work. |
+| `common_packages_keep` | `[]` | The packages of the two lists that this host keeps. |
 | `common_units_masked` | see `defaults/main.yml` | The units that the role stops and masks. |
 | `common_cloud_init_disabled` | `true` | Stop cloud-init after the first start of the host. |
 
