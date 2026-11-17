@@ -89,6 +89,13 @@
   loop: "{{ windows_baseline_services_disabled }}"
   when: item | lower in (windows_baseline_services.services | map(attribute='name') | map('lower') | list)
 
+- name: Disable the services that stop only at a restart
+  ansible.windows.win_service:
+    name: "{{ item }}"
+    start_mode: disabled
+  loop: "{{ windows_baseline_services_disabled_at_restart }}"
+  when: item | lower in (windows_baseline_services.services | map(attribute='name') | map('lower') | list)
+
 - name: Set the sizes of the event logs
   ansible.windows.win_eventlog:
     name: "{{ item.key }}"

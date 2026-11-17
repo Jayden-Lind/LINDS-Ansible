@@ -12,7 +12,9 @@ The role applies the security baseline to a Windows server.
 6. If `windows_baseline_multicast_names` is false, it turns off LLMNR and
    mDNS. The server then finds names with DNS only.
 7. It stops and disables the services in `windows_baseline_services_disabled`:
-   services of the desktop that a server VM does not use (see below).
+   services of the desktop that a server VM does not use (see below). It
+   disables the services in `windows_baseline_services_disabled_at_restart`
+   and does not stop them: they stop at the next restart.
 8. It sets the maximum sizes of the event logs.
 9. It allows Remote Desktop with Network Level Authentication, and opens its
    firewall rules.
@@ -43,7 +45,8 @@ here, change it in `inventory/group_vars/windows/gpo.yml` too.
 | `windows_baseline_disable_spooler` | `true` | Stop and disable the Print Spooler. |
 | `windows_baseline_features_absent` | `Wireless-Networking`, `XPS-Viewer` | The Windows features that the role removes. |
 | `windows_baseline_multicast_names` | `true` | `false` turns off LLMNR and mDNS. The inventory sets `false`. |
-| `windows_baseline_services_disabled` | 13 services, see `defaults/main.yml` | The services that the role stops and disables. |
+| `windows_baseline_services_disabled` | 12 services, see `defaults/main.yml` | The services that the role stops and disables. |
+| `windows_baseline_services_disabled_at_restart` | `RmSvc` | The services that the role disables. Windows does not stop them while they run. |
 | `windows_baseline_event_logs` | Security 1 GB, System and Application 256 MB | The maximum size of each log. |
 | `windows_baseline_rdp` | `true` | Allow Remote Desktop with Network Level Authentication. |
 | `windows_baseline_cpu_mitigations` | `true` | `false` turns off the Spectre variant 2 and Meltdown mitigations (and MDS buffer clearing). The inventory sets `false`. |
