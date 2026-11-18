@@ -10,4 +10,5 @@ Name=wan0
 GenericReceiveOffload=yes
 GenericSegmentationOffload=yes
 TCPSegmentationOffload=yes
-GenericReceiveOffloadHardware=no
+# As lan0: the host gives wan0 the packets that it merged on the NBN port.
+GenericReceiveOffloadHardware=yes

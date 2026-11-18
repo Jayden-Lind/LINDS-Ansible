@@ -710,17 +710,23 @@ alerts on this router are `ET INFO`, and those are normal traffic.
   one column only. All of it is ethtool or /proc, none of it is expressible in
   `.link` files. `ethtool -k lan0 | grep -E "^(scatter|tcp-seg|generic)"`
   must show four `on`s.
-* **Hardware GRO is on for lan0 at JD** (`GenericReceiveOffloadHardware=yes`
-  in `files/jd/etc/systemd/network/10-lan0.link`). The host then gives
-  `lan0` TCP packets of up to 64 KB. If it is off, the host cuts each packet
-  into 1500-byte frames before the router gets it. One flow between two
-  VLANs then gets about 330 MB/s instead of 1.5 GB/s. This matters most for
-  SMB between the cluster (VLAN 53) and `jd-fs-01` (main LAN). The kernel
+* **Hardware GRO is on for the virtio ports** (`GenericReceiveOffloadHardware=yes`
+  in the `.link` file): `lan0` at JD, and `lan0` and `wan0` at LINDS. At JD
+  `wan0` is an SR-IOV port, which does not have this offload. The host then
+  gives the port TCP packets of up to 64 KB. If it is off, the host cuts
+  each packet into 1500-byte frames before the router gets it. Measured
+  between two VLANs through the router, one flow: at JD about 330 MB/s with
+  it off and 1.5 GB/s with it on, at LINDS 520 MB/s and 2.1 GB/s
+  (2026-11-18). This matters most for SMB between the cluster (VLAN 53) and
+  `jd-fs-01` (main LAN), and for NFS between the VLANs at LINDS. The kernel
   turns LRO off on a router, but it keeps this offload, because virtio-net
   reports it as `rx-gro-hw`. Check: `ethtool -k lan0 | grep rx-gro-hw` shows
   `on`, and on the host `ethtool -k tap1101i0` shows
   `tcp-segmentation-offload: on`. The Suricata ring (tpacket v3, below)
-  captures these packets whole.
+  captures these packets whole. A changed `.link` file makes the role
+  restart the router. To change this setting without a restart, run
+  `ethtool -K <port> rx-gro-hw on` and put the new file on the router before
+  you merge the change.
 * **Suricata runs `workers`, not `autofp`.** tpacket v3 only exists in the
   workers runmode; under autofp it silently fell back to v2, whose fixed
   frame size truncated every GRO super-packet at 1514 bytes
