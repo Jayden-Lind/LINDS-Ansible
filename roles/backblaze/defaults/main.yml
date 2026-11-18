@@ -23,7 +23,8 @@ backblaze_volume_guid: ""
 backblaze_disk_slot: scsi1
 # ssd=1 and discard=on: Windows trims the clone, and does not defragment it.
 backblaze_disk_options: backup=0,discard=on,iothread=1,ssd=1
-# systemd calendar expression for the weekly run.
-backblaze_schedule: "Sat 02:30"
+# systemd calendar expression for the weekly run. The run starts in daylight
+# hours, when the site has surplus solar power.
+backblaze_schedule: "Sat 10:00"
 # The run stops the VM after this time, also if Backblaze is not done.
 backblaze_max_hours: 12

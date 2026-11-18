@@ -77,7 +77,7 @@ Set the first six for the host in
 | `backblaze_clone_name` | `vm-<backblaze_vmid>-nas-clone` | The name of the clone. It must start with `vm-<backblaze_vmid>-`. |
 | `backblaze_disk_slot` | `scsi1` | The slot of the clone in the Backblaze VM. |
 | `backblaze_disk_options` | `backup=0,discard=on,iothread=1,ssd=1` | The options of the clone in the Backblaze VM. |
-| `backblaze_schedule` | `Sat 02:30` | When the timer starts a run (systemd calendar expression). |
+| `backblaze_schedule` | `Sat 10:00` | When the timer starts a run (systemd calendar expression). |
 | `backblaze_max_hours` | `12` | The run stops the VM after this time. |
 
 ## How to use it
