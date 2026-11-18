@@ -10,4 +10,9 @@ Name=lan0
 GenericReceiveOffload=yes
 GenericSegmentationOffload=yes
 TCPSegmentationOffload=yes
-GenericReceiveOffloadHardware=no
+# Hardware GRO lets the host give lan0 TCP packets of up to 64 KB. If it is
+# off, the host cuts each packet into 1500-byte frames. Measured on
+# 2026-11-18 between two VMs in different VLANs of this site: 520 MB/s with
+# it off, 2130 MB/s with it on. The kernel turns LRO off on a router, but it
+# keeps this offload: virtio-net reports it as rx-gro-hw.
+GenericReceiveOffloadHardware=yes
