@@ -1,6 +1,10 @@
 ---
 # The base settings of linds-proxmox-01 (roles/proxmox_base).
 
+# On 2026-11-18 the host had 23 GiB of free memory and KSM saved 0.1 GiB.
+# With KSM off, the VMs keep their 2 MiB pages.
+proxmox_base_ksm_enabled: false
+
 # The host does not export or mount NFS.
 proxmox_base_rpcbind_enabled: false
 # The kernel default is the performance governor.
