@@ -24,6 +24,6 @@
   ansible.builtin.import_tasks: sysctl.yml
   tags: sysctl
 
-- name: Add kernel parameters for the next boot
+- name: Install the kernel packages and add kernel parameters for the next boot
   ansible.builtin.import_tasks: kernel.yml
   tags: kernel

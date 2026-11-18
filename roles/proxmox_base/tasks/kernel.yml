@@ -1,4 +1,14 @@
 ---
+# The role installs the kernel packages of the host. A Proxmox kernel package
+# makes its kernel the newest one, and GRUB boots the newest kernel. The
+# running kernel does not change: the new kernel starts at the next boot.
+
+- name: Install the kernel packages
+  ansible.builtin.apt:
+    name: "{{ proxmox_base_kernel_packages }}"
+    state: present
+  when: proxmox_base_kernel_packages | length > 0
+
 # GRUB reads the files in /etc/default/grub.d after /etc/default/grub, so the
 # file adds parameters to the ones that the host has. The handler runs
 # update-grub. The running kernel does not change: the parameters apply at

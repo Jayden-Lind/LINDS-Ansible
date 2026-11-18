@@ -38,3 +38,9 @@ proxmox_base_sysctl: {}
 # /etc/default/grub.d/proxmox-base.cfg and runs update-grub. They apply at the
 # next boot. If the value is empty, the role does not write the file.
 proxmox_base_kernel_cmdline: ""
+
+# Kernel packages that the role installs, for example "proxmox-kernel-7.3" for
+# an opt-in kernel series. The newest installed kernel starts at the next
+# boot. The role does not remove a kernel. If the list is empty, the role
+# installs no kernel package.
+proxmox_base_kernel_packages: []
