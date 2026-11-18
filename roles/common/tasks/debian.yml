@@ -1,5 +1,5 @@
 ---
-# APT, GRUB and the guest agent.
+# APT, the kernel command line and the guest agent.
 
 - name: Start qemu-guest-agent
   ansible.builtin.service:
@@ -24,13 +24,9 @@
     src: 99needrestart
     dest: /etc/apt/apt.conf.d/99needrestart
 
-# Only the kernel command line. The other lines of the file stay as they are.
-- name: Set the kernel command line in the GRUB defaults
-  ansible.builtin.lineinfile:
-    path: /etc/default/grub
-    regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
-    line: GRUB_CMDLINE_LINUX_DEFAULT="{{ (common_disable_mitigations | bool) | ternary('mitigations=off', '') }}"
-  notify: Update GRUB
+- name: Set the kernel command line
+  ansible.builtin.import_tasks: kernel-cmdline.yml
+  tags: [kernel-cmdline]
 
 # cloud-init 26 moved its files to the cloud-init-base package. The old file
 # /etc/logrotate.d/cloud-init stays as an obsolete conffile. It names the

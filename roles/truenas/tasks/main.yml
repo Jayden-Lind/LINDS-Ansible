@@ -59,12 +59,12 @@
   loop_control:
     label: "{{ item.path }}"
 
-- name: Read the syslog settings
+- name: Read the advanced settings
   ansible.builtin.command: midclt call system.advanced.config
   register: truenas_advanced
   changed_when: false
   check_mode: false
-  when: truenas_syslog_server | length > 0
+  when: truenas_syslog_server | length > 0 or truenas_kernel_extra_options | length > 0
 
 # TrueNAS 25.10 keeps a list, syslogservers: [{host, transport, tls_certificate}].
 - name: Send syslog to the remote server
@@ -81,3 +81,17 @@
       | map(attribute='host') | list != [truenas_syslog_server]
       or (truenas_advanced.stdout | from_json).syslogservers | default([])
       | map(attribute='transport') | list != [truenas_syslog_transport]
+
+# TrueNAS writes the parameters to its boot configuration. They apply at the
+# next restart of the TrueNAS.
+- name: Set the extra kernel parameters
+  ansible.builtin.command:
+    argv:
+      - midclt
+      - call
+      - system.advanced.update
+      - "{{ {'kernel_extra_options': truenas_kernel_extra_options} | to_json }}"
+  changed_when: true
+  when:
+    - truenas_kernel_extra_options | length > 0
+    - (truenas_advanced.stdout | from_json).kernel_extra_options | default('') != truenas_kernel_extra_options

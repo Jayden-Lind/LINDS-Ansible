@@ -32,3 +32,9 @@ proxmox_base_ksm_enabled: true
 # /etc/sysctl.d/90-proxmox-base.conf, as name and value. If the value is
 # empty, the role does not write the file.
 proxmox_base_sysctl: {}
+
+# Kernel parameters that the role adds to the kernel command line, for
+# example "mitigations=off". The role writes them to
+# /etc/default/grub.d/proxmox-base.cfg and runs update-grub. They apply at the
+# next boot. If the value is empty, the role does not write the file.
+proxmox_base_kernel_cmdline: ""

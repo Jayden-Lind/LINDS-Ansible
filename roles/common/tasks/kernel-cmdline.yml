@@ -1,0 +1,12 @@
+---
+# The kernel command line in the GRUB defaults. The handler runs update-grub.
+# The running kernel does not change: the new command line applies at the
+# next boot.
+
+# Only the kernel command line. The other lines of the file stay as they are.
+- name: Set the kernel command line in the GRUB defaults
+  ansible.builtin.lineinfile:
+    path: /etc/default/grub
+    regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
+    line: GRUB_CMDLINE_LINUX_DEFAULT="{{ (common_disable_mitigations | bool) | ternary('mitigations=off', '') }}"
+  notify: Update GRUB

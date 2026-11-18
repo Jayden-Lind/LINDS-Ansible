@@ -1,5 +1,6 @@
 ---
-# The jump host: the hardening and the trim of the role `common`.
+# The jump host: the hardening, the trim and the kernel command line of the
+# role `common`.
 #
 #   ansible-playbook playbooks/jump.yml --check --diff
 #
@@ -16,14 +17,28 @@
         that: ansible_facts.hostname == 'jd-jump-01'
         fail_msg: Run this playbook on jd-jump-01.
 
+    # `apply` gives the tag to the tasks in each file, so that `--tags <part>`
+    # runs them. Without it, the tag selects only the include.
     - name: Apply the hardening of the role common
       ansible.builtin.include_role:
         name: common
         tasks_from: hardening.yml
+        apply:
+          tags: [hardening]
       tags: [hardening]
 
     - name: Apply the trim of the role common
       ansible.builtin.include_role:
         name: common
         tasks_from: trim.yml
+        apply:
+          tags: [trim]
       tags: [trim]
+
+    - name: Set the kernel command line of the role common
+      ansible.builtin.include_role:
+        name: common
+        tasks_from: kernel-cmdline.yml
+        apply:
+          tags: [kernel-cmdline]
+      tags: [kernel-cmdline]

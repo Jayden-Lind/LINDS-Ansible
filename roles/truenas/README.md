@@ -13,6 +13,8 @@ The `truenas` role configures the TrueNAS at LINDS through its middleware
 4. Makes each NFS share in `truenas_nfs_shares`, with its networks and its
    user mapping (`maproot_*` or `mapall_*`).
 5. If `truenas_syslog_server` is set, sends syslog to that server.
+6. If `truenas_kernel_extra_options` is set, sets the extra kernel parameters.
+   They apply at the next restart of the TrueNAS.
 
 ## What it does not do
 
@@ -36,6 +38,7 @@ snapshots on a replication target stop the next incremental pull.
 | `truenas_nfs_shares` | `[]` | `{path, networks}` and either `maproot_user`/`maproot_group` or `mapall_user`/`mapall_group`, for each share. |
 | `truenas_syslog_server` | `""` | `host:port` of a syslog server. Empty: no change. |
 | `truenas_syslog_transport` | `UDP` | The syslog transport. |
+| `truenas_kernel_extra_options` | `""` | Kernel parameters to add, for example `mitigations=off`. Empty: no change. |
 
 `inventory/nas.yml` sets the values for `linds-truenas-01`.
 

@@ -18,6 +18,7 @@ Each part has a tag.
 | `tuning` | If `proxmox_base_cpu_governor` is set, installs, enables and starts `cpu-governor.service`, which sets the CPU frequency governor at boot. If `proxmox_base_nic_ring_interfaces` is not empty, installs `nic-ring-tuning@.service` and enables one instance for each interface. Each instance sets the ring buffers of its interface at boot. |
 | `ksm` | If `proxmox_base_ksm_enabled` is false, stops and disables `ksmtuned`, stops KSM and splits the shared pages. KSM puts equal memory pages of the VMs in one shared 4 KiB page, and that splits the 2 MiB pages of the VMs. |
 | `sysctl` | If `proxmox_base_sysctl` is not empty, writes the settings to `/etc/sysctl.d/90-proxmox-base.conf` and loads the file. |
+| `kernel` | If `proxmox_base_kernel_cmdline` is set, writes `/etc/default/grub.d/proxmox-base.cfg`, which adds the parameters to the kernel command line, and runs `update-grub`. The parameters apply at the next boot. |
 
 ## What it does not do
 
@@ -49,6 +50,7 @@ Each part has a tag.
 | `proxmox_base_nic_ring_interfaces` | `[]` | The interfaces that get larger ring buffers. If the list is empty, the role does not install `nic-ring-tuning@.service`. |
 | `proxmox_base_nic_ring_size` | `4096` | The number of receive and transmit descriptors for each interface in `proxmox_base_nic_ring_interfaces`. |
 | `proxmox_base_ksm_enabled` | `true` | If false, the role stops KSM. Set it to false only on a host that has more free memory than KSM saves. |
+| `proxmox_base_kernel_cmdline` | `""` | Kernel parameters to add to the command line, for example `mitigations=off`. Empty: no file. |
 | `proxmox_base_sysctl` | `{}` | The kernel settings of the host, as name and value. If it is empty, the role does not write the file. |
 
 ## How to use it
