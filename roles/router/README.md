@@ -1127,6 +1127,14 @@ Where this site's configuration is not JD's, or not what VyOS did, and why:
   went to Telstra with a private source address and were lost there. They
   have no internet here either; `postrouting_filter` drops them instead.
   There is no catch-all masquerade as at JD, on purpose.
+* **The router answers NTP for VLAN 80.** VLAN 80 has no internet, but its
+  devices ask public NTP servers (the UniFi devices ask
+  `[0-3].ubnt.pool.ntp.org`). Rule 25 in `prerouting_nat` sends this NTP to
+  the chrony of the router. The reply comes back from the address that the
+  device asked, so no device needs a change. 10.0.80.4 has internet and keeps
+  its own servers. To see the rule work, run
+  `nft list chain inet router prerouting_nat` (the counter) and
+  `chronyc clients`.
 * **VLAN 36 cannot reach Telstra's own network directly.** The policy
   routing lists the private ranges as VyOS's did. JD's two tunnel VLANs use
   "whatever the main table has a route for" instead, which includes the

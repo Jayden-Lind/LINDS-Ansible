@@ -99,6 +99,31 @@ r=$(seen_from $C80 198.51.100.10 9003 $INET 10.0.80.4); [ "$r" = 203.0.113.2 ] &
 r=$(seen_from $C80 198.51.100.10 9004 $INET 10.0.80.7); [ "$r" = nothing ] && ok "10.0.80.7 (VLAN 80, no NAT rule) -> internet: nothing leaves" || bad "10.0.80.7 -> internet: saw $r"
 r=$(seen_from $C80 192.168.6.50 9009 $TRUNK 10.0.80.7); [ "$r" = 10.0.80.7 ] && ok "10.0.80.7 -> LAN still works (the test client is real)" || bad "10.0.80.7 -> LAN: saw $r"
 r=$(seen_from $C110 198.51.100.10 9005 $INET); [ "$r" = nothing ] && ok "VLAN 110 (no NAT rule) -> internet: nothing leaves" || bad "VLAN 110 -> internet: saw $r"
+echo "== NTP from VLAN 80, which has no internet (prerouting_nat rule 25)"
+# The chrony of the router and an NTP server on the internet, each played by
+# a UDP responder on port 123 that answers with its own name. The router's
+# listens on all addresses, as chrony does. The internet server listens on
+# its own address, so that it answers from that address, as a real one does.
+NTPD_PY='
+import socket,sys; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.bind((sys.argv[2],123)); s.settimeout(4)
+try:
+    while True:
+        d,a=s.recvfrom(100); s.sendto(sys.argv[1].encode(),a)
+except Exception: pass'
+python3 -c "$NTPD_PY" router 0.0.0.0 & NTP_R=$!
+in_ $INET python3 -c "$NTPD_PY" internet 198.51.100.10 & NTP_I=$!
+ntpask() { # client-pid source-address -> "<who answered> from <address of the answer>", or nothing
+  in_ $1 python3 -c "
+import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.bind(('$2',0)); s.settimeout(2); s.sendto(b'x',('198.51.100.10',123))
+try:
+    d,a=s.recvfrom(100); print(d.decode(),'from',a[0])
+except Exception: print('nothing')"; }
+sleep 0.4
+r=$(ntpask $C80 10.0.80.7); [ "$r" = "router from 198.51.100.10" ] && ok "10.0.80.7 asks an internet NTP server: the router answers, from that server's address" || bad "10.0.80.7 -> internet NTP: $r"
+r=$(ntpask $C80 10.0.80.4); [ "$r" = "internet from 198.51.100.10" ] && ok "10.0.80.4 asks an internet NTP server: that server answers" || bad "10.0.80.4 -> internet NTP: $r"
+r=$(ntpask $TRUNK 192.168.6.50); [ "$r" = "internet from 198.51.100.10" ] && ok "the main LAN asks an internet NTP server: that server answers" || bad "LAN -> internet NTP: $r"
+kill $NTP_R $NTP_I 2>/dev/null; wait $NTP_R $NTP_I 2>/dev/null
+r=$(seen_from $C80 10.3.1.20 123 $C300 10.0.80.7); [ "$r" = 10.0.80.7 ] && ok "10.0.80.7 asks an NTP server on VLAN 300: it arrives there, not redirected" || bad "10.0.80.7 -> VLAN 300 NTP: saw $r"
 echo "== between the VLANs (forward is accept, no NAT)"
 r=$(seen_from $TRUNK 10.3.1.20 9006 $C300); [ "$r" = 192.168.6.50 ] && ok "LAN -> VLAN 300 arrives with its own address" || bad "LAN -> VLAN 300: saw $r"
 r=$(seen_from $C110 192.168.6.50 9007 $TRUNK); [ "$r" = 10.0.110.9 ] && ok "VLAN 110 -> LAN arrives with its own address" || bad "VLAN 110 -> LAN: saw $r"
