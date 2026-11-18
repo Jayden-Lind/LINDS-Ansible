@@ -5,6 +5,11 @@
 # their 2 MiB pages.
 proxmox_base_ksm_enabled: false
 
+# The opt-in kernel series 7.3. proxmox-default-kernel still installs 7.0,
+# which stays on the host as the fallback in the GRUB menu.
+proxmox_base_kernel_packages:
+  - proxmox-kernel-7.3
+
 proxmox_base_sysctl:
   # Memory. The host has 256 GiB, and the ZFS ARC and the VMs use most of it.
   # Keep 1 GiB free for the kernel. Write dirty pages early, in small amounts.
