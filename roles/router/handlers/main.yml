@@ -59,11 +59,6 @@
     name: chrony
     state: restarted
 
-- name: restart snmpd
-  ansible.builtin.systemd_service:
-    name: snmpd
-    state: restarted
-
 - name: restart lldpd
   ansible.builtin.systemd_service:
     name: lldpd
