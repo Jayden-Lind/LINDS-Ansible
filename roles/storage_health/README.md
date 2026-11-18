@@ -47,14 +47,15 @@ host are in `inventory/host_vars/<host>/storage_health.yml`.
 
 | Host | Patrol | Covers | When | Set by |
 |---|---|---|---|---|
-| jd | ZFS scrub | every pool | second Sunday of the month, 00:24 | `/etc/cron.d/zfsutils-linux` (Debian's, untouched) |
+| jd | ZFS scrub | `NAS-SSD`, `HDD-20T` | second Sunday of the month, 08:00 | `zfs-scrub-monthly@<pool>.timer`, this role |
 | jd | ZFS scrub | `VM` | every Wednesday, 03:00 | `zfs-scrub-weekly@VM.timer`, this role |
+| jd | ZFS scrub | `VM` | second Sunday of the month, 00:24 | `/etc/cron.d/zfsutils-linux` (Debian's, untouched) |
 | both | SMART long self-test | every drive, the NVMe and unused disks included | third Friday of the month from 21:00, one drive every three hours, so into Sunday | smartd, this role |
 | linds | Patrol read | VD 0 `NAS`, VD 3 `RAID-5` | weekly, Tuesday 16:00 UTC | the controller ([below](#the-perc-on-linds-proxmox-01)) |
 | linds | Consistency check | VD 1 `OS` | weekly, Saturday 15:00 UTC | the controller |
 
 How long they take, for judging a change to the schedule: a scrub of `VM` is a
-quarter of an hour, `NAS-SSD` two hours, `HDD-20T` nearly fifteen. A long
+quarter of an hour, `NAS-SSD` two hours, `HDD-20T` 15 to 18 hours. A long
 self-test is 2 minutes on the HP SSDs, 1.5 to 5.5 hours on the Samsungs, 8 to
 10 hours on the 4 TB disks at linds and 31 hours on each 22 TB disk.
 
@@ -73,7 +74,7 @@ same afternoon ran its 160 minutes without showing in either, and passed.
 | What it should expect of the host | `templates/config.json.j2` → `/etc/storage-health/config.json` |
 | node_exporter's arguments | `templates/prometheus-node-exporter.default.j2` → `/etc/default/prometheus-node-exporter` |
 | The self-test schedule | `templates/smartd.conf.j2` → `/etc/smartd.conf` |
-| When weekly scrubs start | `templates/zfs-scrub-weekly.conf.j2` → a drop-in for `zfs-scrub-weekly@<pool>.timer` |
+| When scrubs start | `templates/zfs-scrub-weekly.conf.j2`, `templates/zfs-scrub-monthly.conf.j2` → a drop-in for `zfs-scrub-weekly@<pool>.timer` or `zfs-scrub-monthly@<pool>.timer` |
 | Defaults, with the reasoning | `defaults/main.yml` |
 | Per-host values | `inventory/host_vars/<host>/storage_health.yml` |
 | Tests for the exporter | `tests/` — `python3 -m unittest discover -s roles/storage_health/tests` |

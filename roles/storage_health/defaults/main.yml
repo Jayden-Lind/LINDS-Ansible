@@ -15,9 +15,13 @@ storage_health_node_exporter_listen: ":9100"
 
 # --- ZFS -----------------------------------------------------------------------
 # The pools the host must have imported, and how each is scrubbed:
-#   monthly  by /etc/cron.d/zfsutils-linux, which Debian ships: every pool, on
-#            the second Sunday of the month at 00:24
-#   weekly   by zfs-scrub-weekly@<pool>.timer as well, at the time below
+#   monthly  by zfs-scrub-monthly@<pool>.timer, at the monthly time below. The
+#            role takes the pool out of the cron job that Debian ships
+#            (/etc/cron.d/zfsutils-linux: every pool, on the second Sunday of
+#            the month at 00:24).
+#   weekly   by zfs-scrub-weekly@<pool>.timer, at the weekly time below, and by
+#            the cron job of Debian as well
+# A pool with no `scrub` value gets only the cron job of Debian.
 # Listing a pool is what lets its absence be noticed: one that fails to import
 # is not in `zpool status` at all.
 storage_health_zfs_pools: []
@@ -29,9 +33,15 @@ storage_health_zfs_pools: []
 # systemd calendar expression for the weekly scrubs.
 storage_health_zfs_scrub_weekly_calendar: "Wed 03:00"
 
+# systemd calendar expression for the monthly scrubs: the second Sunday of the
+# month, the same day as the cron job of Debian. The scrubs start in the
+# morning, so that they run in daylight hours, when the site has surplus solar
+# power. The 22 TB mirror needs 15 to 18 hours: its scrub ends in the night.
+storage_health_zfs_scrub_monthly_calendar: "Sun *-*-08..14 08:00"
+
 # How old a pool's last finished scrub may get before StorageZfsScrubOverdue.
 # Weekly plus two days' grace; monthly is up to 35 days between second Sundays,
-# plus the fifteen hours the 22 TB mirror takes, plus grace.
+# plus the eighteen hours the 22 TB mirror takes, plus grace.
 storage_health_zfs_scrub_max_age_days:
   weekly: 9
   monthly: 40

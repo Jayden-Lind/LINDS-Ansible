@@ -1,0 +1,8 @@
+{{ ansible_managed | comment }}
+# zfs-scrub-monthly@.timer as shipped fires on the first day of the month at
+# 00:00 plus up to an hour. This drop-in starts the scrub in daylight hours,
+# when the site has surplus solar power.
+[Timer]
+OnCalendar=
+OnCalendar={{ storage_health_zfs_scrub_monthly_calendar }}
+RandomizedDelaySec=0
