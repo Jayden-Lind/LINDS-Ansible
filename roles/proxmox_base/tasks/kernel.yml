@@ -1,0 +1,15 @@
+---
+# GRUB reads the files in /etc/default/grub.d after /etc/default/grub, so the
+# file adds parameters to the ones that the host has. The handler runs
+# update-grub. The running kernel does not change: the parameters apply at
+# the next boot.
+
+- name: Add the kernel parameters to the GRUB defaults
+  ansible.builtin.template:
+    src: grub-proxmox-base.cfg.j2
+    dest: /etc/default/grub.d/proxmox-base.cfg
+    owner: root
+    group: root
+    mode: "0644"
+  when: proxmox_base_kernel_cmdline | length > 0
+  notify: Update GRUB

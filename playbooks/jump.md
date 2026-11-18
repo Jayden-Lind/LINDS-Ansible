@@ -1,8 +1,9 @@
 # jump.yml
 
 The playbook hardens the jump host `jd-jump-01` and removes the packages
-that a VM does not use. It applies two parts of the role `common`: the
-hardening and the trim. It does not apply the other parts of the role.
+that a VM does not use. It applies three parts of the role `common`: the
+hardening, the trim and the kernel command line. It does not apply the other
+parts of the role.
 
 ## Before you start
 
@@ -18,7 +19,8 @@ change before you merge it, or to apply a change by hand.
 
 1. Run `ansible-playbook playbooks/jump.yml --check --diff`.
 2. Run `ansible-playbook playbooks/jump.yml`.
-3. To apply one part, add `--tags hardening` or `--tags trim`.
+3. To apply one part, add `--tags hardening`, `--tags trim` or
+   `--tags kernel-cmdline`.
 
 ## What it changes
 
@@ -33,6 +35,10 @@ change before you merge it, or to apply a change by hand.
 **CAUTION:** After the playbook, SSH logins to the jump host use a key only,
 and the password of `jayden` is locked. Make sure that your key is in
 `/home/jayden/.ssh/authorized_keys` before you run it.
+
+**NOTE:** The kernel command line has `mitigations=off`
+(`common_disable_mitigations`), as the other VMs have. It applies at the next
+restart of the host.
 
 **NOTE:** The playbook does not restart the host or the Claude Code service.
 The memory that `kdump-tools` kept (512 MB) is free after the next restart of

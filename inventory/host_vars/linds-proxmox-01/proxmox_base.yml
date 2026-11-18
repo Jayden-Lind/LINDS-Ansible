@@ -12,3 +12,10 @@ proxmox_base_cpu_governor: schedutil
 proxmox_base_nic_ring_interfaces:
   - eno1
   - eno2
+
+# No CPU vulnerability mitigations, as on the other hosts and in the VMs (see
+# common_disable_mitigations in roles/common): the site has one tenant. On
+# these CPUs (Broadwell) the mitigations make each entry to and exit from a
+# VM slower, and KVM splits the executable 2 MiB pages of the VMs. The
+# parameter applies at the next boot of the host.
+proxmox_base_kernel_cmdline: mitigations=off
