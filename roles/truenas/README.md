@@ -22,6 +22,11 @@ It does not make snapshot tasks. The pool `NAS` on `linds-truenas-01` is the
 target of the nightly pull from `jd-proxmox-02` (replication task 2). Local
 snapshots on a replication target stop the next incremental pull.
 
+It does not set the scrub tasks. The scrub tasks of the pools `NAS` and
+`ZFS_NAS` are set in TrueNAS: Sunday at 10:00, with a threshold of 35 days.
+The scrubs start in daylight hours, when the site has surplus solar power.
+To see them, run `midclt call pool.scrub.query` on the host.
+
 ## Requirements
 
 - The collection `arensb.truenas`: `ansible-galaxy install -r requirements.yml`.

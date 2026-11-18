@@ -50,7 +50,7 @@ host are in `inventory/host_vars/<host>/storage_health.yml`.
 | jd | ZFS scrub | `NAS-SSD`, `HDD-20T` | second Sunday of the month, 08:00 | `zfs-scrub-monthly@<pool>.timer`, this role |
 | jd | ZFS scrub | `VM` | every Wednesday, 03:00 | `zfs-scrub-weekly@VM.timer`, this role |
 | jd | ZFS scrub | `VM` | second Sunday of the month, 00:24 | `/etc/cron.d/zfsutils-linux` (Debian's, untouched) |
-| both | SMART long self-test | every drive, the NVMe and unused disks included | third Friday of the month from 21:00, one drive every three hours, so into Sunday | smartd, this role |
+| both | SMART long self-test | every drive, the NVMe and unused disks included | third Friday of the month from 09:00, one drive every three hours, so into Sunday | smartd, this role |
 | linds | Patrol read | VD 0 `NAS`, VD 3 `RAID-5` | weekly, Tuesday 16:00 UTC | the controller ([below](#the-perc-on-linds-proxmox-01)) |
 | linds | Consistency check | VD 1 `OS` | weekly, Saturday 15:00 UTC | the controller |
 

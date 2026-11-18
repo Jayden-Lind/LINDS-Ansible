@@ -48,12 +48,12 @@ storage_health_zfs_scrub_max_age_days:
 
 # --- SMART self-tests ------------------------------------------------------------
 # smartd's -s expression, T/MM/DD/d/HH: a long test on the third Friday of the
-# month from 21:00, each drive three hours after the one before it (":003").
+# month from 09:00, each drive three hours after the one before it (":003").
+# The tests start in daylight hours, when the sites have surplus solar power.
 # That weekend is clear of the monthly trim (first Sunday) and scrub (second
-# Sunday), and the two 31-hour tests on the 22 TB disks finish in the small
-# hours of Monday. `smartd -q showtests` prints the dates an expression works
-# out to.
-storage_health_selftest_schedule: "L/../(15|16|17|18|19|20|21)/5/21:003"
+# Sunday), and the two 31-hour tests on the 22 TB disks finish on Sunday
+# afternoon. `smartd -q showtests` prints the dates an expression works out to.
+storage_health_selftest_schedule: "L/../(15|16|17|18|19|20|21)/5/09:003"
 
 # How long a drive may go without a long self-test before
 # StorageSmartSelfTestOverdue: five weeks between third Fridays, the stagger,
