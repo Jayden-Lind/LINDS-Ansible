@@ -172,7 +172,6 @@
       - isc-kea-dhcp-ddns
       - isc-kea-hooks
       - chrony
-      - snmpd
       - lldpd
       - ddclient
       - rsyslog
@@ -200,6 +199,20 @@
     name: [kea-dhcp4-server, kea-dhcp-ddns-server, kea-common]
     state: absent
     purge: true
+
+# Nothing reads the routers over SNMP: Prometheus scrapes the exporters
+# (node, FRR, smokeping). The agent answered each private address with the
+# community "public", so it is removed, with its firewall rule (rule 10).
+- name: snmpd purged
+  ansible.builtin.apt:
+    name: snmpd
+    state: absent
+    purge: true
+
+- name: snmpd sandbox drop-in removed
+  ansible.builtin.file:
+    path: /etc/systemd/system/snmpd.service.d
+    state: absent
 
 # The genericcloud image boots Debian's cloud kernel: same version as the
 # full one, trimmed module set — but it carries everything a virtio router

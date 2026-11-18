@@ -46,7 +46,7 @@ The split is by one question: would the file be the same on the other
 router? If so it is under `files/etc/` and changing it changes both. The
 per-site ones are the networkd files, `nftables.conf`, `frr.conf`, the two
 kea files, `unbound.conf`, `swanctl.conf` and `strongswan.d/router.conf`,
-`snmpd.conf`, the sshd drop-in, `miniupnpd.conf`, `avahi-daemon.conf`,
+the sshd drop-in, `miniupnpd.conf`, `avahi-daemon.conf`,
 `nic-tuning.service`, `resolv.conf`, and at JD `wan-failover.json`.
 
 What only some sites have is switched in group_vars:
@@ -123,7 +123,7 @@ layout above), and the notes are JD's.
 | IPsec | strongSwan (swanctl) | `etc/swanctl/swanctl.conf` | `LINDS` site-to-site over `ipsec0`, `LINDS_MOBILE` road-warrior over `ipsec10`; `encap = yes` is a line here, not a template patch |
 | DHCP | Kea, from ISC's repository (services `isc-kea-dhcp4-server`, `isc-kea-dhcp-ddns-server`) | `etc/kea/` | DDNS into AD DNS: the A record of each lease, and its PTR record (see "Reverse DNS for leases") |
 | DNS forwarder | Unbound (Debian's) | `etc/unbound/unbound.conf`, `etc/default/unbound` | Upstream Quad9 over DNS over TLS; expired answers served at once and refreshed behind the client: see below |
-| NTP / SNMP / LLDP / DDNS | chrony, snmpd, lldpd (from its author's OBS repository), ddclient | `etc/chrony/`, `etc/snmp/`, `etc/default/` | |
+| NTP / LLDP / DDNS | chrony, lldpd (from its author's OBS repository), ddclient | `etc/chrony/`, `etc/default/` | The routers have no SNMP agent. Prometheus reads the exporters. |
 | mDNS reflector | avahi-daemon | `etc/avahi/avahi-daemon.conf` | Repeats mDNS between `lan0`, `lan0.52`, `lan0.53` and `lan0.58` so devices on one can be found from the others; publishes nothing itself |
 | Blocking on published ports | A second Suricata on an NFQUEUE, `suricata-ips.service` (`router_ips`) | `etc/suricata/ips.yaml`, `files/<site>/etc/suricata/ips.nft`, `files/<site>/etc/suricata/ips-local.rules` | First packet of new connections only; fails open; see "Suricata blocks on published ports" |
 | IDS | Suricata 8 + suricata-update, from trixie-backports | `etc/suricata/` | One worker thread on `lan0`; WAN traffic and DNS only (BPF filter); TLS flows bypassed after the handshake; EVE → rsyslog imfile → Alloy → Loki; weekly rule refresh reloads in place |
@@ -192,11 +192,39 @@ To rotate the token:
    output.
 4. Run `ansible-playbook playbooks/router.yml --limit jd-router-01 --tags port_forward`.
 
-**IPv6:** the router does not filter forwarded IPv6. This is on purpose:
-games and the torrent client take inbound IPv6. Thus each host on the main
-LAN with a global IPv6 address can be reached from the internet on each port
-that it listens on. The cluster has no IPv6, so none of the above applies to
-it.
+**IPv6:** there is no NAT, so a forward is an accept rule, not a DNAT. The
+forward chain of each site has three kinds of rule for new IPv6 connections
+from the WAN:
+
+* ping to a LAN host is let through (20 a second);
+* each open port has one accept rule. JD has one: port 6780 of jd-torrent-01
+  (BitTorrent). LINDS has none;
+* the last rule drops all other new connections and counts them.
+
+Connections that a LAN host starts are not changed. Their answers are
+established, and ICMPv6 errors about them are related.
+
+To open a port to a host, add an accept rule above the drop rule. Use the
+JD rule as the pattern. The rule names the host by the last 64 bits of its
+address, because the first 64 bits are the ISP's prefix and can change. The
+host must make those bits from its MAC address (EUI-64) or have a fixed
+token. A host with privacy addresses gets a new address each day and no
+rule can name it. Then run the test script (below) and load the ruleset.
+
+UPnP and PCP do not open IPv6 ports (miniupnpd runs with
+`ipv6_disable=yes`). Its accept rules are in `table inet miniupnpd`, and a
+drop in `table inet router` wins over an accept in a different table. IPv4
+mappings work as before.
+
+To see what the drop rule counts: `nft list chain inet router forward`.
+The cluster has no IPv6, so none of the above applies to it.
+
+To test a changed ruleset before a router loads it:
+
+```sh
+sudo unshare -n bash roles/router/tests/jd-ruleset-netns.sh roles/router/files/jd/etc/nftables.conf
+sudo unshare -n bash roles/router/tests/linds-ruleset-netns.sh roles/router/files/linds/etc/nftables.conf
+```
 
 ## Suricata blocks on published ports
 
@@ -332,7 +360,7 @@ alerts on this router are `ET INFO`, and those are normal traffic.
   `/usr/local/sbin/miniupnpd-nft` instead; the unit is masked while the
   package installs so the first start never sees Debian's defaults. UPnP
   is main-LAN only, `secure_mode` (clients map only to themselves), IPv6
-  pinholes off until a v6 forward filter exists.
+  pinholes off (see "Port forwards", IPv6).
 * **mDNS is repeated between the main LAN, VLAN 52, VLAN 53 and VLAN 58**
   (avahi as a reflector, since 2026-10-09). mDNS never crosses a router, so a
   phone on the main LAN could not find the Shield on VLAN 58 (it was missing
@@ -969,7 +997,8 @@ alerts on this router are `ET INFO`, and those are normal traffic.
   `pd interface eth1.52` without a router-advert entry. Set `IPv6SendRA=yes`
   and `Announce=yes` in `30-lan0.52.network` to change that.
 * **IPv6 input is drop-by-default** (ICMPv6, DHCPv6-client and IKE are
-  allowed). VyOS accepted everything over v6. Forward is accept, as before.
+  allowed). VyOS accepted everything over v6. Forward from the WAN is
+  drop-by-default too (see "Port forwards", IPv6).
 * **Remote access:** `dpd_action = clear` (a responder never re-initiates to
   a road warrior), `unique = replace` (a reconnecting client evicts its own
   stale SA), `fragmentation = yes` (mandatory over v6). To go dual-stack, add
@@ -1073,7 +1102,7 @@ Where this site's configuration is not JD's, or not what VyOS did, and why:
   default-accept (its two rules, IKE and port 32400, therefore did nothing),
   so anything not bound to a LAN address was reachable from the WAN: NTP
   (`allow-client 0.0.0.0/0`) and BGP among them. Input here is default-drop
-  with JD's rules. From the WAN it takes IKE, ESP and ping; DNS, NTP, SNMP,
+  with JD's rules. From the WAN it takes IKE, ESP and ping; DNS, NTP,
   SSH and BGP are for private source addresses.
 * **The default route has a next hop.** VyOS's was `0.0.0.0/0 interface
   eth1`: ARP for every destination, answered by Telstra's gateway for all

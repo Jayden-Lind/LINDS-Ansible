@@ -209,5 +209,45 @@ echo "  (a transfer that was not offloaded shows the forward chain every packet:
 # the same LAN -> WAN transfer with the six flow-add rules removed, for comparison
 for h in $(nft -a list chain inet router forward | awk '/flow add @ft/ {print $NF}'); do nft delete rule inet router forward handle $h; done
 xfer $INET 198.51.100.10 $TRUNK "LAN -> WAN with the flow-add rules removed"
+# --- IPv6. The main LAN gets 2001:db8:50::/64 and the internet is
+# 2001:db8:ffff::10 beyond the WAN (2001:db8:fe::/64).
+sysctl -qw net.ipv6.conf.all.forwarding=1
+ip -6 addr add 2001:db8:50::1/64 dev lan0 nodad; ip -6 addr add 2001:db8:fe::2/64 dev wan0 nodad
+in_ $TRUNK ip -6 addr add 2001:db8:50::20/64 dev lanc0 nodad
+in_ $TRUNK ip -6 route add default via 2001:db8:50::1
+in_ $INET ip -6 addr add 2001:db8:fe::1/64 dev wanp nodad; in_ $INET ip -6 addr add 2001:db8:ffff::10/128 dev inet0 nodad
+in_ $INET ip -6 route add 2001:db8:50::/64 via 2001:db8:fe::2
+ip -6 route add default via 2001:db8:fe::1 dev wan0
+# connects6 client-pid dst port server-pid -> open, refused or silent
+connects6() {
+  in_ $4 python3 -c "
+import socket
+s=socket.socket(socket.AF_INET6); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); s.bind(('::',$3)); s.listen(1); s.settimeout(2.5)
+try:
+    s.accept()
+except Exception: pass" & local p=$!; sleep 0.3
+  in_ $1 python3 -c "
+import socket; s=socket.socket(socket.AF_INET6); s.settimeout(1.5)
+try:
+    s.connect(('$2',$3)); print('open')
+except ConnectionRefusedError: print('refused')
+except Exception: print('silent')"; wait $p; }
+# arrives6 client-pid dst port sink-pid -> yes or no (one UDP packet)
+arrives6() {
+  in_ $4 python3 -c "
+import socket
+s=socket.socket(socket.AF_INET6,socket.SOCK_DGRAM); s.bind(('::',$3)); s.settimeout(1.5)
+try:
+    s.recvfrom(100); print('yes')
+except Exception: print('no')" > /tmp/nstest.sink6.$$ & local p=$!; sleep 0.3
+  in_ $1 python3 -c "
+import socket; socket.socket(socket.AF_INET6,socket.SOCK_DGRAM).sendto(b'x',('$2',$3))"
+  wait $p; cat /tmp/nstest.sink6.$$; rm -f /tmp/nstest.sink6.$$; }
+sleep 1
+echo "== IPv6: the WAN opens no connection to the LAN"
+r=$(connects6 $TRUNK 2001:db8:ffff::10 9301 $INET); [ "$r" = open ] && ok "LAN -> internet: opens, and the answers come back" || bad "LAN -> internet over IPv6: $r"
+r=$(connects6 $INET 2001:db8:50::20 9302 $TRUNK); [ "$r" = silent ] && ok "internet -> a LAN host, TCP: no answer" || bad "internet -> a LAN host, TCP: $r"
+r=$(arrives6 $INET 2001:db8:50::20 9303 $TRUNK); [ "$r" = no ] && ok "internet -> a LAN host, UDP: does not arrive" || bad "internet -> a LAN host, UDP: arrived"
+in_ $INET ping -6 -c1 -W2 2001:db8:50::20 >/dev/null 2>&1 && ok "internet -> a LAN host, ping: answered" || bad "internet -> a LAN host, ping: no answer"
 echo "RESULT: $PASS passed, $FAIL failed"
 exit $FAIL

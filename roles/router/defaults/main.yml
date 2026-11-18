@@ -43,7 +43,7 @@ router_k8s_port_forward_interval: 20
 # The daemons with a systemd sandbox (tasks/hardening.yml). The site's optional
 # daemons join the list only if the site has them.
 router_sandboxed_units: >-
-  {{ ['ddclient', 'unbound', 'snmpd', 'lldpd', 'strongswan',
+  {{ ['ddclient', 'unbound', 'lldpd', 'strongswan',
       'isc-kea-dhcp4-server', 'isc-kea-dhcp-ddns-server',
       'prometheus-node-exporter', 'prometheus-smokeping-prober',
       'prometheus-frr-exporter']

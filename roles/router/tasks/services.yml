@@ -6,13 +6,6 @@
     mode: '0644'
   notify: restart chrony
 
-- name: snmpd config
-  ansible.builtin.copy:
-    src: "{{ router_site }}/etc/snmp/snmpd.conf"
-    dest: /etc/snmp/snmpd.conf
-    mode: '0600'
-  notify: restart snmpd
-
 - name: lldpd daemon flags
   ansible.builtin.copy:
     src: etc/default/lldpd
@@ -108,7 +101,6 @@
     state: started
   loop:
     - chrony
-    - snmpd
     - lldpd
     - ddclient
     - qemu-guest-agent

@@ -187,5 +187,52 @@ xfer $TRUNK 10.0.50.20 $C53 "VLAN 53 -> LAN (both on the trunk)"
 xfer $C53 10.0.53.9 $TRUNK "LAN -> VLAN 53 (both on the trunk)"
 xfer $C52 10.0.52.9 $TRUNK "LAN -> VLAN 52 (both on the trunk)"
 xfer $C52 10.0.52.9 $C53 "VLAN 53 -> VLAN 52 (both on the trunk)"
+# --- IPv6. The main LAN gets 2001:db8:50::/64 and the internet is
+# 2001:db8:ffff::10 beyond the WAN (2001:db8:fe::/64).
+sysctl -qw net.ipv6.conf.all.forwarding=1
+ip -6 addr add 2001:db8:50::1/64 dev lan0 nodad; ip -6 addr add 2001:db8:fe::2/64 dev wan0 nodad
+in_ $TRUNK ip -6 addr add 2001:db8:50::20/64 dev lanc0 nodad
+in_ $TRUNK ip -6 route add default via 2001:db8:50::1
+in_ $INET ip -6 addr add 2001:db8:fe::1/64 dev wanp nodad; in_ $INET ip -6 addr add 2001:db8:ffff::10/128 dev inet0 nodad
+in_ $INET ip -6 route add 2001:db8:50::/64 via 2001:db8:fe::2
+ip -6 route add default via 2001:db8:fe::1 dev wan0
+# connects6 client-pid dst port server-pid -> open, refused or silent
+connects6() {
+  in_ $4 python3 -c "
+import socket
+s=socket.socket(socket.AF_INET6); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); s.bind(('::',$3)); s.listen(1); s.settimeout(2.5)
+try:
+    s.accept()
+except Exception: pass" & local p=$!; sleep 0.3
+  in_ $1 python3 -c "
+import socket; s=socket.socket(socket.AF_INET6); s.settimeout(1.5)
+try:
+    s.connect(('$2',$3)); print('open')
+except ConnectionRefusedError: print('refused')
+except Exception: print('silent')"; wait $p; }
+# arrives6 client-pid dst port sink-pid -> yes or no (one UDP packet)
+arrives6() {
+  in_ $4 python3 -c "
+import socket
+s=socket.socket(socket.AF_INET6,socket.SOCK_DGRAM); s.bind(('::',$3)); s.settimeout(1.5)
+try:
+    s.recvfrom(100); print('yes')
+except Exception: print('no')" > /tmp/nstest.sink6.$$ & local p=$!; sleep 0.3
+  in_ $1 python3 -c "
+import socket; socket.socket(socket.AF_INET6,socket.SOCK_DGRAM).sendto(b'x',('$2',$3))"
+  wait $p; cat /tmp/nstest.sink6.$$; rm -f /tmp/nstest.sink6.$$; }
+sleep 1
+# jd-torrent-01's interface identifier, on the same LAN client.
+in_ $TRUNK ip -6 addr add 2001:db8:50:0:be24:11ff:fe98:9dfc/64 dev lanc0 nodad; sleep 0.5
+T6=2001:db8:50:0:be24:11ff:fe98:9dfc
+echo "== IPv6: the WAN opens only what the ruleset lists"
+r=$(connects6 $TRUNK 2001:db8:ffff::10 9301 $INET); [ "$r" = open ] && ok "LAN -> internet: opens, and the answers come back" || bad "LAN -> internet over IPv6: $r"
+r=$(connects6 $INET 2001:db8:50::20 9302 $TRUNK); [ "$r" = silent ] && ok "internet -> a LAN host, TCP: no answer" || bad "internet -> a LAN host, TCP: $r"
+r=$(arrives6 $INET 2001:db8:50::20 9303 $TRUNK); [ "$r" = no ] && ok "internet -> a LAN host, UDP: does not arrive" || bad "internet -> a LAN host, UDP: arrived"
+r=$(connects6 $INET $T6 6780 $TRUNK); [ "$r" = open ] && ok "internet -> jd-torrent-01 port 6780, TCP: opens" || bad "internet -> jd-torrent-01 6780/tcp: $r"
+r=$(arrives6 $INET $T6 6780 $TRUNK); [ "$r" = yes ] && ok "internet -> jd-torrent-01 port 6780, UDP: arrives" || bad "internet -> jd-torrent-01 6780/udp: did not arrive"
+r=$(connects6 $INET $T6 8080 $TRUNK); [ "$r" = silent ] && ok "internet -> jd-torrent-01, another port: no answer" || bad "internet -> jd-torrent-01 port 8080: $r"
+r=$(connects6 $INET 2001:db8:50::20 6780 $TRUNK); [ "$r" = silent ] && ok "internet -> port 6780 of another host: no answer" || bad "internet -> port 6780 of another host: $r"
+in_ $INET ping -6 -c1 -W2 2001:db8:50::20 >/dev/null 2>&1 && ok "internet -> a LAN host, ping: answered" || bad "internet -> a LAN host, ping: no answer"
 echo "RESULT: $PASS passed, $FAIL failed"
 exit $FAIL
