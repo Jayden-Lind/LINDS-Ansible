@@ -13,7 +13,7 @@ cluster_cert_renew_before_days: 30
 
 # The kind of device, which decides how the certificate is installed. One of:
 # proxmox, truenas, unifi, ami (the SR635/SR655 baseboard controller), idrac8
-# (the Dell iDRAC8).
+# (the Dell iDRAC8), edgeos (an EdgeRouter).
 cluster_cert_kind: proxmox
 
 # The name and the subject alternative names that go in the certificate. The
@@ -42,6 +42,7 @@ cluster_cert_default_ports:
   unifi: "443"
   ami: "443"
   idrac8: "443"
+  edgeos: "443"
 
 # How many times, 3 seconds apart, the new certificate is looked for after the
 # install. Most devices restart their web server in about 20 seconds. An iDRAC8
@@ -53,6 +54,13 @@ cluster_cert_default_verify_retries:
   unifi: 20
   ami: 20
   idrac8: 100
+  edgeos: 20
+
+# An edgeos device: the SSH user that installs the certificate (an admin with
+# the control node's key), and the name of the file in /config/auth that holds
+# the key and the certificate.
+cluster_cert_edgeos_user: ubnt
+cluster_cert_edgeos_file: cluster-cert.pem
 
 # Baseboard controller login. Left empty on purpose: an ami or idrac8 host is
 # skipped until these are set, in the vault, per host.
