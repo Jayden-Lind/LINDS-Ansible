@@ -1,0 +1,21 @@
+---
+# Install the certificate on an EdgeOS device (EdgeRouter). EdgeOS has only
+# Python 2, which Ansible does not run, so an edgeos host connects locally and
+# files/edgeos.sh does the work over SSH. The script puts the key and the
+# certificate in one file in /config/auth and makes it the web interface
+# certificate.
+
+- name: Install the certificate as the web interface certificate
+  ansible.builtin.command:
+    argv:
+      - "{{ role_path }}/files/edgeos.sh"
+      - "{{ cluster_cert_edgeos_user }}@{{ ansible_host }}"
+      - "{{ cluster_cert_tmp.path }}/serve.crt"
+      - "{{ cluster_cert_tmp.path }}/tls.key"
+      - "{{ cluster_cert_edgeos_file }}"
+  register: cluster_cert_edgeos
+  changed_when: true
+
+- name: Show what the install did
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: {{ cluster_cert_edgeos.stdout }}"

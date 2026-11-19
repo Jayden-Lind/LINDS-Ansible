@@ -9,7 +9,7 @@
 
 - name: Check the kind is one this role knows
   ansible.builtin.assert:
-    that: cluster_cert_kind in ['proxmox', 'truenas', 'unifi', 'ami', 'idrac8']
+    that: cluster_cert_kind in ['proxmox', 'truenas', 'unifi', 'ami', 'idrac8', 'edgeos']
     fail_msg: "cluster_cert_kind '{{ cluster_cert_kind }}' is not supported."
     quiet: true
 

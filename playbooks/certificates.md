@@ -14,7 +14,8 @@ certificate, or replaces it with a new one from the cluster. See
 
 1. `kubectl` on the control node, set to the homelab cluster.
 2. The `device-certs` namespace in the cluster, with the `linds-ca` issuer.
-3. SSH to each `proxmox`, `truenas` and `unifi` device.
+3. SSH to each `proxmox`, `truenas` and `unifi` device, and SSH with a key to
+   each `edgeos` device (an EdgeRouter).
 4. A vault login for each `ami` device (an SR635/SR655 baseboard controller)
    and each `idrac8` device (a Dell iDRAC8), or the device is skipped.
 

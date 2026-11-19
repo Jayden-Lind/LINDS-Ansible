@@ -27,12 +27,15 @@ request, which holds the public key, goes to the cluster.
   that can install the certificate.
 - For an `ami` or `idrac8` device: the controller login in the vault, in
   `host_vars`. The device is skipped until it is set.
+- For an `edgeos` device: SSH with a key from the control node to the device,
+  as `cluster_cert_edgeos_user`. EdgeOS has only Python 2, which Ansible does
+  not run, so the host connects locally (`ansible_connection: local`).
 
 ## Variables
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `cluster_cert_kind` | `proxmox` | The device type: `proxmox`, `truenas`, `unifi`, `ami` or `idrac8`. |
+| `cluster_cert_kind` | `proxmox` | The device type: `proxmox`, `truenas`, `unifi`, `ami`, `idrac8` or `edgeos`. |
 | `cluster_cert_common_name` | `{{ inventory_hostname }}` | The name in the certificate. |
 | `cluster_cert_dns_names` | `[{{ cluster_cert_common_name }}]` | The DNS names in the certificate. |
 | `cluster_cert_ip_addresses` | `[]` | The IP addresses in the certificate. |
@@ -46,6 +49,8 @@ request, which holds the public key, goes to the cluster.
 | `cluster_cert_verify_retries` | per kind | How many times, 3 seconds apart, the new certificate is looked for: 20, or 100 for `idrac8`. |
 | `cluster_cert_bmc_user` | `""` | The baseboard controller login name. |
 | `cluster_cert_bmc_password` | `""` | The baseboard controller login password. |
+| `cluster_cert_edgeos_user` | `ubnt` | The SSH user on an `edgeos` device. |
+| `cluster_cert_edgeos_file` | `cluster-cert.pem` | The file in `/config/auth` that holds the key and the certificate on an `edgeos` device. |
 
 ## Device kinds
 
@@ -56,6 +61,7 @@ request, which holds the public key, goes to the cluster.
 | `unifi` | UniFi OS console | Copies the files to `/data/unifi-core/config`, restarts `unifi-core`. |
 | `ami` | SR635/SR655 baseboard controller (AMI MegaRAC) | The controller web API, the same call as its "Upload SSL" page (`files/ami-upload.sh`). |
 | `idrac8` | Dell iDRAC8 | The calls of its web GUI (`files/idrac8.sh`): "Generate CSR", then "Upload Server Certificate", then an iDRAC reset. |
+| `edgeos` | EdgeOS device (EdgeRouter) | Over SSH (`files/edgeos.sh`): puts the key and the certificate in one file in `/config/auth`. The first time, sets it as `service gui cert-file` and commits, which restarts the web server. On a renewal, replaces the file and restarts `lighttpd`. |
 
 ## How to use it
 
@@ -118,6 +124,12 @@ the `cluster_cert` group.
   The role does not need this, because it connects to the address.
   linds-proxmox-01-bmc has had this setting since 2026-11-08.
 
+### EdgeOS (`edgeos`)
+
+- To go back to the EdgeOS certificate, run these commands on the device:
+  `configure`, `delete service gui cert-file`, `commit`, `save`. The commit
+  restarts the web server with `/etc/lighttpd/server.pem`.
+
 ## Files
 
 | File | What it does |
@@ -126,4 +138,5 @@ the `cluster_cert` group.
 | `files/sign-csr.sh` | Gets the cluster to sign a request that a device made itself. Takes the usages from the request. |
 | `files/ami-upload.sh` | Uploads a certificate chain and key to an `ami` controller. |
 | `files/idrac8.sh` | Gets a signing request from an `idrac8`, and uploads the signed certificate to it. |
+| `files/edgeos.sh` | Installs a key and certificate as the web interface certificate of an `edgeos` device. |
 | `files/read-served.sh` | Prints the certificate a TLS endpoint serves, with its fingerprint. |

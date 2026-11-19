@@ -36,6 +36,17 @@ cluster_cert:
       cluster_cert_common_name: jd-unifi-01.linds.com.au
       cluster_cert_dns_names: [jd-unifi-01.linds.com.au]
       cluster_cert_ip_addresses: [10.0.52.7]
+    # An EdgeRouter X that works as a switch. EdgeOS has only Python 2, so the
+    # play runs on the control node and reaches the device over SSH
+    # (files/edgeos.sh). Its address is a DHCP reservation on linds-router-01.
+    linds-switch-02-cert:
+      ansible_host: 10.0.80.3
+      ansible_connection: local
+      cluster_cert_kind: edgeos
+      cluster_cert_edgeos_user: ubnt
+      cluster_cert_common_name: linds-switch-02.linds.com.au
+      cluster_cert_dns_names: [linds-switch-02.linds.com.au]
+      cluster_cert_ip_addresses: [10.0.80.3]
     # Baseboard controllers. Their login is in the vault, in host_vars.
     jd-proxmox-02-bmc-cert:
       ansible_host: 10.0.50.240
