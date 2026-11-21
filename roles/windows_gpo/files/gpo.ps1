@@ -1,7 +1,7 @@
 # Make one GPO agree with its definition: the GPO and its comment, its
 # registry policy values and registry preference items (exact for each key
-# that the definition names), its user rights, the computers that apply it,
-# and its WMI filter.
+# that the definition names), its user rights, its advanced audit policy, the
+# computers that apply it, and its WMI filter.
 # The GPOs of this role have computer settings only, so the user half is off.
 # SupportsShouldProcess: without it, win_powershell does not run the script in
 # check mode. The script reads $Ansible.CheckMode itself.
@@ -99,20 +99,39 @@ if ($apply) {
     }
 }
 
-# User rights (Security Settings, GptTmpl.inf in SYSVOL). No GroupPolicy cmdlet
-# sets them, so the script does what GPMC does: it writes the security
-# template, adds the Security extension to the GPO and raises the computer
-# version, so that each computer applies the change at its next refresh.
+# Settings that live in SYSVOL (user rights, audit policy). No GroupPolicy
+# cmdlet sets them, so the script does what GPMC does: it writes the file,
+# adds the client-side extension to the GPO and raises the computer version,
+# so that each computer applies the change at its next refresh.
 $rights = $d.privilege_rights
-if ($rights -and @($rights.PSObject.Properties).Count) {
+$audit = @($d.audit_policy | Where-Object { $_ })
+if (($rights -and @($rights.PSObject.Properties).Count) -or $audit.Count) {
     Import-Module ActiveDirectory
     $domain = Get-ADDomain
+    $gpt = "\\$($domain.DNSRoot)\SYSVOL\$($domain.DNSRoot)\Policies\{$($gpo.Id)}"
+}
+# $Extension is "[{extension}{snap-in}]". GPMC keeps the list sorted. The
+# function reads $gpo, $domain and $gpt from the script.
+function Register-MachineChange([string]$Extension) {
+    $dn = "CN={$($gpo.Id)},CN=Policies,CN=System,$($domain.DistinguishedName)"
+    $obj = Get-ADObject -Identity $dn -Properties gPCMachineExtensionNames, versionNumber
+    $entries = @([regex]::Matches("$($obj.gPCMachineExtensionNames)", '\[[^\]]+\]') | ForEach-Object { $_.Value })
+    if ($entries -notcontains $Extension) { $entries += $Extension }
+    # The low 16 bits are the computer version.
+    $version = [int]$obj.versionNumber + 1
+    Set-ADObject -Identity $dn -Replace @{ gPCMachineExtensionNames = ((@($entries) | Sort-Object) -join ''); versionNumber = $version }
+    $ini = "$gpt\GPT.INI"
+    $text = [IO.File]::ReadAllText($ini)
+    [IO.File]::WriteAllText($ini, [regex]::Replace($text, '(?m)^Version=\d+', "Version=$version"))
+}
+
+# User rights (Security Settings, GptTmpl.inf).
+if ($rights -and @($rights.PSObject.Properties).Count) {
     $lines = foreach ($p in @($rights.PSObject.Properties | Sort-Object Name)) {
         $sids = foreach ($who in @($p.Value)) { '*' + ([Security.Principal.NTAccount]$who).Translate([Security.Principal.SecurityIdentifier]).Value }
         "$($p.Name) = " + ((@($sids) | Sort-Object) -join ',')
     }
     $want = "[Unicode]`r`nUnicode=yes`r`n[Version]`r`nsignature=`"`$CHICAGO`$`"`r`nRevision=1`r`n[Privilege Rights]`r`n" + (@($lines) -join "`r`n") + "`r`n"
-    $gpt = "\\$($domain.DNSRoot)\SYSVOL\$($domain.DNSRoot)\Policies\{$($gpo.Id)}"
     $inf = "$gpt\Machine\Microsoft\Windows NT\SecEdit\GptTmpl.inf"
     $have = if (Test-Path -LiteralPath $inf) { [IO.File]::ReadAllText($inf, [Text.Encoding]::Unicode) } else { '' }
     if ($have -ne $want) {
@@ -120,18 +139,33 @@ if ($rights -and @($rights.PSObject.Properties).Count) {
         if (-not $check) {
             New-Item -ItemType Directory -Force -Path (Split-Path -Parent $inf) | Out-Null
             [IO.File]::WriteAllText($inf, $want, [Text.Encoding]::Unicode)
-            $dn = "CN={$($gpo.Id)},CN=Policies,CN=System,$($domain.DistinguishedName)"
-            $obj = Get-ADObject -Identity $dn -Properties gPCMachineExtensionNames, versionNumber
-            # The Security extension and its GPMC snap-in, kept sorted as GPMC does.
-            $security = '[{827D319E-6EAC-11D2-A4EA-00C04F79F83A}{803E14A0-B4FB-11D0-A0D0-00A0C90F574B}]'
-            $entries = @([regex]::Matches("$($obj.gPCMachineExtensionNames)", '\[[^\]]+\]') | ForEach-Object { $_.Value })
-            if ($entries -notcontains $security) { $entries += $security }
-            # The low 16 bits are the computer version.
-            $version = [int]$obj.versionNumber + 1
-            Set-ADObject -Identity $dn -Replace @{ gPCMachineExtensionNames = ((@($entries) | Sort-Object) -join ''); versionNumber = $version }
-            $ini = "$gpt\GPT.INI"
-            $text = [IO.File]::ReadAllText($ini)
-            [IO.File]::WriteAllText($ini, [regex]::Replace($text, '(?m)^Version=\d+', "Version=$version"))
+            # The Security extension and its GPMC snap-in.
+            Register-MachineChange '[{827D319E-6EAC-11D2-A4EA-00C04F79F83A}{803E14A0-B4FB-11D0-A0D0-00A0C90F574B}]'
+        }
+    }
+}
+
+# Advanced audit policy (Advanced Audit Policy Configuration, audit.csv). One
+# line for each subcategory in the definition, in its order. A GPO with these
+# settings makes the computer ignore the old category settings (Audit
+# Policy) of all GPOs, so a definition must list every subcategory to keep.
+if ($audit.Count) {
+    $names = @{ success = @('Success', 1); failure = @('Failure', 2); success_and_failure = @('Success and Failure', 3); none = @('No Auditing', 0) }
+    $lines = foreach ($a in $audit) {
+        $s = $names["$($a.setting)"]
+        if (-not $s) { throw "audit_policy: unknown setting '$($a.setting)' for $($a.subcategory)" }
+        ",System,Audit $($a.subcategory),$("$($a.guid)".ToLower()),$($s[0]),,$($s[1])"
+    }
+    $want = "Machine Name,Policy Target,Subcategory,Subcategory GUID,Inclusion Setting,Exclusion Setting,Setting Value`r`n" + (@($lines) -join "`r`n") + "`r`n"
+    $csv = "$gpt\Machine\Microsoft\Windows NT\Audit\audit.csv"
+    $have = if (Test-Path -LiteralPath $csv) { [IO.File]::ReadAllText($csv) } else { '' }
+    if ($have -ne $want) {
+        Note "set the audit policy: $($audit.Count) subcategories"
+        if (-not $check) {
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $csv) | Out-Null
+            [IO.File]::WriteAllText($csv, $want, (New-Object Text.UTF8Encoding $false))
+            # The Audit Policy Configuration extension and its GPMC snap-in.
+            Register-MachineChange '[{F3CCC681-B74C-4060-9F26-CD84525DCA2A}{0F3F3735-573D-9804-99E4-AB2A69BA5FD4}]'
         }
     }
 }

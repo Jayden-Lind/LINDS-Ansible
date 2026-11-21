@@ -17,6 +17,10 @@ the inventory.
    - The user rights in `privilege_rights` (Security Settings). The role writes
      the security template of the GPO in SYSVOL, adds the Security extension
      and raises the version of the GPO, as GPMC does.
+   - The advanced audit policy in `audit_policy` (Advanced Audit Policy
+     Configuration). The role writes `audit.csv` in SYSVOL, adds the Audit
+     Policy Configuration extension and raises the version of the GPO, as
+     GPMC does.
    - The computers in `apply_to`. Only these computers apply the GPO.
      Authenticated Users keep Read.
    - The WMI filter in `wmi_filter`.
@@ -39,7 +43,7 @@ Set them in `inventory/group_vars/windows/gpo.yml`.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `windows_gpo_wmi_filters` | `[]` | `{name, description, query}` for each WMI filter. The query is WQL in `root\CIMv2`. |
-| `windows_gpo_definitions` | `[]` | `{name, comment, apply_to, wmi_filter, policy, preferences, privilege_rights}` for each GPO. |
+| `windows_gpo_definitions` | `[]` | `{name, comment, apply_to, wmi_filter, policy, preferences, privilege_rights, audit_policy}` for each GPO. |
 | `windows_gpo_remove_values` | `[]` | `{gpo, key, name}` for each value to remove from a GPO that the role does not own. |
 
 Each item in `policy` and `preferences` is `{key, name, type, value}`. The
@@ -47,6 +51,15 @@ type is `DWord` or `String`. An item with `state: absent` is removed.
 `privilege_rights` maps a right to the accounts or groups that get it, for
 example `SeDenyInteractiveLogonRight: ['LINDS\Service Accounts']`. The GPO
 then holds exactly these rights.
+Each item in `audit_policy` is `{subcategory, guid, setting}`: the name of
+the subcategory as `auditpol` shows it, its GUID, and `success`, `failure`,
+`success_and_failure` or `none`. `auditpol /list /subcategory:* /v` lists the
+GUIDs. The GPO then holds exactly these subcategories.
+
+**CAUTION:** When a computer applies a GPO with an advanced audit policy, it
+stops using the old category settings (Security Settings, Local Policies,
+Audit Policy) of all its GPOs. Put each subcategory that the computer must
+keep in `audit_policy`.
 
 The GPOs in the inventory:
 
@@ -56,6 +69,7 @@ The GPOs in the inventory:
 | `PDC Emulator - Time` | `Domain Controllers`, first | The PDC emulator gets its time from `ntp_servers`. |
 | `Domain Controller - Time` | `Domain Controllers`, second | The other domain controllers get their time from the domain. |
 | `Service Accounts - Network Logon Only` | the domain | The group `Service Accounts` may only log on over the network: interactive, Remote Desktop, batch and service logons are denied. |
+| `Domain Controller - Security` | `Domain Controllers` | LDAP channel binding, and the advanced audit policy of the domain controllers. |
 
 ## How to use it
 
