@@ -22,12 +22,28 @@ windows_logs_channels:
   # The full Security log is 15,000 to 110,000 events a day for each server.
   # Send the failures (keyword Audit Failure), and the changes to accounts,
   # groups, the audit policy and the log itself.
+  # Also send the events that the alert rules on attacks read
+  # (LINDS-Kubernetes base/monitoring/windows-security-alerts.yaml):
+  # - 4768 without pre-authentication (PreAuthType 0): AS-REP roasting.
+  # - 4769 with an RC4 or DES ticket (0x17, 0x18, 0x1, 0x3): Kerberoasting.
+  # - 4662 with access mask 0x100 (an extended right used on a directory
+  #   object). The replication rights are among them: DCSync.
+  # Measured on 2026-11-21 over each log (32 to 41 days): no 4768 or 4769 of
+  # these kinds; 4662 about 25 a day on jd-dc-01 (its own replication),
+  # 1 on linds-dc, 57 on linds-dc2.
   - name: Security
     query: >-
       *[System[band(Keywords,4503599627370496) or EventID=1102 or
       EventID=4719 or EventID=4720 or EventID=4722 or EventID=4724 or
       EventID=4725 or EventID=4726 or EventID=4728 or EventID=4732 or
-      EventID=4740 or EventID=4756 or EventID=4767 or EventID=4794]]
+      EventID=4740 or EventID=4756 or EventID=4767 or EventID=4794]
+      or (System[EventID=4768] and EventData[Data[@Name='PreAuthType']='0'])
+      or (System[EventID=4769] and
+      EventData[Data[@Name='TicketEncryptionType']='0x17' or
+      Data[@Name='TicketEncryptionType']='0x18' or
+      Data[@Name='TicketEncryptionType']='0x1' or
+      Data[@Name='TicketEncryptionType']='0x3'])
+      or (System[EventID=4662] and EventData[Data[@Name='AccessMask']='0x100'])]
   # Defender's errors and warnings, and the action on each threat (1117).
   # The other events are status reports, about 100 a day.
   - name: Microsoft-Windows-Windows Defender/Operational

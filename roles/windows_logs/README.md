@@ -55,8 +55,14 @@ Logs). In Explore, use queries like these:
 The role sends all events of these logs: `Application`, `System`,
 `Directory Service`, `DNS Server`, `DFS Replication` and
 `Active Directory Web Services`. From `Security` it sends only the failures
-and the changes to accounts, groups, the audit policy and the log. From the
-Defender log it sends only errors, warnings and the actions on threats.
+and the changes to accounts, groups, the audit policy and the log. It also
+sends the events that the alert rules on attacks read (LINDS-Kubernetes
+`base/monitoring/windows-security-alerts.yaml`): Kerberos tickets without
+pre-authentication (4768) or in RC4 or DES (4769), and the use of an extended
+right on a directory object (4662, access mask `0x100`), which includes
+replication. If you change the query, keep these events in it, or the rules
+cannot see the attacks. From the Defender log it sends only errors, warnings
+and the actions on threats.
 
 ## How to use it
 
