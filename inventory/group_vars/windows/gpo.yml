@@ -12,8 +12,9 @@ windows_gpo_definitions:
   # If you change a setting here, change it in that role too.
   - name: Server - Baseline
     comment: >-
-      Firewall, Defender, event logs, Remote Desktop, SMB1, Print Spooler,
-      unused services, LLMNR and mDNS, CPU mitigations and IPv6 of the servers. Made by LINDS-Ansible, role
+      Firewall, Defender, event logs, Remote Desktop, Kerberos encryption
+      types, SMB1, Print Spooler, unused services, LLMNR and mDNS, CPU
+      mitigations and IPv6 of the servers. Made by LINDS-Ansible, role
       windows_gpo. Do not edit it in GPMC.
     # The computer names of the servers in the inventory group windows_managed.
     apply_to: "{{ groups['windows_managed'] | map('split', '.') | map('first') | map('upper') | list }}"
@@ -41,6 +42,15 @@ windows_gpo_definitions:
       # Allow Remote Desktop, with Network Level Authentication.
       - { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services', name: fDenyTSConnections, type: DWord, value: 0 }
       - { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services', name: UserAuthentication, type: DWord, value: 1 }
+      # Network security: Configure encryption types allowed for Kerberos.
+      # 2147483640 (0x7FFFFFF8): AES128 and AES256 and future types; no DES
+      # and no RC4. On the domain controllers this is what the KDC issues, so
+      # an RC4 ticket (Kerberoasting) cannot be had for any account.
+      # Checked 2026-11-22 over the Security logs of the three domain
+      # controllers (33 to 42 days: 1,925 TGTs, 26,341 service tickets):
+      # everything was AES256 except the security tests' throwaway account,
+      # every account has AES keys, and no client offered only RC4.
+      - { key: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters', name: SupportedEncryptionTypes, type: DWord, value: 2147483640 }
     # No administrative template has these settings, so they are preference
     # items. A preference item stays on the server if the GPO goes.
     preferences:
