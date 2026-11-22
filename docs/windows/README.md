@@ -6,7 +6,7 @@ build a server from a clone of the template.
 
 | Host | Address | Site | Roles |
 | --- | --- | --- | --- |
-| `jd-dc-01` | 10.0.50.200 | JD | Domain controller, DNS, PDC emulator, RID master |
+| `jd-dc-01` | 10.0.50.200 | JD | Domain controller, DNS, PDC emulator, RID master, CA `linds-CA-G2` |
 | `jd-fs-01` | 10.0.50.201 | JD | File server, `D:` (12 TB) |
 | `linds-dc` | 10.3.1.200 | LINDS | Domain controller, DNS, schema, naming and infrastructure master, CA `linds-CA`, file server, `E:` (11 TB) |
 | `linds-dc2` | 10.3.1.201 | LINDS | Domain controller, DNS |

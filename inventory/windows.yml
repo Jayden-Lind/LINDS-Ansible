@@ -101,11 +101,15 @@ windows:
                 never_running_with: []
         linds-dc.linds.com.au:
 
-    # The enterprise root CA, linds-CA. A server is in every group whose role
-    # it carries: this one is also a domain controller above.
+    # The enterprise root CAs. A server is in every group whose role it
+    # carries: these two are also domain controllers above.
+    #   linds-dc   linds-CA     RSA 2048, the CA of all current certificates
+    #   jd-dc-01   linds-CA-G2  ECDSA P-384, issues no template yet
+    # The settings of each CA are in inventory/host_vars/<server>/ca.yml.
     windows_ca:
       hosts:
         linds-dc.linds.com.au:
+        jd-dc-01.linds.com.au:
 
     # The servers whose settings the code owns. playbooks/windows.yml applies
     # the baseline and the settings of their other groups to them, and the GPO

@@ -16,6 +16,13 @@ $csp     = Get-ItemProperty "$certSvc\$caName\CSP"
 $policy  = Get-ItemProperty "$certSvc\$caName\PolicyModules\CertificateAuthority_MicrosoftDefault.Policy"
 
 function Who($sid) { try { $sid.Translate([Security.Principal.NTAccount]).Value } catch { "$sid" } }
+# .PublicKey.Key cannot read an ECDSA key.
+function KeySize($certificate) {
+    if (-not $certificate) { return $null }
+    $key = [Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPublicKey($certificate)
+    if (-not $key) { $key = [Security.Cryptography.X509Certificates.ECDsaCertificateExtensions]::GetECDsaPublicKey($certificate) }
+    if ($key) { $key.KeySize }
+}
 function Days([byte[]]$period) { if ($period) { [int]([BitConverter]::ToInt64($period, 0) / -864000000000) } }
 function CertInfo([byte[]]$raw) {
     $c = New-Object Security.Cryptography.X509Certificates.X509Certificate2 (, $raw)
@@ -85,7 +92,7 @@ function StoreOf([string]$dn) {
         kind            = @('Enterprise root', 'Enterprise subordinate', '', 'Standalone root', 'Standalone subordinate')[[int]$ca.CAType]
         key_provider    = $csp.Provider
         key_algorithm   = $csp.CNGPublicKeyAlgorithm
-        key_size        = $caCert.PublicKey.Key.KeySize
+        key_size        = KeySize $caCert
         hash_algorithm  = $csp.CNGHashAlgorithm
         certificate     = $caCertInfo
         issued_validity = "$($ca.ValidityPeriodUnits) $($ca.ValidityPeriod)"

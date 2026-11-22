@@ -4,7 +4,7 @@
 # and is removed again whatever happens.
 - name: Read the password of the backup
   ansible.builtin.include_vars:
-    file: "{{ windows_state_dir }}/ca/backup/password.yml"
+    file: "{{ windows_ca_state_dir }}/backup/password.yml"
   no_log: true
 
 - name: Make a folder for the backup on the server
@@ -25,7 +25,7 @@
       ansible.windows.win_copy:
         src: "{{ item }}"
         dest: "{{ work }}\\{{ item | basename }}"
-      loop: "{{ query('ansible.builtin.fileglob', windows_state_dir ~ '/ca/backup/*') | reject('search', 'password.yml$') | list }}"
+      loop: "{{ query('ansible.builtin.fileglob', windows_ca_state_dir ~ '/backup/*') | reject('search', 'password.yml$') | list }}"
       loop_control:
         label: "{{ item | basename }}"
 

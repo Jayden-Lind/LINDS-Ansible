@@ -14,8 +14,8 @@ rewritten when what it holds has changed, so an unchanged domain still gives
 an empty diff.
 
     windows_state.py write            <work dir> <state dir> <vault password file>
-    windows_state.py ca-backup        <work dir> <state dir> <vault password file>
-    windows_state.py verify-ca-backup -          <state dir> <vault password file>
+    windows_state.py ca-backup        <work dir> <state dir> <vault password file> [<CA folder>]
+    windows_state.py verify-ca-backup -          <state dir> <vault password file> [<CA folder>]
     windows_state.py view             <file>     <state dir> <vault password file>
     windows_state.py decrypt-tree     <dest dir> <state dir> <vault password file>
 
@@ -77,6 +77,9 @@ SENSITIVE = [
     'ca/backup/*.p12',              # the CA's private key
     'ca/backup/*.zip',              # the CA's database
     'ca/backup/password.yml',
+    'ca/*/backup/*.p12',            # the same for each other CA
+    'ca/*/backup/*.zip',
+    'ca/*/backup/password.yml',
     'hosts/*/shares.yml',           # what is shared with whom
     'hosts/*/services.yml',         # remote-control tools and the like
     'hosts/*/software.yml',         # versions, including the old ones
@@ -262,6 +265,17 @@ def write_ca(work, state):
         emit(out / ('%s.cer' % safe(data['ca']['name'])), data['certificate_pem'])
 
 
+def write_other_cas(work, state):
+    """Each other CA has a folder in ca/. The templates and the trust stores
+    belong to the directory, so the files of the first CA hold them."""
+    for path in sorted(work.glob('ca.*.json')):
+        data = json.loads(path.read_text())
+        out = state / 'ca' / safe(path.name[len('ca.'):-len('.json')])
+        write(out / 'ca.yml', data['ca'], 'The certification authority: settings and who may manage it.')
+        if data.get('certificate_pem'):
+            emit(out / ('%s.cer' % safe(data['ca']['name'])), data['certificate_pem'])
+
+
 def write_hosts(work, state):
     wanted = set()
     for path in sorted(work.glob('host-*.json')):
@@ -281,9 +295,9 @@ def write_hosts(work, state):
     return wanted
 
 
-def ca_backup(work, state):
+def ca_backup(work, state, folder):
     """Store the CA backup: key, database and password encrypted, settings readable."""
-    out = state / 'ca' / 'backup'
+    out = state / folder / 'backup'
     stored = []
     for source in sorted(work.glob('ca-backup/*')):
         if source.suffix == '.reg':
@@ -308,7 +322,7 @@ hand: capture again and read the diff.
 | `domain/` | The domain, sites, OUs with their GPO links, groups, users, computers, service accounts, who is privileged, delegation |
 | `gpo/` | Every Group Policy object: `report.xml` (settings), `gpo.yml` (status, permissions), `backup/` (restorable with `Import-GPO`) |
 | `dns/` | Zones and the records somebody created |
-| `ca/` | The CA's settings, certificate templates and trust stores; `backup/` holds the CA key and database |
+| `ca/` | The CA's settings, certificate templates and trust stores; `backup/` holds the CA key and database. Each other CA has a folder here with its settings and its `backup/` |
 | `hosts/` | Per server: features, shares and permissions, services, scheduled tasks, software, security settings |
 
 ## What is encrypted
@@ -357,11 +371,11 @@ def decrypt_tree(dest, state):
     print('readable copy in %s' % dest)
 
 
-def verify_ca_backup(state):
+def verify_ca_backup(state, folder):
     """Prove the stored backup opens and holds the CA's private key. Prints no secret."""
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.serialization import pkcs12
-    out = state / 'ca' / 'backup'
+    out = state / folder / 'backup'
     password = yaml.safe_load(read_stored(out / 'password.yml'))['windows_ca_backup_password']
     for path in sorted(out.glob('*.p12')):
         key, cert, extra = pkcs12.load_key_and_certificates(read_stored(path), password.encode())
@@ -377,6 +391,8 @@ def verify_ca_backup(state):
 
 def main():
     command, first, state, vault_file = sys.argv[1], pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3]).resolve(), sys.argv[4]
+    # The folder of the CA in the state directory: ca, or ca/<name> for each other CA.
+    ca_folder = sys.argv[5] if len(sys.argv) > 5 else 'ca'
     state.mkdir(parents=True, exist_ok=True)
     open_vault(state, vault_file)
     if command == 'view':
@@ -386,7 +402,7 @@ def main():
         decrypt_tree(first, state)
         return
     if command == 'verify-ca-backup':
-        verify_ca_backup(state)
+        verify_ca_backup(state, ca_folder)
         return
     (state / 'README.md').write_text(README)
     write_gitattributes(state)
@@ -395,9 +411,10 @@ def main():
         write_gpos(first, state)
         write_dns(first, state)
         write_ca(first, state)
+        write_other_cas(first, state)
         write_hosts(first, state)
     elif command == 'ca-backup':
-        ca_backup(first, state)
+        ca_backup(first, state, ca_folder)
     else:
         sys.exit('unknown command %s' % command)
 

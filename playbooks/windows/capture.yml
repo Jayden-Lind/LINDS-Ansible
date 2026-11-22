@@ -43,7 +43,7 @@
         name: windows_capture
         tasks_from: host
 
-- name: The certification authority
+- name: Each certification authority
   hosts: windows_ca
   gather_facts: false
   tasks:
@@ -66,10 +66,14 @@
         mode: "0600"
       loop: [domain, dns, gpo]
 
-    - name: Hand over what was read from the CA
+    # ca.json is the first CA. Each other CA has the name of its state folder
+    # in the file name.
+    - name: Hand over what was read from each CA
+      vars:
+        subdir: "{{ hostvars[item].windows_ca_state_subdir | default('') }}"
       ansible.builtin.copy:
         content: "{{ hostvars[item].windows_capture_ca.output[0] }}"
-        dest: "{{ windows_capture_work }}/ca.json"
+        dest: "{{ windows_capture_work }}/ca{{ ('.' ~ subdir) if subdir else '' }}.json"
         mode: "0600"
       loop: "{{ groups['windows_ca'] | default([]) }}"
       when: hostvars[item].windows_capture_ca is defined

@@ -8,7 +8,7 @@ hand: capture again and read the diff.
 | `domain/` | The domain, sites, OUs with their GPO links, groups, users, computers, service accounts, who is privileged, delegation |
 | `gpo/` | Every Group Policy object: `report.xml` (settings), `gpo.yml` (status, permissions), `backup/` (restorable with `Import-GPO`) |
 | `dns/` | Zones and the records somebody created |
-| `ca/` | The CA's settings, certificate templates and trust stores; `backup/` holds the CA key and database |
+| `ca/` | The CA's settings, certificate templates and trust stores; `backup/` holds the CA key and database. Each other CA has a folder here with its settings and its `backup/` |
 | `hosts/` | Per server: features, shares and permissions, services, scheduled tasks, software, security settings |
 
 ## What is encrypted
