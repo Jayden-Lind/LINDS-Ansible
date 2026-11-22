@@ -16,7 +16,7 @@
 
 - name: Find a backup to restore
   ansible.builtin.find:
-    paths: "{{ windows_state_dir }}/ca/backup"
+    paths: "{{ windows_ca_state_dir }}/backup"
     patterns: "*.p12"
   delegate_to: localhost
   connection: local
@@ -29,20 +29,41 @@
     - not windows_ca_configured.output[0]
     - windows_ca_backups.files | length > 0
 
+# The setup of a CA reads CAPolicy.inf. Without this setting, a new enterprise
+# CA issues the default templates from its first second.
+- name: Tell the setup to publish no default templates
+  ansible.windows.win_copy:
+    content: "[Version]\r\nSignature=\"$Windows NT$\"\r\n\r\n[certsrv_server]\r\nLoadDefaultTemplates=0\r\n"
+    dest: C:\Windows\CAPolicy.inf
+  when:
+    - not windows_ca_configured.output[0]
+    - windows_ca_backups.files | length == 0
+    - not windows_ca_default_templates | bool
+
 - name: Create a new CA
   ansible.windows.win_powershell:
     parameters:
       Name: "{{ windows_ca_name }}"
+      Algorithm: "{{ windows_ca_key_algorithm }}"
       KeyLength: "{{ windows_ca_key_length | int }}"
       Hash: "{{ windows_ca_hash }}"
       Years: "{{ windows_ca_validity_years | int }}"
     script: |
-      param([string]$Name, [int]$KeyLength, [string]$Hash, [int]$Years)
+      param([string]$Name, [string]$Algorithm, [int]$KeyLength, [string]$Hash, [int]$Years)
       $ErrorActionPreference = 'Stop'
       Import-Module ADCSDeployment
-      Install-AdcsCertificationAuthority -CAType EnterpriseRootCa -CACommonName $Name -KeyLength $KeyLength `
+      # The provider name starts with the algorithm of the key.
+      Install-AdcsCertificationAuthority -CAType EnterpriseRootCa -CACommonName $Name `
+          -CryptoProviderName "$Algorithm#Microsoft Software Key Storage Provider" -KeyLength $KeyLength `
           -HashAlgorithmName $Hash -ValidityPeriod Years -ValidityPeriodUnits $Years -Force | Out-Null
       $Ansible.Changed = $true
+      # The service reports "running" some seconds before it answers.
+      $ErrorActionPreference = 'Continue'
+      foreach ($try in 1..24) {
+          & certutil.exe -ping 2>&1 | Out-Null
+          if ($LASTEXITCODE -eq 0) { break }
+          Start-Sleep -Seconds 5
+      }
   when:
     - not windows_ca_configured.output[0]
     - windows_ca_backups.files | length == 0
@@ -74,7 +95,10 @@
   register: windows_ca_report
   changed_when: false
   check_mode: false
+  # A check run before the first installation has no CA to ask.
+  when: windows_ca_configured.output[0] or not ansible_check_mode
 
 - name: Show the result
   ansible.builtin.debug:
     msg: "{{ windows_ca_report.output[0] }}"
+  when: windows_ca_report is not skipped

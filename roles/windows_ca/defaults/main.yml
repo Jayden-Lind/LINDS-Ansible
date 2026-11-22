@@ -5,17 +5,31 @@ windows_ca_name: "{{ windows_domain.split('.')[0] }}-CA"
 # The enrollment service object of the CA in the directory.
 windows_ca_enrollment_service: >-
   CN={{ windows_ca_name }},CN=Enrollment Services,CN=Public Key Services,CN=Services,CN=Configuration,DC={{ windows_domain.split('.') | join(',DC=') }}
+
+# The key of a new CA: RSA, ECDSA_P256, ECDSA_P384 or ECDSA_P521. For an ECDSA
+# key, the key length is the number in the name. A restored CA keeps its key.
+windows_ca_key_algorithm: RSA
 windows_ca_key_length: 2048
 windows_ca_hash: SHA256
 windows_ca_validity_years: 10
+
+# A new enterprise CA issues the default templates of Windows immediately.
+# Set this to false to start a new CA with no templates.
+windows_ca_default_templates: true
 
 # The certificate templates that the CA issues. Empty: the role does not change
 # the list. After a restore the CA issues the default set.
 windows_ca_templates: []
 
-# The state directory. The backup of the CA is in ca/backup in it. The path
-# starts at the folder of ansible.cfg, so it is the same for each playbook.
+# The state directory. The path starts at the folder of ansible.cfg, so it is
+# the same for each playbook.
 windows_state_dir: "{{ ansible_config_file | dirname }}/windows-state"
+
+# The state of the first CA is in ca/ in the state directory. Each other CA
+# has a folder in ca/, and this is its name. The backup of a CA is in backup/
+# in its state.
+windows_ca_state_subdir: ""
+windows_ca_state_dir: "{{ windows_state_dir }}/ca{{ ('/' ~ windows_ca_state_subdir) if windows_ca_state_subdir else '' }}"
 
 # Set by playbooks/windows/ca-backup.yml.
 windows_ca_backup_password: ""

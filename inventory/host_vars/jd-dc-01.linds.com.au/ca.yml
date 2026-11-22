@@ -1,0 +1,15 @@
+---
+# linds-CA-G2: the second enterprise root CA of the domain. It has an ECDSA
+# key. linds-CA on linds-dc has an RSA key and stays in operation.
+windows_ca_name: linds-CA-G2
+windows_ca_key_algorithm: ECDSA_P384
+windows_ca_key_length: 384
+windows_ca_hash: SHA384
+
+# The CA starts with no templates, so no computer enrols from it by accident.
+# To move a template to this CA, add its name to windows_ca_templates.
+windows_ca_default_templates: false
+windows_ca_templates: []
+
+# The state and the backup of this CA: windows-state/ca/linds-CA-G2.
+windows_ca_state_subdir: linds-CA-G2
