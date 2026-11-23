@@ -10,6 +10,11 @@ ntauth:
     not_before: '2019-12-01'
     not_after: '2029-12-01'
     self_signed: true
+  - subject: CN=linds-CA-G2, DC=linds, DC=com, DC=au
+    thumbprint: 18EAC15229F2DABE30DE8FBE2EB0EBD2893E6E69
+    not_before: '2026-11-23'
+    not_after: '2036-11-23'
+    self_signed: true
 root_authorities:
   - subject: CN=linds-CA, DC=linds, DC=com, DC=au
     thumbprint: 5CC82DD0C6B69C2B8C40A3EC6C7773BD5336A256
@@ -25,6 +30,11 @@ root_authorities:
     thumbprint: EC2F3B48D3E0E3F48FF886E1B8699DCF7699BC3F
     not_before: '2019-12-01'
     not_after: '2029-12-01'
+    self_signed: true
+  - subject: CN=linds-CA-G2, DC=linds, DC=com, DC=au
+    thumbprint: 18EAC15229F2DABE30DE8FBE2EB0EBD2893E6E69
+    not_before: '2026-11-23'
+    not_after: '2036-11-23'
     self_signed: true
   - subject: CN=linds-LINDS-DC-CA, DC=linds, DC=com, DC=au
     thumbprint: 6C1DEBC9D0CDF2935B045B59B1F71C015D84CAE9
@@ -52,6 +62,11 @@ intermediate:
     not_before: '2019-12-01'
     not_after: '2029-12-01'
     self_signed: true
+  - subject: CN=linds-CA-G2, DC=linds, DC=com, DC=au
+    thumbprint: 18EAC15229F2DABE30DE8FBE2EB0EBD2893E6E69
+    not_before: '2026-11-23'
+    not_after: '2036-11-23'
+    self_signed: true
   - subject: CN=linds-LINDS-DC-CA, DC=linds, DC=com, DC=au
     thumbprint: 6C1DEBC9D0CDF2935B045B59B1F71C015D84CAE9
     not_before: '2019-11-29'
@@ -65,3 +80,5 @@ intermediate:
 enrollment_services:
   - name: linds-CA
     server: LINDS-DC.linds.com.au
+  - name: linds-CA-G2
+    server: JD-DC-01.linds.com.au
