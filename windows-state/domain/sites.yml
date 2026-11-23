@@ -4,6 +4,7 @@ sites:
     subnets:
       - 10.0.50.0/24
       - 10.0.53.0/24
+      - 2001:8003:dc6f:6300::/56
     gp_link: null
   - name: LINDS
     subnets:
@@ -11,6 +12,7 @@ sites:
       - 10.0.80.0/24
       - 10.3.1.0/24
       - 192.168.6.0/24
+      - 2001:8003:5017:a000::/56
     gp_link: null
 site_links:
   - name: LINDS-SITELINK

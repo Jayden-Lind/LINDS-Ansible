@@ -65,13 +65,19 @@ gpos:
     folder: Server---Baseline
     id: 4ffde8da-9bcc-4835-ad31-cedc2107dbf2
     status: UserSettingsDisabled
-    computer_version: 13
+    computer_version: 31
     user_version: 0
   - name: Server - GPO
     folder: Server---GPO
     id: 09c961b8-d419-4056-9d42-e5c404006938
     status: AllSettingsEnabled
     computer_version: 98
+    user_version: 0
+  - name: Service Accounts - Network Logon Only
+    folder: Service-Accounts---Network-Logon-Only
+    id: 32a97d73-fcca-45db-a0e3-0e5c8c14120d
+    status: UserSettingsDisabled
+    computer_version: 2
     user_version: 0
   - name: Updates
     folder: Updates

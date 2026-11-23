@@ -36,9 +36,7 @@ features:
   - System-DataArchiver
   - WindowsAdminCenterSetup
   - Windows-Defender
-  - Wireless-Networking
   - WoW64-Support
-  - XPS-Viewer
 volumes:
   - letter: C
     label: Windows

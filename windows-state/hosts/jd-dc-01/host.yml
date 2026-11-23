@@ -9,6 +9,8 @@ memory_gb: 8
 processors: 4
 time_zone: AUS Eastern Standard Time
 features:
+  - AD-Certificate
+  - ADCS-Cert-Authority
   - AD-Domain-Services
   - DNS
   - FileAndStorage-Services
@@ -23,6 +25,8 @@ features:
   - PowerShellRoot
   - RSAT
   - RSAT-AD-AdminCenter
+  - RSAT-ADCS
+  - RSAT-ADCS-Mgmt
   - RSAT-ADDS
   - RSAT-ADDS-Tools
   - RSAT-ADLDS
@@ -31,14 +35,13 @@ features:
   - RSAT-DFS-Mgmt-Con
   - RSAT-DNS-Server
   - RSAT-File-Services
+  - RSAT-Online-Responder
   - RSAT-Role-Tools
   - Storage-Services
   - System-DataArchiver
   - WindowsAdminCenterSetup
   - Windows-Defender
-  - Wireless-Networking
   - WoW64-Support
-  - XPS-Viewer
 volumes:
   - letter: C
     label: Windows
