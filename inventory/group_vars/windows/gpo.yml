@@ -196,3 +196,7 @@ windows_gpo_remove_values:
   - { gpo: Default Domain Policy, key: 'HKLM\SOFTWARE\Policies\Microsoft\W32Time\TimeProviders\NtpClient', name: ResolvePeerBackoffMaxTimes }
   - { gpo: Default Domain Policy, key: 'HKLM\SOFTWARE\Policies\Microsoft\W32Time\TimeProviders\NtpClient', name: SpecialPollInterval }
   - { gpo: Default Domain Policy, key: 'HKLM\SOFTWARE\Policies\Microsoft\W32Time\TimeProviders\NtpClient', name: EventLogFlags }
+  # The Default Domain Policy had "Allow Diagnostic Data" set to Disabled.
+  # That setting does not turn the data off. It deletes the value
+  # AllowTelemetry on every computer, also the 0 that Server - Baseline sets.
+  - { gpo: Default Domain Policy, key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name: AllowTelemetry }
