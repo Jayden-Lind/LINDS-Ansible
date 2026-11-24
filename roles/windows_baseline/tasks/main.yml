@@ -89,6 +89,25 @@
   loop_control:
     label: "{{ item.name }}"
 
+- name: Find the scheduled tasks of the reports
+  community.windows.win_scheduled_task_stat:
+    path: "{{ item.path }}"
+    name: "{{ item.name }}"
+  loop: "{{ windows_baseline_vendor_report_tasks }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: windows_baseline_report_tasks
+
+- name: Set the scheduled tasks of the reports
+  community.windows.win_scheduled_task:
+    path: "{{ item.item.path }}"
+    name: "{{ item.item.name }}"
+    enabled: "{{ windows_baseline_vendor_reports | bool }}"
+  loop: "{{ windows_baseline_report_tasks.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when: item.task_exists
+
 - name: Find the services of the server
   ansible.windows.win_service_info:
   register: windows_baseline_services

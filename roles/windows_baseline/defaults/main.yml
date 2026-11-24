@@ -78,6 +78,22 @@ windows_baseline_vendor_report_policies:
   - { path: 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat', name: DisableInventory, data: 1 }
   # Diagnostic data of Microsoft Edge: off.
   - { path: 'HKLM:\SOFTWARE\Policies\Microsoft\Edge', name: DiagnosticData, data: 0 }
+# The scheduled tasks that collect or send the data of those reports. If
+# windows_baseline_vendor_reports is false, the role disables them. The role
+# ignores a task that a server does not have.
+windows_baseline_vendor_report_tasks:
+  - { path: '\Microsoft\Windows\Application Experience', name: Microsoft Compatibility Appraiser Exp }
+  - { path: '\Microsoft\Windows\Application Experience', name: MareBackup }
+  - { path: '\Microsoft\Windows\Customer Experience Improvement Program', name: Consolidator }
+  - { path: '\Microsoft\Windows\Customer Experience Improvement Program', name: UsbCeip }
+  - { path: '\Microsoft\Windows\Device Information', name: Device }
+  - { path: '\Microsoft\Windows\Device Information', name: Device User }
+  - { path: '\Microsoft\Windows\DiskDiagnostic', name: Microsoft-Windows-DiskDiagnosticDataCollector }
+  - { path: '\Microsoft\Windows\Flighting\FeatureConfig', name: UsageDataFlushing }
+  - { path: '\Microsoft\Windows\Flighting\FeatureConfig', name: UsageDataReceiver }
+  - { path: '\Microsoft\Windows\Flighting\FeatureConfig', name: UsageDataReporting }
+  - { path: '\Microsoft\Windows\PI', name: Sqm-Tasks }
+  - { path: '\Microsoft\Windows\Windows Error Reporting', name: QueueReporting }
 
 # The maximum size of each event log. The Security log must keep more than
 # one day.

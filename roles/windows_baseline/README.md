@@ -14,7 +14,7 @@ The role applies the security baseline to a Windows server.
 7. If `windows_baseline_vendor_reports` is false, it turns off the reports to
    Microsoft: diagnostic data, crash reports, the Customer Experience
    Improvement Program, application telemetry and the diagnostic data of
-   Edge.
+   Edge. It also disables the scheduled tasks that collect the data.
 8. It stops and disables the services in `windows_baseline_services_disabled`:
    services of the desktop that a server VM does not use (see below). It
    disables the services in `windows_baseline_services_disabled_at_restart`
@@ -51,6 +51,7 @@ here, change it in `inventory/group_vars/windows/gpo.yml` too.
 | `windows_baseline_multicast_names` | `true` | `false` turns off LLMNR and mDNS. The inventory sets `false`. |
 | `windows_baseline_vendor_reports` | `true` | `false` turns off the reports to Microsoft. The inventory sets `false`. |
 | `windows_baseline_vendor_report_policies` | 8 policies, see `defaults/main.yml` | The registry policies that turn the reports off. |
+| `windows_baseline_vendor_report_tasks` | 12 tasks, see `defaults/main.yml` | The scheduled tasks that the role disables together with the reports. |
 | `windows_baseline_services_disabled` | 13 services, see `defaults/main.yml` | The services that the role stops and disables. |
 | `windows_baseline_services_disabled_at_restart` | `RmSvc` | The services that the role disables. Windows does not stop them while they run. |
 | `windows_baseline_event_logs` | Security 1 GB, System and Application 256 MB | The maximum size of each log. |
@@ -110,8 +111,9 @@ with no DNS suffix) does not find it then. Use the full name.
 **NOTE:** With `windows_baseline_vendor_reports: false`, the servers send no
 diagnostic data and no crash reports to Microsoft. Windows Update and the
 updates of Edge still contact Microsoft, and so does the cloud protection of
-Defender (`MAPSReporting`), which the role does not change. The scheduled
-tasks that collect the data still start. They find the policy and stop.
+Defender (`MAPSReporting`), which the role does not change. The GPO
+`Server - Baseline` holds the policies, but not the scheduled tasks. If an
+update of Windows enables a task again, the next run of the role disables it.
 
 **NOTE:** A service in `windows_baseline_services_disabled` stops at once. To
 use one again, remove it from the list here and from the GPO
