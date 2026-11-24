@@ -141,6 +141,21 @@ windows_gpo_definitions:
         type: DWord
         value: 255
         state: "{{ 'absent' if windows_baseline_ipv6 | default(true) | bool else 'present' }}"
+      # TLS 1.0 and 1.1 off for what the server serves (LDAPS on the domain
+      # controllers, Remote Desktop); TLS 1.2 and 1.3 stay on (PingCastle
+      # A-DCLdapsProtocolAdvanced). Schannel reads these when Windows starts,
+      # so the change takes effect at the next restart.
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.0\Server', name: Enabled, type: DWord, value: 0 }
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.0\Server', name: DisabledByDefault, type: DWord, value: 1 }
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.1\Server', name: Enabled, type: DWord, value: 0 }
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.1\Server', name: DisabledByDefault, type: DWord, value: 1 }
+      # 5: send NTLMv2 only, and refuse LM and NTLMv1 (PingCastle S-OldNtlm;
+      # unset, Windows uses 3, which accepts them). On 2026-11-21 the Security
+      # logs of the four servers (32 to 41 days) had no LM or NTLMv1 logon of
+      # a real account. The only NTLM V1 entries were ANONYMOUS LOGON (null
+      # sessions), which carry no password and which this setting does not
+      # change.
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Control\Lsa', name: LmCompatibilityLevel, type: DWord, value: 5 }
 
   # The time hierarchy. Every domain controller gets its time from the domain.
   # The PDC emulator gets its time from ntp_servers, and is the reliable source
@@ -154,6 +169,62 @@ windows_gpo_definitions:
       - { key: 'HKLM\SOFTWARE\Policies\Microsoft\W32Time\Parameters', name: Type, type: String, value: NT5DS }
       # 10: a time server, and a reliable one only if it is the PDC emulator.
       - { key: 'HKLM\SOFTWARE\Policies\Microsoft\W32Time\Config', name: AnnounceFlags, type: DWord, value: 10 }
+
+  # The security settings of the domain controllers.
+  - name: Domain Controller - Security
+    comment: >-
+      LDAP channel binding and the audit policy of the domain controllers.
+      Made by LINDS-Ansible, role windows_gpo. Do not edit it in GPMC.
+    preferences:
+      # LDAP channel binding when the client supports it (PingCastle
+      # A-DCLdapsChannelBinding). 2 would also refuse clients that cannot.
+      # LDAP signing is already required (LDAPServerIntegrity 2).
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\NTDS\Parameters', name: LdapEnforceChannelBinding, type: DWord, value: 1 }
+      # Audit: Force audit policy subcategory settings to override audit
+      # policy category settings. The domain controllers then use the
+      # audit_policy below and ignore the old categories of "Server - GPO".
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Control\Lsa', name: SCENoApplyLegacyAuditPolicy, type: DWord, value: 1 }
+    # Each subcategory that was on before (auditpol on all three domain
+    # controllers, 2026-11-21: the old categories of "Server - GPO" and the
+    # Windows defaults), then four more (PingCastle A-AuditDC): Security
+    # System Extension (4697, a new service), Process Creation (4688), DPAPI
+    # Activity (4692, an export of the DPAPI backup key) and Sensitive
+    # Privilege Use. The attack alerts in LINDS-Kubernetes
+    # (base/monitoring/windows-security-alerts.yaml) read Kerberos 4768 and
+    # 4769 and Directory Service Access 4662: keep these on.
+    audit_policy:
+      - { subcategory: System Integrity, guid: '{0CCE9212-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: Other System Events, guid: '{0CCE9214-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: Security State Change, guid: '{0CCE9210-69AE-11D9-BED3-505054503030}', setting: success }
+      - { subcategory: Logon, guid: '{0CCE9215-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: Logoff, guid: '{0CCE9216-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: Account Lockout, guid: '{0CCE9217-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: IPsec Main Mode, guid: '{0CCE9218-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: IPsec Quick Mode, guid: '{0CCE9219-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: IPsec Extended Mode, guid: '{0CCE921A-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: Special Logon, guid: '{0CCE921B-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: Other Logon/Logoff Events, guid: '{0CCE921C-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: Network Policy Server, guid: '{0CCE9243-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: User / Device Claims, guid: '{0CCE9247-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: Group Membership, guid: '{0CCE9249-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: Access Rights, guid: '{0CCE924B-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: Audit Policy Change, guid: '{0CCE922F-69AE-11D9-BED3-505054503030}', setting: success }
+      - { subcategory: Authentication Policy Change, guid: '{0CCE9230-69AE-11D9-BED3-505054503030}', setting: success }
+      - { subcategory: Computer Account Management, guid: '{0CCE9236-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: Security Group Management, guid: '{0CCE9237-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: Distribution Group Management, guid: '{0CCE9238-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: Application Group Management, guid: '{0CCE9239-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: Other Account Management Events, guid: '{0CCE923A-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: User Account Management, guid: '{0CCE9235-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: Directory Service Access, guid: '{0CCE923B-69AE-11D9-BED3-505054503030}', setting: success }
+      - { subcategory: Kerberos Service Ticket Operations, guid: '{0CCE9240-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: Other Account Logon Events, guid: '{0CCE9241-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: Kerberos Authentication Service, guid: '{0CCE9242-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: Credential Validation, guid: '{0CCE923F-69AE-11D9-BED3-505054503030}', setting: success_and_failure }
+      - { subcategory: Security System Extension, guid: '{0CCE9211-69AE-11D9-BED3-505054503030}', setting: success }
+      - { subcategory: Process Creation, guid: '{0CCE922B-69AE-11D9-BED3-505054503030}', setting: success }
+      - { subcategory: DPAPI Activity, guid: '{0CCE922D-69AE-11D9-BED3-505054503030}', setting: success }
+      - { subcategory: Sensitive Privilege Use, guid: '{0CCE9228-69AE-11D9-BED3-505054503030}', setting: success }
 
   # Link it before "Domain Controller - Time", so that it wins on the PDC emulator.
   - name: PDC Emulator - Time

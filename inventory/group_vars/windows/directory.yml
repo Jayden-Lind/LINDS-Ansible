@@ -35,6 +35,7 @@ windows_directory_gpo_links:
   OU=Domain Controllers:
     - gpo: PDC Emulator - Time
     - gpo: Domain Controller - Time
+    - gpo: Domain Controller - Security
     - gpo: Server - GPO
     - gpo: Default Domain Controllers Policy
     - gpo: Updates
@@ -127,5 +128,7 @@ windows_directory_groups:
 windows_directory_ds_heuristics: "00000000010000000002000000011"
 
 # The number of computers that one user can join to the domain
-# (ms-DS-MachineAccountQuota).
-windows_directory_machine_account_quota: 10
+# (ms-DS-MachineAccountQuota). 0: only accounts with the right to create
+# computer objects can join one (PingCastle S-ADRegistration). The build
+# pipeline joins as a domain administrator, so it is not affected.
+windows_directory_machine_account_quota: 0
