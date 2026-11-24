@@ -84,6 +84,14 @@ common_packages_absent:
   # each have a systemd timer. The minimal server has no cron.
   - cron
   - cron-daemon-common
+  # Ubuntu Pro. The hosts are not attached to a contract. The client gets
+  # news and contract data from Canonical. With it go the collection
+  # ubuntu-minimal and update-manager-core; do-release-upgrade stays.
+  - ubuntu-pro-client
+  - ubuntu-pro-client-l10n
+  # At the first start it gets random data from entropy.ubuntu.com, and sends
+  # the versions of the kernel and of cloud-init with the request.
+  - pollinate
   # snap and LXD.
   - snapd
   - lxd-installer
@@ -127,6 +135,10 @@ common_tool_packages_absent:
   - man-db
   - manpages
   - info
+  # Says which package has a command that is not installed. It gets an index
+  # of all commands at each update of the package lists.
+  - command-not-found
+  - python3-commandnotfound
 # Packages of the two lists above that a host keeps.
 common_packages_keep: []
 # Units that stay installed, because other packages need their package.

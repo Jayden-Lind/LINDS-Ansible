@@ -83,6 +83,7 @@ The packages in `common_packages_absent` are in these groups:
 | Hardware services | `modemmanager`, `usbmuxd`, `bolt`, `upower`, `udisks2`, `fwupd`, `thermald`, `ubuntu-drivers-common`, `open-vm-tools` | A Proxmox VM has no modem, Thunderbolt port, battery or firmware to update. |
 | Storage | `multipath-tools`, `open-iscsi`, `mdadm`, `bcache-tools`, `btrfs-progs`, `xfsprogs`, `ntfs-3g` | The hosts have one virtual disk with LVM and ext4. |
 | snap and LXD | `snapd`, `lxd-installer`, `lxd-agent-loader` | No host uses a snap. |
+| Contact with Canonical | `ubuntu-pro-client`, `pollinate` | The hosts have no Ubuntu Pro contract. The client gets news and contract data. `pollinate` sends the versions of the host to get random data at the first start. |
 | Services with no work | `polkitd`, `cron` | The administrator and Ansible use `sudo`, not polkit. Each job that cron started has a systemd timer. |
 | Crash reports | `apport`, `kdump-tools`, `kexec-tools`, `makedumpfile` | `kdump-tools` keeps 512 MB of memory for a second kernel. |
 | Data collection | `sysstat`, `landscape-common`, `motd-news-config`, `update-notifier-common`, `sos`, `packagekit`, `networkd-dispatcher` | Timers and services whose output nobody reads. |
@@ -92,7 +93,7 @@ The packages in `common_packages_absent` are in these groups:
 
 The packages in `common_tool_packages_absent` are tools that the minimal
 server does not have: `git`, `linux-perf`, `bpftool`, `lshw`, `ufw`,
-`iptables`, `man-db`, the manual pages and `info`. No service uses them. The
+`iptables`, `man-db`, the manual pages, `info` and `command-not-found`. No service uses them. The
 hosts keep `tmux`, `tcpdump`, `strace`, `rsync`, `lsof` and `dig` for
 troubleshooting. With `man-db` gone, apt also removes the collection
 `ubuntu-standard`, which installs nothing by itself.
