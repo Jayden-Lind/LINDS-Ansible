@@ -13,8 +13,8 @@ windows_gpo_definitions:
   - name: Server - Baseline
     comment: >-
       Firewall, Defender, event logs, Remote Desktop, Kerberos encryption
-      types, SMB1, Print Spooler, unused services, LLMNR and mDNS, CPU
-      mitigations and IPv6 of the servers. Made by LINDS-Ansible, role
+      types, SMB1, Print Spooler, unused services, LLMNR and mDNS, reports to
+      Microsoft, CPU mitigations and IPv6 of the servers. Made by LINDS-Ansible, role
       windows_gpo. Do not edit it in GPMC.
     # The computer names of the servers in the inventory group windows_managed.
     apply_to: "{{ groups['windows_managed'] | map('split', '.') | map('first') | map('upper') | list }}"
@@ -39,6 +39,48 @@ windows_gpo_definitions:
         type: DWord
         value: 0
         state: "{{ 'absent' if windows_baseline_multicast_names | default(true) | bool else 'present' }}"
+      # No diagnostic data, crash reports or usage data to Microsoft. See
+      # windows_baseline_vendor_reports.
+      - key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection'
+        name: AllowTelemetry
+        type: DWord
+        value: 0
+        state: "{{ 'absent' if windows_baseline_vendor_reports | default(true) | bool else 'present' }}"
+      - key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection'
+        name: DisableOneSettingsDownloads
+        type: DWord
+        value: 1
+        state: "{{ 'absent' if windows_baseline_vendor_reports | default(true) | bool else 'present' }}"
+      - key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection'
+        name: DoNotShowFeedbackNotifications
+        type: DWord
+        value: 1
+        state: "{{ 'absent' if windows_baseline_vendor_reports | default(true) | bool else 'present' }}"
+      - key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Error Reporting'
+        name: Disabled
+        type: DWord
+        value: 1
+        state: "{{ 'absent' if windows_baseline_vendor_reports | default(true) | bool else 'present' }}"
+      - key: 'HKLM\SOFTWARE\Policies\Microsoft\SQMClient\Windows'
+        name: CEIPEnable
+        type: DWord
+        value: 0
+        state: "{{ 'absent' if windows_baseline_vendor_reports | default(true) | bool else 'present' }}"
+      - key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\AppCompat'
+        name: AITEnable
+        type: DWord
+        value: 0
+        state: "{{ 'absent' if windows_baseline_vendor_reports | default(true) | bool else 'present' }}"
+      - key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\AppCompat'
+        name: DisableInventory
+        type: DWord
+        value: 1
+        state: "{{ 'absent' if windows_baseline_vendor_reports | default(true) | bool else 'present' }}"
+      - key: 'HKLM\SOFTWARE\Policies\Microsoft\Edge'
+        name: DiagnosticData
+        type: DWord
+        value: 0
+        state: "{{ 'absent' if windows_baseline_vendor_reports | default(true) | bool else 'present' }}"
       # Allow Remote Desktop, with Network Level Authentication.
       - { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services', name: fDenyTSConnections, type: DWord, value: 0 }
       - { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services', name: UserAuthentication, type: DWord, value: 1 }
@@ -79,6 +121,7 @@ windows_gpo_definitions:
       - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\TrkWks', name: Start, type: DWord, value: 4 }
       - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\BalloonService', name: Start, type: DWord, value: 4 }
       - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\UALSVC', name: Start, type: DWord, value: 4 }
+      - { key: 'HKLM\SYSTEM\CurrentControlSet\Services\dmwappushservice', name: Start, type: DWord, value: 4 }
       # 3 turns off the mitigations for Spectre variant 2 and Meltdown. The
       # change takes effect at the next restart. See windows_baseline_cpu_mitigations.
       - key: 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management'
