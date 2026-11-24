@@ -6,4 +6,3 @@ scavenging: false
 scavenging_interval_hours: 0
 listens_on:
   - 10.3.1.200
-  - fe80::3f84:ad2e:f35a:55c3

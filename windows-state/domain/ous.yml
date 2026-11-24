@@ -12,6 +12,10 @@
       gpo: Server - Baseline
       enabled: true
       enforced: false
+    - order: 3
+      gpo: Service Accounts - Network Logon Only
+      enabled: true
+      enforced: false
 - dn: OU=Domain Controllers,DC=linds,DC=com,DC=au
   description: Default container for domain controllers
   protected_from_deletion: false
