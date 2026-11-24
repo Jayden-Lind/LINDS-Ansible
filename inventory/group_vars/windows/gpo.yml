@@ -200,3 +200,7 @@ windows_gpo_remove_values:
   # That setting does not turn the data off. It deletes the value
   # AllowTelemetry on every computer, also the 0 that Server - Baseline sets.
   - { gpo: Default Domain Policy, key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name: AllowTelemetry }
+  # "PC - GPO" had the same setting. A server whose computer account is in
+  # the OU of that GPO lost the value at each refresh: a GPO on an OU has
+  # priority over Server - Baseline, which is on the domain.
+  - { gpo: PC - GPO, key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name: AllowTelemetry }
