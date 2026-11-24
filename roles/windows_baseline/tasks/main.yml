@@ -77,6 +77,18 @@
     msg: The change to mDNS takes effect when {{ inventory_hostname }} next restarts.
   when: windows_baseline_mdns is changed
 
+# The policies of windows_baseline_vendor_report_policies.
+- name: Set the reports to Microsoft
+  ansible.windows.win_regedit:
+    path: "{{ item.path }}"
+    name: "{{ item.name }}"
+    data: "{{ item.data }}"
+    type: dword
+    state: "{{ 'absent' if windows_baseline_vendor_reports | bool else 'present' }}"
+  loop: "{{ windows_baseline_vendor_report_policies }}"
+  loop_control:
+    label: "{{ item.name }}"
+
 - name: Find the services of the server
   ansible.windows.win_service_info:
   register: windows_baseline_services

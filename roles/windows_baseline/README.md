@@ -11,24 +11,28 @@ The role applies the security baseline to a Windows server.
 5. It removes the Windows features in `windows_baseline_features_absent`.
 6. If `windows_baseline_multicast_names` is false, it turns off LLMNR and
    mDNS. The server then finds names with DNS only.
-7. It stops and disables the services in `windows_baseline_services_disabled`:
+7. If `windows_baseline_vendor_reports` is false, it turns off the reports to
+   Microsoft: diagnostic data, crash reports, the Customer Experience
+   Improvement Program, application telemetry and the diagnostic data of
+   Edge.
+8. It stops and disables the services in `windows_baseline_services_disabled`:
    services of the desktop that a server VM does not use (see below). It
    disables the services in `windows_baseline_services_disabled_at_restart`
    and does not stop them: they stop at the next restart.
-8. It sets the maximum sizes of the event logs.
-9. It allows Remote Desktop with Network Level Authentication, and opens its
+9. It sets the maximum sizes of the event logs.
+10. It allows Remote Desktop with Network Level Authentication, and opens its
    firewall rules.
-10. It sets the CPU side-channel mitigations of Windows (see Variables).
-11. If `windows_baseline_ipv6` is false, it turns off IPv6 on the server and on
+11. It sets the CPU side-channel mitigations of Windows (see Variables).
+12. If `windows_baseline_ipv6` is false, it turns off IPv6 on the server and on
     each network adapter.
-12. It keeps the large send and receive offloads of the VirtIO network adapter
+13. It keeps the large send and receive offloads of the VirtIO network adapter
     on. If a value changes, it restarts the adapter.
-13. If `windows_baseline_updates` is true, it installs Windows updates and
+14. If `windows_baseline_updates` is true, it installs Windows updates and
     restarts the server.
 
 The role applies the settings one time, when the server is built. After the
 server joins the domain, the GPO `Server - Baseline` keeps steps 1 to 4, 6 to
-10 and the server setting of step 11 in place (role `windows_gpo`). If you change a setting
+11 and the server setting of step 12 in place (role `windows_gpo`). If you change a setting
 here, change it in `inventory/group_vars/windows/gpo.yml` too.
 
 ## Requirements
@@ -45,7 +49,9 @@ here, change it in `inventory/group_vars/windows/gpo.yml` too.
 | `windows_baseline_disable_spooler` | `true` | Stop and disable the Print Spooler. |
 | `windows_baseline_features_absent` | `Wireless-Networking`, `XPS-Viewer` | The Windows features that the role removes. |
 | `windows_baseline_multicast_names` | `true` | `false` turns off LLMNR and mDNS. The inventory sets `false`. |
-| `windows_baseline_services_disabled` | 12 services, see `defaults/main.yml` | The services that the role stops and disables. |
+| `windows_baseline_vendor_reports` | `true` | `false` turns off the reports to Microsoft. The inventory sets `false`. |
+| `windows_baseline_vendor_report_policies` | 8 policies, see `defaults/main.yml` | The registry policies that turn the reports off. |
+| `windows_baseline_services_disabled` | 13 services, see `defaults/main.yml` | The services that the role stops and disables. |
 | `windows_baseline_services_disabled_at_restart` | `RmSvc` | The services that the role disables. Windows does not stop them while they run. |
 | `windows_baseline_event_logs` | Security 1 GB, System and Application 256 MB | The maximum size of each log. |
 | `windows_baseline_rdp` | `true` | Allow Remote Desktop with Network Level Authentication. |
@@ -100,6 +106,12 @@ one at a time.
 next refresh of Group Policy and mDNS stops at the next restart. A computer
 that found a server by its short name without DNS (for example from a network
 with no DNS suffix) does not find it then. Use the full name.
+
+**NOTE:** With `windows_baseline_vendor_reports: false`, the servers send no
+diagnostic data and no crash reports to Microsoft. Windows Update and the
+updates of Edge still contact Microsoft, and so does the cloud protection of
+Defender (`MAPSReporting`), which the role does not change. The scheduled
+tasks that collect the data still start. They find the policy and stop.
 
 **NOTE:** A service in `windows_baseline_services_disabled` stops at once. To
 use one again, remove it from the list here and from the GPO

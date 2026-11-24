@@ -53,3 +53,8 @@ windows_baseline_ipv6: false
 # LLMNR and mDNS are off on the servers, by the decision of the owner
 # (18 November 2026). See roles/windows_baseline/README.md.
 windows_baseline_multicast_names: false
+
+# The servers send no diagnostic data, crash reports or usage data to
+# Microsoft, by the decision of the owner (24 November 2026). See
+# roles/windows_baseline/README.md.
+windows_baseline_vendor_reports: false
