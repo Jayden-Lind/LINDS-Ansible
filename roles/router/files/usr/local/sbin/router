@@ -11,10 +11,13 @@ Managed by LINDS-Ansible: roles/router/files/usr/local/sbin/router.
   router host ADDR|NAME|MAC everything the router knows about one client
   router dns NAME [TYPE]    a name through this router (Unbound), Quad9 and the DCs
   router ids                Suricata counters and the last alerts
-  router ips                what the blocking Suricata does and the last blocks
-  router ips why ADDRESS    every block that involves one address
-  router ips off [MINUTES]  stop blocking, for 30 minutes unless you say
-  router ips on             start blocking again
+  router blocked [TEXT]     what Suricata blocked (TEXT: a device, an address or a name)
+  router unblock THING      stop blocking a name (and its subdomains) or an address
+  router unblock            the names and addresses that are unblocked
+  router reblock THING      block it again
+  router ips                is Suricata blocking, and the last blocks
+  router ips off [MINUTES]  stop Suricata (no blocking, no log), for 30 minutes unless you say
+  router ips on             start it again
   router forwards           port forwards: Kubernetes Services, static rules, UPnP
   router trace ADDR [SEC]   which firewall rules one host's packets go through
   router logs [AREA] [-f] [--since 2h]   the journal of the router's services
@@ -22,7 +25,8 @@ Managed by LINDS-Ansible: roles/router/files/usr/local/sbin/router.
 
 It needs root, and runs itself through sudo when started by a user. It only
 reads, except `trace`, which adds a table `inet router_trace` for the
-duration of the trace and deletes it afterwards, and `ips off` and `ips on`.
+duration of the trace and deletes it afterwards, `ips off` and `ips on`, and
+`unblock` and `reblock`, which write /etc/suricata/unblock.list.
 """
 import argparse
 import ipaddress
@@ -43,12 +47,18 @@ TRACE_TABLE = "router_trace"
 FORWARD_STATE = "/var/lib/k8s-port-forward/state.json"
 FORWARD_TABLE = "k8s_port_forward"
 FORWARD_METRICS = "/var/lib/prometheus/node-exporter/k8s_port_forward.prom"
-IPS_SOCKET = "/run/suricata-ips/command.socket"
-IPS_EVE = "/var/log/suricata-ips/eve.json"
-IPS_NFT = "/etc/suricata/ips.nft"
-IPS_TABLE = "suricata_ips"
+# The drop-in that makes Suricata run inline (it blocks). A router without it
+# has a Suricata that only reads a copy of the traffic.
+IPS_DROPIN = "/etc/systemd/system/suricata.service.d/inline.conf"
+IPS_CHAIN = ("inet", "router", "suricata")
 IPS_QUEUE = "/proc/net/netfilter/nfnetlink_queue"
 IPS_TIMER = "router-ips-on"
+# What `router unblock` keeps: one name or address on a line. It is state of
+# this router, like the DHCP leases: Ansible makes the file and does not
+# change it. UNBLOCK_RULES is made from it.
+UNBLOCK_LIST = "/etc/suricata/unblock.list"
+UNBLOCK_RULES = "/etc/suricata/unblock.rules"
+UNBLOCK_SID = 9100000
 UPDATES_CACHE = "/run/router-updates.json"
 # pending_updates() asks apt again only when one of these changes.
 APT_STATE = ("/var/lib/dpkg/status", "/var/cache/apt/pkgcache.bin")
@@ -60,7 +70,7 @@ LOG_AREAS = {
     "bgp": ["frr"],
     "dhcp": ["isc-kea-dhcp4-server", "isc-kea-dhcp-ddns-server"],
     "dns": ["unbound"],
-    "ids": ["suricata", "suricata-ips", "suricata-update"],
+    "ids": ["suricata", "suricata-update"],
     "upnp": ["miniupnpd"],
     "forwards": ["k8s-port-forward"],
     "mdns": ["avahi-daemon"],
@@ -333,8 +343,8 @@ def eve_tail(lines=20000):
 
 
 def ips_state():
-    """What the blocking Suricata does, or None on a router without it."""
-    if not os.path.exists(IPS_NFT):
+    """What the blocking Suricata does, or None on a router where it only watches."""
+    if not os.path.exists(IPS_DROPIN):
         return None
     queue = None
     try:
@@ -345,34 +355,142 @@ def ips_state():
                     queue = {"waiting": int(p[2]), "kernel_dropped": int(p[5]), "user_dropped": int(p[6])}
     except OSError:
         pass
-    data = run_json(["suricatasc", "-c", "dump-counters", IPS_SOCKET]) or {}
-    counters = data.get("message") if data.get("return") == "OK" else None
-    stats = run_json(["suricatasc", "-c", "ruleset-stats", IPS_SOCKET]) or {}
+    counters = suricata_counters()
+    stats = run_json(["suricatasc", "-c", "ruleset-stats"]) or {}
     rules = stats.get("message") if stats.get("return") == "OK" else None
-    return {"enabled": ("inet", IPS_TABLE) in nft_tables(), "queue": queue,
-            "counters": counters if isinstance(counters, dict) else None,
-            "rules": rules[0].get("rules_loaded") if rules else None}
+    chain = subprocess.run(["nft", "list", "chain", *IPS_CHAIN], capture_output=True, text=True)
+    return {"enabled": chain.returncode == 0 and "queue" in chain.stdout, "queue": queue,
+            "counters": counters, "rules": rules[0].get("rules_loaded") if rules else None}
 
 
-def ips_blocks(address=None, lines=20000):
+LOCAL_NETS = [ipaddress.ip_network(n) for n in
+              ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "fe80::/10", "fc00::/7")]
+
+
+def is_local(address):
+    """True for an address on this side of the WAN: private, or in the delegated IPv6 prefix."""
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    if any(ip in n for n in LOCAL_NETS if n.version == ip.version):
+        return True
+    if ip.version == 6:
+        for a in run_json(["ip", "-j", "-6", "addr", "show", "scope", "global"]) or []:
+            for info in a.get("addr_info", []):
+                # The delegated prefix is a /56 and each LAN has a /64 of it.
+                if info.get("prefixlen") == 64 and ip in ipaddress.ip_network(f"{info['local']}/56", strict=False):
+                    return True
+    return False
+
+
+def block_parties(e):
+    """(device, thing) of a block: the device on this side, and what was
+    blocked: the name that the device asked for, or the address on the
+    internet. `router unblock THING` takes the second one."""
+    src, dst = e.get("src_ip", ""), e.get("dest_ip", "")
+    name = None
+    dns = e.get("dns") or {}
+    for q in dns.get("queries") or dns.get("query") or []:
+        name = name or q.get("rrname")
+    name = name or (e.get("tls") or {}).get("sni") or (e.get("quic") or {}).get("sni") \
+        or (e.get("http") or {}).get("hostname")
+    if is_local(src) and not is_local(dst):
+        return src, name or dst
+    if is_local(dst) and not is_local(src):
+        return dst, src
+    return src, name or dst
+
+
+def ips_blocks(text=None, lines=20000):
     """The blocks in the recent EVE log, newest last."""
     blocks = []
-    for line in run(["tail", "-n", str(lines), IPS_EVE], timeout=20).splitlines():
-        if '"blocked"' not in line:
+    for line in run(["tail", "-n", str(lines), EVE_LOG], timeout=20).splitlines():
+        if '"blocked"' not in line or (text and text not in line):
             continue
         try:
             e = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if e.get("event_type") == "alert" and (address is None or address in (e.get("src_ip"), e.get("dest_ip"))):
+        if e.get("event_type") == "alert" and e.get("alert", {}).get("action") == "blocked":
             blocks.append(e)
     return blocks
 
 
 def print_block(e):
     a = e["alert"]
-    print(f"  {e['timestamp'][5:19].replace('T', ' ')}  {e.get('proto', ''):4} {e.get('src_ip')} -> "
-          f"{e.get('dest_ip')}:{e.get('dest_port', '')}  {a['signature'][:60]} [{a['signature_id']}]")
+    device, thing = block_parties(e)
+    print(f"  {e['timestamp'][5:19].replace('T', ' ')}  {device:26} {thing:38} {a['signature'][:58]}")
+
+
+NAME_RE = re.compile(r"^(?=.{1,253}$)([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$")
+
+
+def unblock_entry(text):
+    """A name or an address as the list keeps it, or None if it is neither."""
+    text = text.strip().lower().rstrip(".")
+    try:
+        return str(ipaddress.ip_network(text, strict=False)) if "/" in text else str(ipaddress.ip_address(text))
+    except ValueError:
+        pass
+    return text if NAME_RE.match(text) else None
+
+
+def unblock_read():
+    entries = []
+    try:
+        with open(UNBLOCK_LIST) as f:
+            for line in f:
+                entry = unblock_entry(line.split("#")[0]) if line.split("#")[0].strip() else None
+                if entry and entry not in entries:
+                    entries.append(entry)
+    except OSError:
+        pass
+    return entries
+
+
+def unblock_rules(entries):
+    """Suricata pass rules for the entries. A pass rule wins over a drop rule.
+    An address: all its traffic passes. A name: a DNS question for it or for
+    a subdomain, and a TLS, QUIC or HTTP connection that names it."""
+    out = ["# Made by `router unblock` from " + UNBLOCK_LIST + ". Do not edit: change the list with",
+           "# `router unblock THING` and `router reblock THING`."]
+    for n, entry in enumerate(entries):
+        sid = UNBLOCK_SID + n * 10
+        if NAME_RE.match(entry):
+            suffix = f'dotprefix; content:".{entry}"; endswith;'
+            for k, (proto, buffer, nocase) in enumerate((("dns", "dns.query", " nocase;"), ("tls", "tls.sni", " nocase;"),
+                                                        ("quic", "quic.sni", " nocase;"), ("http", "http.host", ""))):
+                out.append(f'pass {proto} any any -> any any (msg:"router unblock {entry}"; {buffer}; '
+                           f'{suffix.replace(" endswith;", nocase + " endswith;")} sid:{sid + k}; rev:1;)')
+        else:
+            out.append(f'pass ip {entry} any <> any any (msg:"router unblock {entry}"; sid:{sid}; rev:1;)')
+    return "\n".join(out) + "\n"
+
+
+def unblock_write(entries, note=None):
+    """Write the list and the rules, and make Suricata load the rules. The
+    return value is what Suricata said."""
+    old = {}
+    try:
+        with open(UNBLOCK_LIST) as f:
+            for line in f:
+                key = unblock_entry(line.split("#")[0]) if line.split("#")[0].strip() else None
+                if key:
+                    old[key] = line.rstrip("\n")
+    except OSError:
+        pass
+    lines = ["# Names and addresses that Suricata does not block. `router unblock` keeps this file."]
+    for entry in entries:
+        lines.append(old.get(entry) or f"{entry}  # {time.strftime('%Y-%m-%d')}" + (f" {note}" if note else ""))
+    for path, text in ((UNBLOCK_LIST, "\n".join(lines) + "\n"), (UNBLOCK_RULES, unblock_rules(entries))):
+        with open(path + ".new", "w") as f:
+            f.write(text)
+        os.chmod(path + ".new", 0o644)
+        os.replace(path + ".new", path)
+    # reload-rules waits until the new rules are in use.
+    answer = run_json(["suricatasc", "-c", "reload-rules"], timeout=180) or {}
+    return answer.get("return") == "OK"
 
 
 def failed_units():
@@ -628,8 +746,8 @@ def cmd_status(_args):
     ips = ips_state()
     if ips is not None:
         blocked = (ips["counters"] or {}).get("ips", {}).get("blocked", 0)
-        text = good(f"blocking, {blocked} blocked") if ips["enabled"] and ips["queue"] else \
-            bad("off") if not ips["enabled"] else bad("not on the queue, nothing blocked")
+        text = good(f"blocking, {blocked} packets blocked") if ips["enabled"] and ips["queue"] else \
+            bad("off") if not ips["enabled"] else bad("Suricata is not on the queue: nothing blocked, nothing logged")
         print(f"{'IPS':10}{text}")
     updates, reboot = pending_updates(), reboot_required()
     text = dim("apt does not answer") if updates is None else \
@@ -825,8 +943,10 @@ def cmd_ids(_args):
         print(bad("Suricata does not answer on its socket"))
         return 1
     cap, det, flow = sc.get("capture", {}), sc.get("detect", {}), sc.get("flow", {})
-    print(f"Suricata up {ago(sc.get('uptime', 0))}: {cap.get('kernel_packets', 0)} packets, "
-          f"{cap.get('kernel_drops', 0)} dropped, {flow.get('total', 0)} flows, "
+    # A tap counts what the kernel gave it and lost. Inline, the decoder counts the packets.
+    packets = cap.get("kernel_packets") or sc.get("decoder", {}).get("pkts", 0)
+    print(f"Suricata up {ago(sc.get('uptime', 0))}: {packets} packets, "
+          f"{cap.get('kernel_drops', 0)} lost by the capture, {flow.get('total', 0)} flows, "
           f"{det.get('alert', 0)} alerts, {det.get('alerts_suppressed', 0)} suppressed")
     alerts = [e for e in eve_tail() if e.get("event_type") == "alert"]
     print(f"The last alerts ({len(alerts)} in the recent EVE log):")
@@ -840,39 +960,33 @@ def cmd_ids(_args):
 def cmd_ips(args):
     state = ips_state()
     if state is None:
-        print(dim("This router has no blocking Suricata."))
+        print(dim("Suricata on this router does not block: it reads a copy of the traffic."))
         return 0
     if args.action == "off":
         minutes = args.value and int(args.value) or 30
         run(["systemctl", "stop", f"{IPS_TIMER}.timer"])
-        run(["nft", "delete", "table", "inet", IPS_TABLE])
+        run(["systemctl", "stop", "suricata"], timeout=60)
         run(["systemd-run", f"--unit={IPS_TIMER}", f"--on-active={minutes}min", "/usr/local/sbin/router", "ips", "on"])
-        print(f"Blocking is off for {minutes} min. To start it sooner: router ips on")
+        print(f"Suricata is stopped for {minutes} min: nothing is blocked and nothing is logged.")
+        print("To start it sooner: router ips on")
         return 0
     if args.action == "on":
         run(["systemctl", "stop", f"{IPS_TIMER}.timer"])
-        run(["nft", "-f", IPS_NFT])
-        print("Blocking is on.")
+        run(["systemctl", "start", "suricata"], timeout=120)
+        print("Suricata is started. It blocks when its rules are loaded (about half a minute).")
         return 0
     if args.action == "why":
-        if not args.value:
-            print("usage: router ips why ADDRESS")
-            return 2
-        blocks = ips_blocks(args.value)
-        print(f"{len(blocks)} blocks in the recent log involve {args.value}.")
-        for e in blocks[-40:]:
-            print_block(e)
-        if blocks:
-            print(dim("  To let it through: a pass rule in files/<site>/etc/suricata/ips-local.rules (the file says how)."))
-            print(dim("  To see if blocking is the cause: router ips off 10"))
-        return 0
+        args.text = args.value
+        return cmd_blocked(args)
     queue, counters = state["queue"], state["counters"]
     if not state["enabled"]:
-        print(bad("Blocking is OFF") + dim(": no queue rule. `router ips on` starts it."))
+        print(bad("NOT BLOCKING") + dim(": the firewall has no chain `suricata` (nftables.conf)."))
     elif queue is None:
-        print(bad("NOT BLOCKING") + dim(": Suricata is not on the queue, so all connections pass."))
+        print(bad("NOT BLOCKING") + dim(": Suricata is not on the queue, so all traffic passes and none is logged. "
+                                        "`router ips on` starts it."))
     else:
-        print(good("Blocking is on") + ": new connections from the WAN to published ports go through Suricata.")
+        print(good("Blocking is on") + ": the start of each connection that crosses a WAN, and DNS to the router, "
+              "go through Suricata.")
     if counters:
         ips = counters.get("ips", {})
         print(f"Since Suricata started ({ago(counters.get('uptime', 0))} ago): "
@@ -880,11 +994,85 @@ def cmd_ips(args):
               f"{state['rules']} rules loaded")
     if queue:
         print(f"Queue: {queue['waiting']} waiting, {queue['kernel_dropped']} let through because it was full")
-    blocks = ips_blocks()
-    print(f"The last blocks ({len(blocks)} in the recent log):")
-    for e in blocks[-15:]:
+    print(f"Unblocked: {len(unblock_read())} names and addresses (router unblock)")
+    args.text = None
+    return cmd_blocked(args)
+
+
+def cmd_blocked(args):
+    if ips_state() is None:
+        print(dim("Suricata on this router does not block."))
+        return 0
+    blocks = ips_blocks(getattr(args, "text", None))
+    what = f" with {args.text}" if getattr(args, "text", None) else ""
+    print(f"The last blocks{what} ({len(blocks)} in the recent log): time, device, what was blocked, rule")
+    for e in blocks[-25:]:
         print_block(e)
-    print(dim("  Loki: {job=\"suricata\", event_type=\"alert\"} | alert_action=\"blocked\""))
+    things = []
+    for e in reversed(blocks):
+        thing = block_parties(e)[1]
+        if thing and thing not in things:
+            things.append(thing)
+    if things:
+        print(dim(f"  To unblock one: router unblock {things[0]}"))
+    print(dim("  Grafana: the Suricata dashboard, \"Blocked by the router\""))
+    return 0
+
+
+def cmd_unblock(args):
+    if ips_state() is None:
+        print(dim("Suricata on this router does not block."))
+        return 0
+    entries = unblock_read()
+    if not args.thing:
+        print(f"Unblocked ({len(entries)}): a name counts for its subdomains too.")
+        try:
+            with open(UNBLOCK_LIST) as f:
+                for line in f:
+                    if line.strip() and not line.startswith("#"):
+                        print("  " + line.rstrip())
+        except OSError:
+            pass
+        print(dim("  router unblock THING adds one, router reblock THING removes one."))
+        return 0
+    entry = unblock_entry(args.thing)
+    if not entry:
+        print(bad(f"{args.thing} is not a name (example.com) or an address."))
+        return 2
+    if entry in entries:
+        print(f"{entry} is unblocked already.")
+        return 0
+    print(f"Unblocking {entry}. Suricata loads its rules again: this takes up to a minute.")
+    if not unblock_write(entries + [entry], " ".join(args.note) if args.note else None):
+        print(bad("Suricata did not confirm the new rules.") + " The entry is saved: it applies when Suricata next "
+              "loads its rules. Look at: router logs ids")
+        return 1
+    print(good(f"{entry} is not blocked any more.") + " To block it again: router reblock " + entry)
+    return 0
+
+
+def cmd_unblock_rules(_args):
+    """For the unit: make unblock.rules from the list. Suricata is about to start and reads it."""
+    with open(UNBLOCK_RULES + ".new", "w") as f:
+        f.write(unblock_rules(unblock_read()))
+    os.chmod(UNBLOCK_RULES + ".new", 0o644)
+    os.replace(UNBLOCK_RULES + ".new", UNBLOCK_RULES)
+    return 0
+
+
+def cmd_reblock(args):
+    if ips_state() is None:
+        print(dim("Suricata on this router does not block."))
+        return 0
+    entry, entries = unblock_entry(args.thing), unblock_read()
+    if not entry or entry not in entries:
+        print(f"{args.thing} is not in the unblocked list (router unblock shows it).")
+        return 2
+    print(f"Removing {entry} from the unblocked list. Suricata loads its rules again: this takes up to a minute.")
+    if not unblock_write([e for e in entries if e != entry]):
+        print(bad("Suricata did not confirm the new rules.") + " Look at: router logs ids")
+        return 1
+    print(good(f"{entry} is blocked again") + " if a list has it.")
     return 0
 
 
@@ -1093,6 +1281,17 @@ def main():
     p.add_argument("action", nargs="?", choices=["why", "off", "on"])
     p.add_argument("value", nargs="?")
     p.set_defaults(func=cmd_ips)
+    p = sub.add_parser("blocked")
+    p.add_argument("text", nargs="?")
+    p.set_defaults(func=cmd_blocked)
+    p = sub.add_parser("unblock")
+    p.add_argument("thing", nargs="?")
+    p.add_argument("note", nargs="*", help="why, kept in the list")
+    p.set_defaults(func=cmd_unblock)
+    p = sub.add_parser("reblock")
+    p.add_argument("thing")
+    p.set_defaults(func=cmd_reblock)
+    sub.add_parser("unblock-rules").set_defaults(func=cmd_unblock_rules)
     sub.add_parser("forwards").set_defaults(func=cmd_forwards)
     p = sub.add_parser("trace")
     p.add_argument("target")

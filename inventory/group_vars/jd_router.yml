@@ -20,8 +20,10 @@ router_site: jd
 # and table 1001 come back with it).
 router_failover: false
 router_road_warrior: true
-# The blocking Suricata, for the published ports.
+# Suricata blocks. The names are on the phishing list of IPFire DBL and are
+# in use here (the cloud of a vendor, mail links, a shop's pages).
 router_ips: true
+router_ips_unblocked: [salesforce-sites.com, awstrack.me, aliyun.com]
 # k8s-port-forward: the cluster's API server and its LoadBalancer pool
 # (Cilium LB-IPAM, LINDS-Terraform proxmox/cilium.tf). The token is
 # k8s_port_forward_token in inventory/router.yml.

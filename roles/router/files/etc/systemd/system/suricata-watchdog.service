@@ -1,0 +1,27 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/system/suricata-watchdog.service
+# For a router where Suricata is inline (router_ips). See the script.
+[Unit]
+Description=Kill a Suricata that holds its packet queue
+Documentation=file:/usr/local/sbin/suricata-watchdog
+After=suricata.service
+
+[Service]
+ExecStart=/usr/local/sbin/suricata-watchdog
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

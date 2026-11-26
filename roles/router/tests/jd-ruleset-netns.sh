@@ -28,6 +28,10 @@ trap 'kill $TRUNK $C52 $C53 $C58 $INET $WG 2>/dev/null; rm -f /tmp/nstest.*.$$' 
 sleep 0.3
 ip link set lo up
 sysctl -qw net.ipv4.ip_forward=1 net.ipv4.conf.all.rp_filter=2 net.ipv4.conf.default.rp_filter=2
+# As sysctl.d/91-suricata.conf: the chain suricata needs the packet count. No
+# Suricata runs here, so the queue rule accepts (bypass) and each connection
+# that crosses a WAN has its first 60 packets on the slow path.
+sysctl -qw net.netfilter.nf_conntrack_acct=1
 
 # LAN trunk: lan0 (router) <-> lanc0 (TRUNK, the untagged LAN client 10.0.50.20)
 ip link add lan0 type veth peer name lanc0; ip link set lanc0 netns $TRUNK

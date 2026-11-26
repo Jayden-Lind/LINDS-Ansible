@@ -1,6 +1,16 @@
 %YAML 1.1
 ---
 # Managed by LINDS-Ansible: roles/router/files/etc/suricata/suricata.yaml.
+#
+# One file, two ways to run it. The unit decides which:
+#   * Tap (the default, linds-router-01): `suricata --af-packet`. It reads a
+#     copy of the traffic and cannot block. The af-packet section is for it.
+#   * Inline (router_ips, jd-router-01): `suricata -q 0`, from the drop-in
+#     suricata.service.d/inline.conf. The firewall gives it the first
+#     packets of each connection that crosses a WAN, and DNS to the router
+#     (chains suricata and suricata_dns in nftables.conf). It logs the same
+#     events as the tap, and a drop rule drops. The nfq section is for it.
+# The text below was written for the tap:
 # Detection-only IDS on lan0 (AF_PACKET copy mode,
 # never in the forwarding path). It inspects WAN traffic and DNS only: the
 # bpf-filter in the af-packet section drops traffic between two private
@@ -92,6 +102,11 @@ outputs:
         - http:
             extended: yes
         - ssh
+        # Inline only: one event for the first dropped packet of a flow. The
+        # alert of the rule that dropped it has "action": "blocked".
+        - drop:
+            alerts: no
+            flows: start
         # A stats event every minute (deltas: the change since the last one).
         # Alloy turns it into Prometheus counters for the alerts in
         # LINDS-Kubernetes base/monitoring/router-metrics.yaml (capture drops).
@@ -158,12 +173,15 @@ af-packet:
     # Limits: IPv6 between two VLANs passes (global addresses look like WAN
     # traffic), and WAN traffic during a failover to the cellular modem is
     # seen twice (before and after NAT).
+    # 10.0.36.0/24 is the torrent VLAN of linds-router-01. Suricata does not
+    # see it at all (jd-router-01 does the same in its firewall, for
+    # jd-torrent-01).
     bpf-filter: >-
-      (port 53
+      (not net 10.0.36.0/24 and (port 53
       or (ip and not (src net 10.0.0.0/8 or src net 172.16.0.0/12 or src net 192.168.0.0/16 or src net 169.254.0.0/16 or src net 0.0.0.0/8))
       or (ip and not (dst net 10.0.0.0/8 or dst net 172.16.0.0/12 or dst net 192.168.0.0/16 or dst net 169.254.0.0/16 or dst net 224.0.0.0/4 or dst host 255.255.255.255))
-      or (ip6 and not (src net fe80::/10 or dst net fe80::/10 or dst net ff00::/8 or (src net fc00::/7 and dst net fc00::/7))))
-      or (vlan and (port 53
+      or (ip6 and not (src net fe80::/10 or dst net fe80::/10 or dst net ff00::/8 or (src net fc00::/7 and dst net fc00::/7)))))
+      or (vlan and not net 10.0.36.0/24 and (port 53
       or (ip and not (src net 10.0.0.0/8 or src net 172.16.0.0/12 or src net 192.168.0.0/16 or src net 169.254.0.0/16 or src net 0.0.0.0/8))
       or (ip and not (dst net 10.0.0.0/8 or dst net 172.16.0.0/12 or dst net 192.168.0.0/16 or dst net 169.254.0.0/16 or dst net 224.0.0.0/4 or dst host 255.255.255.255))
       or (ip6 and not (src net fe80::/10 or dst net fe80::/10 or dst net ff00::/8 or (src net fc00::/7 and dst net fc00::/7)))))
@@ -179,6 +197,18 @@ af-packet:
 # GRO/TSO super-packets that warning is about.
 capture:
   disable-offloading: false
+
+# Inline. accept: a packet that Suricata lets through goes on to the next
+# firewall hook. fail-open: the kernel accepts packets while the queue is
+# full, so a slow Suricata delays packets and does not lose the internet.
+nfq:
+  mode: accept
+  fail-open: yes
+
+# What to do with a packet when Suricata cannot do its work (a memory cap
+# is reached, a stream that it cannot follow): let it through. The default
+# for inline (auto) is to drop the flow.
+exception-policy: ignore
 
 # workers, not autofp: see the af-packet comment (tpacket v3).
 runmode: workers
@@ -207,6 +237,10 @@ host-mode: router
 #     | grep -E 'reassembly_memuse|segment_memcap_drop|memcap_pressure'
 stream:
   memcap: 256mb
+  # Inline: do not drop a packet because the stream engine does not like its
+  # sequence numbers. The firewall drops invalid packets on the WAN paths
+  # already, and Suricata sees only the start of a connection.
+  drop-invalid: no
   # Stop all work on a TCP flow when it passes the reassembly depth (TLS
   # and SSH flows stop when the encryption starts: encryption-handling
   # below). Check: flow_bypassed.local_pkts in dump-counters.
@@ -239,6 +273,9 @@ vlan:
 default-rule-path: /var/lib/suricata/rules
 rule-files:
   - suricata.rules
+  # `router unblock` writes this file: pass rules for the names and addresses
+  # that are not to be blocked. Empty on a router that does not block.
+  - /etc/suricata/unblock.rules
 
 classification-file: /etc/suricata/classification.config
 reference-config-file: /etc/suricata/reference.config
