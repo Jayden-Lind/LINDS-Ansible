@@ -5,27 +5,8 @@
 # enabled rule whose text matches, other lines are copied as they are. Edit
 # this file, not threshold.config.
 #
-# jd-torrent-01 is the torrent client. Its peers and trackers set off these
-# rule families all day: 9,300 of the 52,450 alerts in the 10 days to
-# 2026-11-17. They are suppressed for that host only, in either direction:
-# every other host still raises them, and this host still raises everything
-# else (malware, exploits, scans).
-#
-# The host has three addresses: 10.0.50.24 (a Kea reservation), its IPv6
-# address in the delegated prefix, and its link-local address, from which it
-# asks the router for DNS. If the delegated prefix changes, change the second
-# address here (site-address-groups.yaml has the same prefix).
-#
-# Whole families, so that a new Tor or reputation group (ET Open adds them
-# often) stays quiet too.
-# P2P protocols
-suppress re:"msg:\"(ET|GPL) P2P ", track by_either, ip [10.0.50.24,2001:8003:dc6f:6300:be24:11ff:fe98:9dfc,fe80::be24:11ff:fe98:9dfc]
-# Peers that are also Tor relays
-suppress re:"msg:\"ET TOR ", track by_either, ip [10.0.50.24,2001:8003:dc6f:6300:be24:11ff:fe98:9dfc,fe80::be24:11ff:fe98:9dfc]
-# Peers on the reputation lists: Spamhaus DROP, CINS, compromised hosts
-suppress re:"msg:\"ET (DROP|CINS|COMPROMISED) ", track by_either, ip [10.0.50.24,2001:8003:dc6f:6300:be24:11ff:fe98:9dfc,fe80::be24:11ff:fe98:9dfc]
-# Tracker names in odd TLDs: .tk, .pw, .top
-suppress re:"msg:\"ET DNS ", track by_either, ip [10.0.50.24,2001:8003:dc6f:6300:be24:11ff:fe98:9dfc,fe80::be24:11ff:fe98:9dfc]
+# jd-torrent-01 has no line here: Suricata does not see that host (the set
+# suricata_exempt in nftables.conf).
 #
 # "Executable from a host with no name": Windows Update gives the two Windows
 # servers their files that way.
@@ -37,15 +18,3 @@ suppress gen_id 1, sig_id 2021076, track by_either, ip [10.0.50.200,10.0.50.201]
 # threshold for one rule in this file replaces the threshold in the rule. A
 # real scan makes hundreds of connections and still fires.
 threshold gen_id 1, sig_id 2003068, type threshold, track by_src, count 30, seconds 120
-#
-# IPFire DBL, malware and phishing lists (DNS, HTTP, TLS, QUIC): one alert an
-# hour for each device and rule. A device that asks for a listed name often
-# asks for it all day. The DNS and TLS logs have every name.
-threshold gen_id 1, sig_id 12001201, type limit, track by_src, count 1, seconds 3600
-threshold gen_id 1, sig_id 12001202, type limit, track by_src, count 1, seconds 3600
-threshold gen_id 1, sig_id 12001203, type limit, track by_src, count 1, seconds 3600
-threshold gen_id 1, sig_id 12001204, type limit, track by_src, count 1, seconds 3600
-threshold gen_id 1, sig_id 12001901, type limit, track by_src, count 1, seconds 3600
-threshold gen_id 1, sig_id 12001902, type limit, track by_src, count 1, seconds 3600
-threshold gen_id 1, sig_id 12001903, type limit, track by_src, count 1, seconds 3600
-threshold gen_id 1, sig_id 12001904, type limit, track by_src, count 1, seconds 3600

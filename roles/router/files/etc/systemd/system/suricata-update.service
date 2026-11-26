@@ -11,6 +11,7 @@ Type=oneshot
 # The site's alert suppressions (threshold.in, from the role) become
 # threshold.config here, matched against the new rules.
 ExecStart=/usr/bin/suricata-update --no-reload --threshold-in /etc/suricata/threshold.in --threshold-out /etc/suricata/threshold.config
+# A drop rule with `noalert` would drop traffic and log nothing: see
+# /etc/suricata/drop.conf. Only a router where Suricata blocks has drop rules.
+ExecStart=/usr/bin/sed -i -E "/[; ]noalert;/ s/^drop /alert /" /var/lib/suricata/rules/suricata.rules
 ExecStart=-/usr/bin/suricatasc -c ruleset-reload-nonblocking
-# The blocking Suricata takes its rules from these. Only a site with it has this.
-ExecStart=-/usr/local/sbin/suricata-ips-rules

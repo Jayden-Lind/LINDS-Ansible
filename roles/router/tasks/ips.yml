@@ -1,64 +1,112 @@
 ---
-# The second Suricata, which blocks. The first one (suricata.yml) reads a copy
-# of the traffic and cannot block. This one sees the first packet of each new
-# connection to a published port. The README, "Suricata blocks on published
-# ports", says how to see what it does and how to turn it off.
+# Suricata that blocks (router_ips). It is the Suricata of suricata.yml, in the
+# path of the traffic: the firewall gives it the start of each connection that
+# crosses a WAN, and DNS to the router (the chains suricata and suricata_dns in
+# files/<site>/etc/nftables.conf). A drop rule drops. The README, "Suricata
+# blocks", says how to see what it does, how to unblock and how to stop it.
+#
+# These tasks run after suricata.yml and change how its service starts.
 
-- name: IPS rule builder
+# `ct packets` in the firewall chain needs the count.
+- name: Conntrack counts packets (the firewall gives Suricata the start of a connection)
   ansible.builtin.copy:
-    src: usr/local/sbin/suricata-ips-rules
-    dest: /usr/local/sbin/suricata-ips-rules
+    src: etc/sysctl.d/91-suricata.conf
+    dest: /etc/sysctl.d/91-suricata.conf
+    mode: '0644'
+  notify: sysctl
+
+# The rule groups that block. suricata-update reads both files.
+- name: Rule groups that block (drop.conf, modify.conf)
+  ansible.builtin.copy:
+    src: "etc/suricata/{{ item }}"
+    dest: "/etc/suricata/{{ item }}"
+    mode: '0644'
+  loop: [drop.conf, modify.conf]
+  notify: suricata-update
+
+# State of the router, like the DHCP leases: `router unblock` adds to it. The
+# role makes the file with the names that the lists have by mistake and that
+# are in use here, and does not change it after that.
+- name: Unblocked names and addresses (made once, then `router unblock` keeps it)
+  ansible.builtin.copy:
+    dest: /etc/suricata/unblock.list
+    mode: '0644'
+    force: false
+    content: |
+      # Names and addresses that Suricata does not block. `router unblock` keeps this file.
+      {% for name in router_ips_unblocked %}
+      {{ name }}  # from the role
+      {% endfor %}
+
+- name: Watchdog script
+  ansible.builtin.copy:
+    src: usr/local/sbin/suricata-watchdog
+    dest: /usr/local/sbin/suricata-watchdog
     mode: '0755'
+  notify: restart suricata-watchdog
 
-- name: IPS settings
+- name: Watchdog unit
   ansible.builtin.copy:
-    src: etc/suricata/ips.yaml
-    dest: /etc/suricata/ips.yaml
-    mode: '0644'
-  notify: restart suricata-ips
-
-- name: IPS queue table
-  ansible.builtin.copy:
-    src: "{{ router_site }}/etc/suricata/ips.nft"
-    dest: /etc/suricata/ips.nft
-    mode: '0644'
-    validate: nft -c -f %s
-  notify: restart suricata-ips
-
-- name: IPS site rules
-  ansible.builtin.copy:
-    src: "{{ router_site }}/etc/suricata/ips-local.rules"
-    dest: /etc/suricata/ips-local.rules
-    mode: '0644'
-  notify: reload suricata-ips
-
-- name: IPS log rotation
-  ansible.builtin.copy:
-    src: etc/logrotate.d/suricata-ips
-    dest: /etc/logrotate.d/suricata-ips
-    mode: '0644'
-
-- name: IPS EVE -> Loki rsyslog relay
-  ansible.builtin.copy:
-    src: etc/rsyslog.d/61-suricata-ips-eve.conf
-    dest: /etc/rsyslog.d/61-suricata-ips-eve.conf
-    mode: '0644'
-  notify: restart rsyslog
-
-- name: IPS unit
-  ansible.builtin.copy:
-    src: etc/systemd/system/suricata-ips.service
-    dest: /etc/systemd/system/suricata-ips.service
+    src: etc/systemd/system/suricata-watchdog.service
+    dest: /etc/systemd/system/suricata-watchdog.service
     mode: '0644'
   notify:
     - daemon-reload
-    - restart suricata-ips
+    - restart suricata-watchdog
 
-- name: Flush handlers (unit known)
-  ansible.builtin.meta: flush_handlers
+# The drop-in is what makes Suricata inline. `router` reads it to know that.
+- name: Suricata takes its packets from the firewall (suricata.service drop-in)
+  ansible.builtin.copy:
+    src: etc/systemd/system/suricata.service.d/inline.conf
+    dest: /etc/systemd/system/suricata.service.d/inline.conf
+    mode: '0644'
+  notify:
+    - daemon-reload
+    - restart suricata
 
-- name: IPS enabled
+# Until 2026-11 a second Suricata did the blocking, for the published ports
+# only. These tasks remove it.
+- name: The second Suricata of before - service state
   ansible.builtin.systemd_service:
     name: suricata-ips
+    state: stopped
+    enabled: false
+  register: router_old_ips
+  failed_when: router_old_ips is failed and 'Could not find' not in (router_old_ips.msg | default(''))
+
+- name: The second Suricata of before - files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/suricata-ips.service
+    - /etc/suricata/ips.yaml
+    - /etc/suricata/ips.nft
+    - /etc/suricata/ips-local.rules
+    - /etc/logrotate.d/suricata-ips
+    - /usr/local/sbin/suricata-ips-rules
+    - /var/lib/suricata/ips
+    - /var/log/suricata-ips
+  notify: daemon-reload
+
+- name: The second Suricata of before - its log relay
+  ansible.builtin.file:
+    path: /etc/rsyslog.d/61-suricata-ips-eve.conf
+    state: absent
+  notify: restart rsyslog
+
+- name: The second Suricata of before - its firewall table
+  ansible.builtin.command: nft delete table inet suricata_ips
+  register: router_old_ips_table
+  changed_when: router_old_ips_table.rc == 0
+  failed_when: false
+  when: router_old_ips is changed
+
+- name: Flush handlers (unit known, rules made)
+  ansible.builtin.meta: flush_handlers
+
+- name: Watchdog enabled
+  ansible.builtin.systemd_service:
+    name: suricata-watchdog
     enabled: true
     state: started

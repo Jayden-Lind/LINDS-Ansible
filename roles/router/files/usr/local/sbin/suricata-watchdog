@@ -1,0 +1,22 @@
+#!/bin/sh
+# Managed by LINDS-Ansible: roles/router/files/usr/local/sbin/suricata-watchdog.
+# Suricata is in the path of each new connection (NFQUEUE 0, see the chain
+# suricata in nftables.conf). If it does not run, the kernel accepts the
+# packets. If it runs but does not answer, the packets wait in the queue, and
+# no new connection opens until 4,096 packets wait. This loop sees that state
+# and kills Suricata: the kernel then accepts the packets at once, and systemd
+# starts a new Suricata.
+#
+# A healthy Suricata empties the queue in less than a millisecond. Packets
+# that wait for 3 seconds mean that it does not work.
+QUEUE=${QUEUE_FILE:-/proc/net/netfilter/nfnetlink_queue}
+LIMIT=${LIMIT:-20}
+waiting() { awk '$1 == 0 { print $3 }' "$QUEUE" 2>/dev/null; }
+while sleep "${INTERVAL:-4}"; do
+    n=$(waiting); [ "${n:-0}" -gt "$LIMIT" ] || continue
+    sleep 3
+    m=$(waiting); [ "${m:-0}" -gt "$LIMIT" ] || continue
+    logger -t suricata-watchdog -p daemon.err "Suricata does not answer: $m packets wait in its queue. It is killed, and traffic passes until the new one has loaded its rules."
+    ${KILL:-systemctl kill --signal=KILL suricata.service}
+    sleep 30
+done

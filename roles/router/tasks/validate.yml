@@ -24,10 +24,10 @@
 - name: suricata.yaml + rules load
   ansible.builtin.command: suricata -T -c /etc/suricata/suricata.yaml
   changed_when: false
-  when: router_suricata | bool
+  when: router_suricata | bool and not (router_ips | bool)
 
-- name: ips.yaml + rules load
-  ansible.builtin.command: suricata -T -c /etc/suricata/ips.yaml
+- name: suricata.yaml + rules load, inline
+  ansible.builtin.command: suricata -T -q 0 -c /etc/suricata/suricata.yaml
   changed_when: false
   when: router_ips | bool
 

@@ -113,7 +113,7 @@
   when: router_suricata | bool
   tags: [suricata]
 
-- name: Suricata IPS
+- name: Suricata blocks (inline)
   ansible.builtin.import_tasks: ips.yml
   when: router_ips | bool
   tags: [ips]

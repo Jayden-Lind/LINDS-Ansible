@@ -75,6 +75,15 @@
     mode: '0644'
   notify: suricata-update
 
+# suricata.yaml names this file. `router unblock` writes it on a router where
+# Suricata blocks; on the other routers it stays empty.
+- name: Pass rules of `router unblock` (the file must be there)
+  ansible.builtin.copy:
+    dest: /etc/suricata/unblock.rules
+    content: ""
+    mode: '0644'
+    force: false
+
 - name: suricata.yaml
   ansible.builtin.copy:
     src: etc/suricata/suricata.yaml

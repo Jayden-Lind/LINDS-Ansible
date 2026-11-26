@@ -125,7 +125,7 @@ layout above), and the notes are JD's.
 | DNS forwarder | Unbound (Debian's) | `etc/unbound/unbound.conf`, `etc/default/unbound` | Upstream Quad9 over DNS over TLS; expired answers served at once and refreshed behind the client: see below |
 | NTP / LLDP / DDNS | chrony, lldpd (from its author's OBS repository), ddclient | `etc/chrony/`, `etc/default/` | The routers have no SNMP agent. Prometheus reads the exporters. |
 | mDNS reflector | avahi-daemon | `etc/avahi/avahi-daemon.conf` | Repeats mDNS between `lan0`, `lan0.52`, `lan0.53` and `lan0.58` so devices on one can be found from the others; publishes nothing itself |
-| Blocking on published ports | A second Suricata on an NFQUEUE, `suricata-ips.service` (`router_ips`) | `etc/suricata/ips.yaml`, `files/<site>/etc/suricata/ips.nft`, `files/<site>/etc/suricata/ips-local.rules` | First packet of new connections only; fails open; see "Suricata blocks on published ports" |
+| Blocking | The same Suricata, in the path of the traffic on NFQUEUE 0 (`router_ips`) | `etc/suricata/drop.conf`, `etc/systemd/system/suricata.service.d/inline.conf`, the chains `suricata` and `suricata_dns` in `files/<site>/etc/nftables.conf` | The start of each connection that crosses a WAN; fails open; `router unblock`; see "Suricata blocks" |
 | IDS | Suricata 8 + suricata-update, from trixie-backports | `etc/suricata/` | One worker thread on `lan0`; WAN traffic and DNS only (BPF filter); TLS flows bypassed after the handshake; EVE → rsyslog imfile → Alloy → Loki; weekly rule refresh reloads in place |
 | Troubleshooting and metrics | `router` (a script), node-exporter, frr-exporter, smokeping-prober | `usr/local/sbin/router`, `etc/default/prometheus-*`, `etc/prometheus/smokeping_prober.yml` | See "Troubleshooting" below; the exporters listen on the cluster network only |
 | Kernel | linux-image-cloud-amd64 from trixie-backports (7.x, `router_kernel_backports`), sysctl, modules, grub | `etc/sysctl.d/`, `etc/modules-load.d/`, `etc/modprobe.d/`, `etc/default/grub.d/` | `ignore_routes_with_linkdown` keeps a link-down build reachable; `ip_nonlocal_bind` lets daemons bind `.1` addresses before the LAN link is up |
@@ -226,69 +226,113 @@ sudo unshare -n bash roles/router/tests/jd-ruleset-netns.sh roles/router/files/j
 sudo unshare -n bash roles/router/tests/linds-ruleset-netns.sh roles/router/files/linds/etc/nftables.conf
 ```
 
-## Suricata blocks on published ports
+## Suricata blocks
 
-A second Suricata blocks new connections from known bad addresses to the
-published Kubernetes Services. The first Suricata reads a copy of the traffic
-and cannot block. `router_ips: true` turns the second one on
-(`tasks/ips.yml`, `etc/suricata/ips.yaml`).
+On a router with `router_ips: true` (jd-router-01), Suricata is in the path
+of the traffic and can drop a packet. There is one Suricata: it logs DNS,
+TLS, QUIC and HTTP, it reports, and it blocks. On the other router it reads
+a copy of the traffic and cannot block. `suricata.yaml` is the same file on
+the two; `suricata.service.d/inline.conf` makes the difference
+(`tasks/ips.yml`).
 
-**What it sees:** the first packet of each new connection from `wan0` to the
-LoadBalancer pool (`etc/suricata/ips.nft`). It does not see browsing, games,
-the LANs, the tunnels or the torrent client's port. An established connection
-never enters the queue, so it stays on the flowtable.
+**What it sees:** the first 60 packets of each connection that crosses
+`wan0`, the backup WAN or `wg10`, in the two directions, and DNS between the
+LAN and the router. The firewall decides this (`files/jd/etc/nftables.conf`,
+the chains `suricata` and `suricata_dns`). 60 packets are enough for all that
+Suricata reads: the addresses, a DNS question, the server name of a TLS or
+QUIC session, an HTTP request and the start of its answer. The rest of the
+connection goes by the flowtable. Suricata does not see traffic between two
+LANs or to LINDS.
 
-**What it blocks:** the `ET DROP`, `ET CINS` and `ET COMPROMISED` rules, about
-390. These rules are lists of bad addresses. `suricata-ips-rules` makes them
-from the daily rule update, and only from the rule numbers that Emerging
-Threats uses for these groups: a rule from another source in `update.yaml`
-does not block. A site's own rules are in
-`etc/suricata/ips-local.rules`.
+**What it never sees:** jd-torrent-01 and VLAN 51 (the set `suricata_exempt`
+and the two IPv6 rules of the chain `suricata`). These hosts are not logged
+and not blocked. To add a host, add it to the set.
 
-**CAUTION:** Do not add rule groups without a look at what they match. Most
-alerts on this router are `ET INFO`, and those are normal traffic.
+**What it blocks:** the rule groups in `etc/suricata/drop.conf`.
+suricata-update makes them drop rules at each refresh. All other rules only
+report.
+
+| Group | What |
+|---|---|
+| `ET DROP`, `ET CINS`, `ET COMPROMISED` | Lists of hostile addresses. All traffic from such an address is dropped: its connections to a published port, and its answers to a LAN device. |
+| `IPFire DBL [Malware]`, `[Phishing]` | Lists of names. A DNS question for a listed name gets no answer. A TLS, QUIC or HTTP connection that names one is dropped. |
+| `PTS STALKERWARE` | The servers of phone-spying apps. |
+| `ET MALWARE`, `ET MOBILE_MALWARE`, `ET EXPLOIT_KIT`, `ET PHISHING`, `ET COINMINER` | Signatures of known malware traffic. |
+
+**CAUTION:** Do not add a rule group without a look at what it matches (the
+Suricata dashboard, 30 days). A blocked name or address shows to the user
+as a page that does not load.
 
 ### How to see what it blocks
 
 | Question | Where |
 |---|---|
-| Is it on? What did it block? | `router ips` |
-| Did it block this address? | `router ips why ADDRESS` |
-| What is the history? | Grafana, Router dashboard, row "Suricata blocking" |
+| What did it block? | Grafana, Suricata dashboard, "Blocked by the router". On the router: `router blocked` |
+| Did it block this device, name or address? | `router blocked TEXT` |
+| Is it on? | `router ips`, and the line `IPS` of `router` |
 | Where is the log? | Loki: `{job="suricata", event_type="alert"} \| alert_action="blocked"` |
 | Which metrics show it? | `router_ips_enabled`, `router_ips_attached`, `router_ips_blocked_total` |
 
-### If a client cannot connect
+### How to unblock
 
-1. Run `router ips off 10`. This stops blocking for 10 minutes. Blocking
-   starts again by itself.
-2. Try the connection again.
-3. If the connection works now, Suricata blocked it. Run
-   `router ips why ADDRESS` to find the rule.
-4. Add a `pass` rule to `files/<site>/etc/suricata/ips-local.rules`. The file
-   has an example.
-5. Merge the change. To apply it sooner, copy the file to
-   `/etc/suricata/ips-local.rules` and run `systemctl reload suricata-ips`.
+The dashboard and `router blocked` show what was blocked: a name or an
+address. On the router:
+
+```sh
+router unblock gofile.io          # the name and its subdomains
+router unblock 203.0.113.7        # an address
+router unblock                    # the list
+router reblock gofile.io          # block it again
+```
+
+`router unblock` takes about half a minute: Suricata loads its rules again.
+After that, the name or address is not blocked by any rule. It is still
+logged.
+
+The list is `/etc/suricata/unblock.list`. It is state of the router, like
+the DHCP leases: `router unblock` keeps it, and the role only makes it on a
+new router (with `router_ips_unblocked`). `/etc/suricata/unblock.rules` has
+the pass rules that are made from it. A pass rule wins over a drop rule.
+
+### If a device cannot connect
+
+1. Look at "Blocked by the router" on the dashboard, or run
+   `router blocked ADDRESS-OF-THE-DEVICE`.
+2. If the block is there, run `router unblock THING`.
+3. If no block is there, run `router ips off 10`. This stops Suricata for 10
+   minutes: nothing is blocked and nothing is logged. It starts again by
+   itself. If the connection works now, Suricata is the cause: look at
+   `router logs ids` and at the `drop` events in the log.
 
 ### How to test it
 
-1. Add this line to `/etc/suricata/ips-local.rules` on the router. Use an
-   address outside the site that you can connect from:
-   `drop ip ADDRESS any -> $HOME_NET any (msg:"IPS test"; sid:9000999; rev:1;)`
-2. Run `systemctl reload suricata-ips`.
-3. Connect to a published port from that address. The connection must time
-   out.
-4. Run `router ips`. The block must show.
-5. Remove the line and run `systemctl reload suricata-ips`.
+1. From a device on the LAN, ask the router for a name that is on a list.
+   On 2026-11-27 `control.kochava.com` (an advertising tracker) was on the
+   malware list: `dig @10.0.50.1 control.kochava.com` gets no answer.
+2. Run `router blocked`. The block must show, with the device and the name.
+3. `tests/jd-suricata-inline-netns.sh` tests all of it with a real Suricata
+   in network namespaces: blocks by address and by name, the exempt host,
+   `router unblock`, and a Suricata that stops. Run it on a router. The
+   script says how.
 
 ### If it fails
 
-* **NOTE:** It fails open. If Suricata stops, its unit removes the queue. If
-  Suricata cannot keep up, the kernel lets the packet through. Connections
-  pass and nothing is blocked. `RouterIPSNotAttached` and `RouterIPSOff` report
-  this, because nothing else shows it.
-* **CAUTION:** Keep `exception-policy: ignore` in `ips.yaml`. With the default,
-  `auto`, an IPS drops traffic at a memory limit, with no rule behind the drop.
+* **NOTE:** It fails open. If Suricata does not run, the firewall accepts the
+  packets (`queue flags bypass`). If its queue is full, the kernel accepts
+  them (`fail-open` in `suricata.yaml`). Nothing is blocked and nothing is
+  logged. `RouterIPSNotAttached` reports this, because nothing else shows it.
+* A Suricata that runs but does not answer is the bad case: new connections
+  wait in its queue. `suricata-watchdog.service` sees packets that wait for
+  3 seconds and kills Suricata. The traffic then passes, and systemd starts a
+  new Suricata. The journal has a line from `suricata-watchdog`.
+* **CAUTION:** Keep `exception-policy: ignore` in `suricata.yaml`. With the
+  default, `auto`, an inline Suricata drops traffic at a memory limit, with
+  no rule behind the drop.
+* **CAUTION:** A drop rule with `noalert` drops and logs nothing.
+  suricata-update makes some (`drop.conf` says why), and
+  `suricata-update.service` makes them alert rules again. After a change to
+  the rule refresh, check: `grep -c '^drop.*noalert;' /var/lib/suricata/rules/suricata.rules`
+  must print 0.
 * A `drop` event in `eve.json` with no alert is a block by the engine, not by a
   rule. Its `reason` field says why.
 
@@ -1245,7 +1289,7 @@ deletes it at the end.
 | A published Kubernetes Service cannot be reached from the internet | `router forwards` | Its forward and count of new connections, or the reason the router refuses it. Then the Service's network policy (`hubble observe --namespace NS --verdict DROPPED`) |
 | AirPlay or Cast does not find a device on another VLAN | `router logs mdns`, `tcpdump -ni lan0.52 udp port 5353` | The device's network must be in `allow-interfaces` in `avahi-daemon.conf`; the capture shows the device's answers and the router's repeats (from 10.0.52.1, on VLAN 58 from 10.0.58.1) |
 | Questions about the IDS | `router ids` | Drops, alerts, suppressions; the Suricata dashboard |
-| A published service refuses one client | `router ips why ADDRESS`, `router ips off 10` | The blocks for that address; see "Suricata blocks on published ports" |
+| A page does not load, or a published service refuses one client | `router blocked TEXT`, `router unblock THING`, `router ips off 10` | The blocks for that device, name or address; see "Suricata blocks" |
 | Throughput through the router | `iperf3` between two hosts on different networks | On the router at the same time: `htop`, `perf top`, `dropwatch -l kas` |
 | Anything else | `router logs AREA -f` | Areas: wan, vpn, bgp, dhcp, dns, ids, upnp, mdns, firewall, forwards |
 
