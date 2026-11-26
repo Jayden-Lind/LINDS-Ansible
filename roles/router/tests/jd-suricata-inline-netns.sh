@@ -4,7 +4,9 @@
 # Suricata on NFQUEUE 0 with files/etc/suricata/suricata.yaml, a client on the
 # LAN, the torrent host, a published service and "the internet" beyond the
 # WAN. Nothing outside the namespaces is touched: the live Suricata, its
-# queue and its log are in a different network namespace.
+# queue and its log are in a different network namespace. One thing shows on
+# the router: the watchdog check writes a line to the journal ("Suricata does
+# not answer ... It is killed"). That line is about the Suricata of the test.
 #
 # Run it on a router (it needs Suricata 8, nft, python3 and openssl), from a
 # copy of the role's files:
