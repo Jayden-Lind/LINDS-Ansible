@@ -1,0 +1,21 @@
+# Managed by LINDS-Ansible: roles/router/templates/suricata-modify.conf.j2.
+# suricata-update reads this file at each rule refresh and changes the text
+# of the rules that match. One line: modifysid MATCH "FROM" | "TO". The line
+# is split like a shell command: MATCH must have no space and no backslash.
+#
+# The IPFire DBL rules for DNS questions (malware 12001201, phishing
+# 12001901): only for a question to a resolver outside this network. A
+# question to this router gets its answer from Unbound, which has the same
+# lists and refuses the name at once (/etc/unbound/blocklist.conf). Without
+# this change, a Suricata that blocks would drop the question first, and the
+# device would wait for a timeout.
+modifysid 12001201 "-> any any" | "-> !$HOME_NET any"
+modifysid 12001901 "-> any any" | "-> !$HOME_NET any"
+{% if router_ips | bool %}
+#
+# This router's Suricata blocks. The address lists have "one alert an hour
+# for each source" in each rule. That limits the alerts, not the drops: a
+# block would show once an hour. Without it, each blocked connection is in
+# the log and on the dashboard.
+modifysid re:msg:.ET.(DROP|CINS|COMPROMISED). " *threshold:[^;]*;" | ""
+{% endif %}

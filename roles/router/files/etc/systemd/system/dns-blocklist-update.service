@@ -1,0 +1,23 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/system/dns-blocklist-update.service
+[Unit]
+Description=Fetch the DNS blocklists and make Unbound load them
+Documentation=file:/usr/local/sbin/dns-blocklist-update
+After=network-online.target unbound.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/dns-blocklist-update
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/unbound/rpz
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native

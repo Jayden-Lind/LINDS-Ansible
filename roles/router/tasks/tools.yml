@@ -27,6 +27,40 @@
     dest: /usr/local/sbin/router
     mode: '0755'
 
+# The list of `router unblock`: names and addresses that this router does not
+# block (DNS blocklists, and Suricata where it blocks). It is state of the
+# router, like the DHCP leases: the role makes it once, and `router unblock`
+# keeps it after that.
+- name: Directory for the unblock list
+  ansible.builtin.file:
+    path: /etc/router
+    state: directory
+    mode: '0755'
+
+# Until 2026-11-27 the list was Suricata's.
+- name: Unblock list moved from /etc/suricata
+  ansible.builtin.command: mv /etc/suricata/unblock.list /etc/router/unblock.list
+  args:
+    creates: /etc/router/unblock.list
+    removes: /etc/suricata/unblock.list
+
+- name: Unblock list (made once, then `router unblock` keeps it)
+  ansible.builtin.copy:
+    dest: /etc/router/unblock.list
+    mode: '0644'
+    force: false
+    content: |
+      # Names and addresses that this router does not block. `router unblock` keeps this file.
+      {% for name in router_unblocked %}
+      {{ name }}  # from the role
+      {% endfor %}
+
+# Unbound's pass-through zone and Suricata's pass rules. The command changes
+# a file only if the list asks for different content.
+- name: Files that are made from the unblock list
+  ansible.builtin.command: /usr/local/sbin/router unblock-rules
+  changed_when: false
+
 - name: router status at login
   ansible.builtin.copy:
     src: etc/update-motd.d/20-router
