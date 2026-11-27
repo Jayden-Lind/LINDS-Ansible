@@ -35,6 +35,43 @@
     mode: '0644'
   notify: restart unbound
 
+# The DNS blocklists (README, "DNS blocklists"). The zone files must be
+# there before Unbound reads its configuration: the script makes an empty
+# zone for a list that was never fetched.
+- name: Blocklist directory
+  ansible.builtin.file:
+    path: /var/lib/unbound/rpz
+    state: directory
+    mode: '0755'
+
+- name: Blocklist settings (the lists, and Unbound's zones for them)
+  ansible.builtin.copy:
+    src: "etc/unbound/{{ item }}"
+    dest: "/etc/unbound/{{ item }}"
+    mode: '0644'
+  loop: [blocklists, blocklist.conf]
+  notify: restart unbound
+
+- name: Blocklist update script
+  ansible.builtin.copy:
+    src: usr/local/sbin/dns-blocklist-update
+    dest: /usr/local/sbin/dns-blocklist-update
+    mode: '0755'
+
+- name: Blocklist update service + timer
+  ansible.builtin.copy:
+    src: "etc/systemd/system/{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: '0644'
+  loop:
+    - dns-blocklist-update.service
+    - dns-blocklist-update.timer
+  notify: daemon-reload
+
+- name: Blocklist zone files are there (empty until the first fetch)
+  ansible.builtin.command: /usr/local/sbin/dns-blocklist-update --init
+  changed_when: false
+
 - name: unbound config
   ansible.builtin.copy:
     src: "{{ router_site }}/etc/unbound/unbound.conf"
@@ -63,5 +100,29 @@
 - name: unbound enabled
   ansible.builtin.systemd_service:
     name: unbound
+    enabled: true
+    state: started
+
+- name: Flush handlers (Unbound runs with the blocklist zones)
+  ansible.builtin.meta: flush_handlers
+
+# On a new router the zones are empty. The timer would fill them at night.
+# The command only reads, so it runs in check mode too.
+- name: A blocklist was never fetched?
+  ansible.builtin.command: awk '$2 == 0 { n = 1 } END { exit !n }' /var/lib/unbound/rpz/state
+  register: router_blocklist_empty
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: First fetch of the blocklists
+  ansible.builtin.systemd_service:
+    name: dns-blocklist-update
+    state: started
+  when: router_blocklist_empty.rc == 0
+
+- name: Blocklist update timer enabled
+  ansible.builtin.systemd_service:
+    name: dns-blocklist-update.timer
     enabled: true
     state: started

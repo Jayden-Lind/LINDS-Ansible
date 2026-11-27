@@ -226,6 +226,50 @@ sudo unshare -n bash roles/router/tests/jd-ruleset-netns.sh roles/router/files/j
 sudo unshare -n bash roles/router/tests/linds-ruleset-netns.sh roles/router/files/linds/etc/nftables.conf
 ```
 
+## DNS blocklists
+
+Unbound on the two routers does not resolve names that are on a blocklist:
+advertising, trackers, malware and phishing. It answers "no such name"
+(NXDOMAIN) at once, so a page does not wait for a blocked name. This covers
+each device that asks the router: the LANs, the cluster's DNS and the domain
+controllers. It does not cover a device that uses a different resolver.
+
+| List | What | Names (2026-11-27) |
+|---|---|---|
+| `hagezi-normal` (log name `ads`) | HaGeZi Multi Normal: advertising, trackers, telemetry | 369,000 |
+| `ipfire-malware` (`malware`) | IPFire DBL, malware | 324,000 |
+| `ipfire-phishing` (`phishing`) | IPFire DBL, phishing | 915,000 |
+
+Where things are:
+
+* `/etc/unbound/blocklists`: the lists and where they come from.
+* `/etc/unbound/blocklist.conf`: one response policy zone (RPZ) for each
+  list. The site's `unbound.conf` includes it.
+* `/var/lib/unbound/rpz/`: the zone files. `dns-blocklist-update.timer`
+  fetches them each day at about 04:40. A download that fails or is too
+  small changes nothing.
+* Unbound uses about 240 MB with these lists (40 MB without) and starts in
+  about 5 seconds.
+
+To see what it blocks: Grafana, dashboard "DNS blocking"; on the router,
+`router blocked` and the line `Blocklist` of `router`. Each refused question
+is a line in the journal (`rpz: applied [ads] ...`), which goes to Loki.
+Metrics: `router_dns_blocked_total`, `router_dns_blocklist_names`,
+`router_dns_blocklist_changed_timestamp_seconds`.
+
+To unblock a name: `router unblock NAME` (see "How to unblock" below). It
+works at once for DNS.
+
+To add a list: add a line to `blocklists` and an `rpz:` clause to
+`blocklist.conf`. The file must be in RPZ format. Before that, find what the
+list refuses of the names that the sites use (the Suricata dashboard has the
+DNS lookups of a day): a list that is too strict breaks sign-in pages and
+links in mail.
+
+**CAUTION:** The zone name of an `rpz:` clause must be the `$ORIGIN` of the
+list's file if the file has one (the IPFire lists do). With a different name
+Unbound loads the file and matches nothing.
+
 ## Suricata blocks
 
 On a router with `router_ips: true` (jd-router-01), Suricata is in the path
@@ -255,7 +299,7 @@ report.
 | Group | What |
 |---|---|
 | `ET DROP`, `ET CINS`, `ET COMPROMISED` | Lists of hostile addresses. All traffic from such an address is dropped: its connections to a published port, and its answers to a LAN device. |
-| `IPFire DBL [Malware]`, `[Phishing]` | Lists of names. A DNS question for a listed name gets no answer. A TLS, QUIC or HTTP connection that names one is dropped. |
+| `IPFire DBL [Malware]`, `[Phishing]` | Lists of names. A TLS, QUIC or HTTP connection that names one is dropped, and a DNS question for one to a resolver outside the network. A DNS question to the router is Unbound's to refuse ("DNS blocklists"). |
 | `PTS STALKERWARE` | The servers of phone-spying apps. |
 | `ET MALWARE`, `ET MOBILE_MALWARE`, `ET EXPLOIT_KIT`, `ET PHISHING`, `ET COINMINER` | Signatures of known malware traffic. |
 
@@ -285,14 +329,17 @@ router unblock                    # the list
 router reblock gofile.io          # block it again
 ```
 
-`router unblock` takes about half a minute: Suricata loads its rules again.
-After that, the name or address is not blocked by any rule. It is still
-logged.
+One list is for the DNS blocklists and for Suricata. For DNS the change
+works at once. On a router where Suricata blocks, the command takes about
+half a minute, because Suricata loads its rules again. After that, the name
+or address is not blocked by a list or a rule. It is still logged.
 
-The list is `/etc/suricata/unblock.list`. It is state of the router, like
+The list is `/etc/router/unblock.list`. It is state of the router, like
 the DHCP leases: `router unblock` keeps it, and the role only makes it on a
-new router (with `router_ips_unblocked`). `/etc/suricata/unblock.rules` has
-the pass rules that are made from it. A pass rule wins over a drop rule.
+new router (with `router_unblocked`). Two files are made from it:
+`/var/lib/unbound/rpz/allow.rpz` (Unbound: the name passes) and
+`/etc/suricata/unblock.rules` (Suricata: pass rules, which win over drop
+rules).
 
 ### If a device cannot connect
 
@@ -308,8 +355,11 @@ the pass rules that are made from it. A pass rule wins over a drop rule.
 
 1. From a device on the LAN, ask the router for a name that is on a list.
    On 2026-11-27 `control.kochava.com` (an advertising tracker) was on the
-   malware list: `dig @10.0.50.1 control.kochava.com` gets no answer.
-2. Run `router blocked`. The block must show, with the device and the name.
+   malware list: `dig @10.0.50.1 control.kochava.com` gets NXDOMAIN (the DNS
+   blocklist), and `curl --resolve control.kochava.com:443:1.1.1.1
+   https://control.kochava.com/` gets no connection (Suricata).
+2. Run `router blocked`. The two blocks must show, with the device and the
+   name.
 3. `tests/jd-suricata-inline-netns.sh` tests all of it with a real Suricata
    in network namespaces: blocks by address and by name, the exempt host,
    `router unblock`, and a Suricata that stops. Run it on a router. The

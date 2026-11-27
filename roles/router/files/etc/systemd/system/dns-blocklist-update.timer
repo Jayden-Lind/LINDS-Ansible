@@ -1,0 +1,11 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/systemd/system/dns-blocklist-update.timer
+[Unit]
+Description=Fetch the DNS blocklists each day
+
+[Timer]
+OnCalendar=*-*-* 04:40:00
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

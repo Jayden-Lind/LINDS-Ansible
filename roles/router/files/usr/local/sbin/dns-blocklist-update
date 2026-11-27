@@ -1,0 +1,59 @@
+#!/bin/sh
+# Managed by LINDS-Ansible: roles/router/files/usr/local/sbin/dns-blocklist-update.
+# Fetches the DNS blocklists of /etc/unbound/blocklists into
+# /var/lib/unbound/rpz and makes Unbound load each one that changed.
+# dns-blocklist-update.timer runs it each day.
+#
+# A download that fails, or that has fewer names than the list's minimum,
+# changes nothing: Unbound keeps the list that it has. A list that was never
+# fetched gets an empty zone, so that Unbound starts.
+#
+#   dns-blocklist-update          fetch all lists
+#   dns-blocklist-update --init   only make the files that are missing (no download)
+set -u
+LISTS=/etc/unbound/blocklists
+DIR=/var/lib/unbound/rpz
+STATE=$DIR/state
+EMPTY='$TTL 300
+@ SOA localhost. root.localhost. 1 43200 3600 86400 300
+  NS localhost.'
+mkdir -p "$DIR"
+[ -e "$DIR/allow.rpz" ] || printf '%s\n' "$EMPTY" > "$DIR/allow.rpz"
+failed=0
+: > "$STATE.new"
+while read -r name minimum url; do
+    case "$name" in ''|'#'*) continue ;; esac
+    file=$DIR/$name.rpz
+    if [ ! -e "$file" ]; then
+        # The zone name of an IPFire list is in its file. An empty zone needs none.
+        printf '%s\n' "$EMPTY" > "$file"
+    fi
+    if [ "${1:-}" != --init ]; then
+        tmp=$(mktemp "$DIR/.$name.XXXXXX")
+        if curl -sfL --max-time 180 --retry 2 -A dns-blocklist-update -o "$tmp" "$url"; then
+            count=$(grep -c 'CNAME' "$tmp")
+            if [ "$count" -ge "$minimum" ]; then
+                if cmp -s "$tmp" "$file"; then
+                    rm -f "$tmp"
+                else
+                    chmod 644 "$tmp"; mv "$tmp" "$file"
+                    # The zone that the file is for: its $ORIGIN, or the file name.
+                    zone=$(awk '$1 == "$ORIGIN" { sub(/\.$/, "", $2); print $2; exit }' "$file")
+                    unbound-control auth_zone_reload "${zone:-$name.rpz}" > /dev/null 2>&1 || true
+                    echo "$name: $count names"
+                fi
+            else
+                echo "$name: the download has $count names, fewer than $minimum. The old list stays." >&2
+                rm -f "$tmp"; failed=1
+            fi
+        else
+            echo "$name: the download failed. The old list stays." >&2
+            rm -f "$tmp"; failed=1
+        fi
+    fi
+    # For `router` and the metrics: the name, its size and when it last changed.
+    echo "$name $(grep -c 'CNAME' "$file") $(stat -c %Y "$file")" >> "$STATE.new"
+done < "$LISTS"
+mv "$STATE.new" "$STATE"
+chmod 644 "$STATE"
+exit $failed

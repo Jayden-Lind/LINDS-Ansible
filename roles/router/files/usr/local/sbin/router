@@ -11,7 +11,8 @@ Managed by LINDS-Ansible: roles/router/files/usr/local/sbin/router.
   router host ADDR|NAME|MAC everything the router knows about one client
   router dns NAME [TYPE]    a name through this router (Unbound), Quad9 and the DCs
   router ids                Suricata counters and the last alerts
-  router blocked [TEXT]     what Suricata blocked (TEXT: a device, an address or a name)
+  router blocked [TEXT]     what was blocked, by the DNS blocklists and by Suricata
+                            (TEXT: a device, an address or a name)
   router unblock THING      stop blocking a name (and its subdomains) or an address
   router unblock            the names and addresses that are unblocked
   router reblock THING      block it again
@@ -26,7 +27,7 @@ Managed by LINDS-Ansible: roles/router/files/usr/local/sbin/router.
 It needs root, and runs itself through sudo when started by a user. It only
 reads, except `trace`, which adds a table `inet router_trace` for the
 duration of the trace and deletes it afterwards, `ips off` and `ips on`, and
-`unblock` and `reblock`, which write /etc/suricata/unblock.list.
+`unblock` and `reblock`, which write /etc/router/unblock.list.
 """
 import argparse
 import ipaddress
@@ -55,10 +56,17 @@ IPS_QUEUE = "/proc/net/netfilter/nfnetlink_queue"
 IPS_TIMER = "router-ips-on"
 # What `router unblock` keeps: one name or address on a line. It is state of
 # this router, like the DHCP leases: Ansible makes the file and does not
-# change it. UNBLOCK_RULES is made from it.
-UNBLOCK_LIST = "/etc/suricata/unblock.list"
+# change it. Two files are made from it: UNBLOCK_RULES (pass rules for a
+# Suricata that blocks) and RPZ_ALLOW (pass-through records for Unbound).
+UNBLOCK_LIST = "/etc/router/unblock.list"
 UNBLOCK_RULES = "/etc/suricata/unblock.rules"
 UNBLOCK_SID = 9100000
+# The DNS blocklists of Unbound (/etc/unbound/blocklist.conf). RPZ_STATE is
+# from dns-blocklist-update: a list, its number of names, when it changed.
+RPZ_CONF = "/etc/unbound/blocklist.conf"
+RPZ_DIR = "/var/lib/unbound/rpz"
+RPZ_ALLOW = RPZ_DIR + "/allow.rpz"
+RPZ_STATE = RPZ_DIR + "/state"
 UPDATES_CACHE = "/run/router-updates.json"
 # pending_updates() asks apt again only when one of these changes.
 APT_STATE = ("/var/lib/dpkg/status", "/var/cache/apt/pkgcache.bin")
@@ -69,7 +77,7 @@ LOG_AREAS = {
     "vpn": ["strongswan"],
     "bgp": ["frr"],
     "dhcp": ["isc-kea-dhcp4-server", "isc-kea-dhcp-ddns-server"],
-    "dns": ["unbound"],
+    "dns": ["unbound", "dns-blocklist-update"],
     "ids": ["suricata", "suricata-update"],
     "upnp": ["miniupnpd"],
     "forwards": ["k8s-port-forward"],
@@ -342,6 +350,43 @@ def eve_tail(lines=20000):
     return events
 
 
+def blocklists():
+    """The DNS blocklists: [(name, names, changed)], or None on a router without them."""
+    if not os.path.exists(RPZ_CONF):
+        return None
+    lists = []
+    try:
+        with open(RPZ_STATE) as f:
+            for line in f:
+                p = line.split()
+                if len(p) == 3:
+                    lists.append((p[0], int(p[1]), int(p[2])))
+    except (OSError, ValueError):
+        pass
+    return lists
+
+
+RPZ_LINE = re.compile(r"rpz: applied \[(?P<list>[^\]]+)\] \S+ (?P<action>\S+) (?P<client>[0-9a-f.:]+)@\d+ (?P<name>\S+?)\.? (?P<type>\S+) IN")
+
+
+def dns_blocks(text=None, since="-24h"):
+    """What Unbound's blocklists refused, from the journal, newest last:
+    [(time, client, name, list)]. One entry for a name and client in a minute."""
+    out = run(["journalctl", "-u", "unbound", "--since", since, "-g", "rpz: applied", "-o", "short-iso",
+               "--no-pager", "-q"], timeout=30)
+    blocks, seen = [], set()
+    for line in out.splitlines():
+        m = RPZ_LINE.search(line)
+        if not m or m["action"] == "rpz-passthru" or (text and text not in line):
+            continue
+        when = line[:16]
+        if (when, m["client"], m["name"]) in seen:
+            continue
+        seen.add((when, m["client"], m["name"]))
+        blocks.append((line[5:19].replace("T", " "), m["client"], m["name"], m["list"]))
+    return blocks
+
+
 def ips_state():
     """What the blocking Suricata does, or None on a router where it only watches."""
     if not os.path.exists(IPS_DROPIN):
@@ -417,10 +462,15 @@ def ips_blocks(text=None, lines=20000):
     return blocks
 
 
-def print_block(e):
-    a = e["alert"]
+def block_row(e):
+    """A Suricata block as (time, device, thing, why)."""
     device, thing = block_parties(e)
-    print(f"  {e['timestamp'][5:19].replace('T', ' ')}  {device:26} {thing:38} {a['signature'][:58]}")
+    return e["timestamp"][5:19].replace("T", " "), device, thing, e["alert"]["signature"]
+
+
+def print_row(row):
+    when, device, thing, why = row
+    print(f"  {when}  {device:26} {thing:40} {why[:58]}")
 
 
 NAME_RE = re.compile(r"^(?=.{1,253}$)([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$")
@@ -468,9 +518,44 @@ def unblock_rules(entries):
     return "\n".join(out) + "\n"
 
 
+def unblock_zone(entries):
+    """The pass-through zone for Unbound: each name and its subdomains. An
+    address has no place in it."""
+    out = ["; Made by `router unblock` from " + UNBLOCK_LIST + ". Do not edit.",
+           "$TTL 300", "@ SOA localhost. root.localhost. %d 43200 3600 86400 300" % int(time.time()), "  NS localhost."]
+    for entry in entries:
+        if NAME_RE.match(entry):
+            out += [f"{entry} CNAME rpz-passthru.", f"*.{entry} CNAME rpz-passthru."]
+    return "\n".join(out) + "\n"
+
+
+def unblock_files(entries):
+    """Make the two files from the entries. Returns the files that changed."""
+    changed = []
+    targets = []
+    if os.path.isdir(os.path.dirname(UNBLOCK_RULES)):
+        targets.append((UNBLOCK_RULES, unblock_rules(entries)))
+    if blocklists() is not None:
+        targets.append((RPZ_ALLOW, unblock_zone(entries)))
+    for path, text in targets:
+        try:
+            with open(path) as f:
+                # The zone has a serial that changes: compare the records only.
+                same = [l for l in f.read().splitlines() if "SOA" not in l] == [l for l in text.splitlines() if "SOA" not in l]
+        except OSError:
+            same = False
+        if not same:
+            with open(path + ".new", "w") as f:
+                f.write(text)
+            os.chmod(path + ".new", 0o644)
+            os.replace(path + ".new", path)
+            changed.append(path)
+    return changed
+
+
 def unblock_write(entries, note=None):
-    """Write the list and the rules, and make Suricata load the rules. The
-    return value is what Suricata said."""
+    """Write the list and the files that are made from it, and make Unbound
+    and Suricata load them. The return value is False if one did not confirm."""
     old = {}
     try:
         with open(UNBLOCK_LIST) as f:
@@ -480,17 +565,28 @@ def unblock_write(entries, note=None):
                     old[key] = line.rstrip("\n")
     except OSError:
         pass
-    lines = ["# Names and addresses that Suricata does not block. `router unblock` keeps this file."]
+    lines = ["# Names and addresses that this router does not block. `router unblock` keeps this file."]
     for entry in entries:
         lines.append(old.get(entry) or f"{entry}  # {time.strftime('%Y-%m-%d')}" + (f" {note}" if note else ""))
-    for path, text in ((UNBLOCK_LIST, "\n".join(lines) + "\n"), (UNBLOCK_RULES, unblock_rules(entries))):
-        with open(path + ".new", "w") as f:
-            f.write(text)
-        os.chmod(path + ".new", 0o644)
-        os.replace(path + ".new", path)
-    # reload-rules waits until the new rules are in use.
-    answer = run_json(["suricatasc", "-c", "reload-rules"], timeout=180) or {}
-    return answer.get("return") == "OK"
+    os.makedirs(os.path.dirname(UNBLOCK_LIST), exist_ok=True)
+    with open(UNBLOCK_LIST + ".new", "w") as f:
+        f.write("\n".join(lines) + "\n")
+    os.chmod(UNBLOCK_LIST + ".new", 0o644)
+    os.replace(UNBLOCK_LIST + ".new", UNBLOCK_LIST)
+    ok = True
+    changed = unblock_files(entries)
+    if RPZ_ALLOW in changed:
+        # Unbound reads the small zone again: at once, and the cache is not lost.
+        ok = "ok" in run(["unbound-control", "auth_zone_reload", "allow.rpz"], timeout=30) and ok
+        # An answer "no such name" that is in the cache already would stay for its lifetime.
+        for entry in entries:
+            if NAME_RE.match(entry):
+                run(["unbound-control", "flush_zone", entry], timeout=30)
+    if UNBLOCK_RULES in changed and ips_state() is not None:
+        # reload-rules waits until the new rules are in use.
+        answer = run_json(["suricatasc", "-c", "reload-rules"], timeout=180) or {}
+        ok = answer.get("return") == "OK" and ok
+    return ok
 
 
 def failed_units():
@@ -712,6 +808,17 @@ def cmd_status(_args):
         print(f"{'DNS':10}{line}")
     else:
         print(f"{'DNS':10}{bad('Unbound does not answer on its control socket')}")
+    lists = blocklists()
+    if lists is not None:
+        names = sum(n for _, n, _ in lists)
+        refused = int(dns.get("num.rpz.action.rpz-nxdomain", 0)) if dns else 0
+        oldest = min((t for _, _, t in lists), default=0)
+        line = f"{len(lists)} lists, {names} names, {refused} questions refused"
+        if not names:
+            line += bad(" (no list is loaded: dns-blocklist-update)")
+        elif now - oldest > 4 * 86400:
+            line += bad(f" (a list is {ago(int(now - oldest))} old: router logs dns)")
+        print(f"{'Blocklist':10}{line}")
 
     sc = suricata_counters()
     if sc:
@@ -999,29 +1106,37 @@ def cmd_ips(args):
     return cmd_blocked(args)
 
 
+def blocking_here():
+    """True if this router blocks something: DNS blocklists, or a Suricata in the path."""
+    return blocklists() is not None or ips_state() is not None
+
+
 def cmd_blocked(args):
-    if ips_state() is None:
-        print(dim("Suricata on this router does not block."))
+    if not blocking_here():
+        print(dim("This router does not block."))
         return 0
-    blocks = ips_blocks(getattr(args, "text", None))
-    what = f" with {args.text}" if getattr(args, "text", None) else ""
-    print(f"The last blocks{what} ({len(blocks)} in the recent log): time, device, what was blocked, rule")
-    for e in blocks[-25:]:
-        print_block(e)
+    text = getattr(args, "text", None)
+    rows = [block_row(e) for e in ips_blocks(text)] if ips_state() is not None else []
+    dns = dns_blocks(text) if blocklists() is not None else []
+    rows += [(when, client, name, f"DNS blocklist: {lst}") for when, client, name, lst in dns]
+    rows.sort()
+    what = f" with {text}" if text else ""
+    print(f"The last blocks{what} ({len(rows)} in the last day): time, device, what was blocked, by what")
+    for row in rows[-30:]:
+        print_row(row)
     things = []
-    for e in reversed(blocks):
-        thing = block_parties(e)[1]
-        if thing and thing not in things:
-            things.append(thing)
+    for row in reversed(rows):
+        if row[2] and row[2] not in things:
+            things.append(row[2])
     if things:
         print(dim(f"  To unblock one: router unblock {things[0]}"))
-    print(dim("  Grafana: the Suricata dashboard, \"Blocked by the router\""))
+    print(dim("  Grafana: the dashboards \"DNS blocking\" and \"Suricata\""))
     return 0
 
 
 def cmd_unblock(args):
-    if ips_state() is None:
-        print(dim("Suricata on this router does not block."))
+    if not blocking_here():
+        print(dim("This router does not block."))
         return 0
     entries = unblock_read()
     if not args.thing:
@@ -1042,35 +1157,35 @@ def cmd_unblock(args):
     if entry in entries:
         print(f"{entry} is unblocked already.")
         return 0
-    print(f"Unblocking {entry}. Suricata loads its rules again: this takes up to a minute.")
+    slow = ips_state() is not None
+    print(f"Unblocking {entry}." + (" Suricata loads its rules again: this takes up to a minute." if slow else ""))
     if not unblock_write(entries + [entry], " ".join(args.note) if args.note else None):
-        print(bad("Suricata did not confirm the new rules.") + " The entry is saved: it applies when Suricata next "
-              "loads its rules. Look at: router logs ids")
+        print(bad("Unbound or Suricata did not confirm.") + " The entry is saved: it applies at the next start. "
+              "Look at: router logs dns, router logs ids")
         return 1
     print(good(f"{entry} is not blocked any more.") + " To block it again: router reblock " + entry)
     return 0
 
 
 def cmd_unblock_rules(_args):
-    """For the unit: make unblock.rules from the list. Suricata is about to start and reads it."""
-    with open(UNBLOCK_RULES + ".new", "w") as f:
-        f.write(unblock_rules(unblock_read()))
-    os.chmod(UNBLOCK_RULES + ".new", 0o644)
-    os.replace(UNBLOCK_RULES + ".new", UNBLOCK_RULES)
+    """For the units and the role: make the files from the list. Suricata
+    reads its file at its start. Unbound is told, if it runs."""
+    if RPZ_ALLOW in unblock_files(unblock_read()):
+        run(["unbound-control", "auth_zone_reload", "allow.rpz"], timeout=30)
     return 0
 
 
 def cmd_reblock(args):
-    if ips_state() is None:
-        print(dim("Suricata on this router does not block."))
+    if not blocking_here():
+        print(dim("This router does not block."))
         return 0
     entry, entries = unblock_entry(args.thing), unblock_read()
     if not entry or entry not in entries:
         print(f"{args.thing} is not in the unblocked list (router unblock shows it).")
         return 2
-    print(f"Removing {entry} from the unblocked list. Suricata loads its rules again: this takes up to a minute.")
+    print(f"Removing {entry} from the unblocked list.")
     if not unblock_write([e for e in entries if e != entry]):
-        print(bad("Suricata did not confirm the new rules.") + " Look at: router logs ids")
+        print(bad("Unbound or Suricata did not confirm.") + " Look at: router logs dns, router logs ids")
         return 1
     print(good(f"{entry} is blocked again") + " if a list has it.")
     return 0
@@ -1228,6 +1343,14 @@ def cmd_metrics(args):
             out.append(f'router_dns_lookup_seconds_bucket{{le="+Inf"}} {total}')
             out.append(f"router_dns_lookup_seconds_sum {dns.get('total.recursion.time.avg', 0) * total:.6f}")
             out.append(f"router_dns_lookup_seconds_count {total}")
+    lists = blocklists()
+    if lists is not None:
+        if dns:
+            metric("dns_blocked_total", "Questions that a DNS blocklist refused (NXDOMAIN from an RPZ zone).",
+                   [({}, int(dns.get("num.rpz.action.rpz-nxdomain", 0)))], kind="counter")
+        metric("dns_blocklist_names", "Names in each DNS blocklist.", [({"list": n}, c) for n, c, _ in lists])
+        metric("dns_blocklist_changed_timestamp_seconds", "When each DNS blocklist last changed (its file).",
+               [({"list": n}, t) for n, _, t in lists])
     metric("failed_units", "systemd units in the failed state.", [({}, len(failed_units()))])
     ips = ips_state()
     if ips is not None:

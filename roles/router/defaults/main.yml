@@ -26,7 +26,9 @@ router_ips: false # Suricata blocks: it is in the path of the traffic, not on a
 # copy of it (tasks/ips.yml). It needs router_suricata, and the chains
 # suricata and suricata_dns in the site's nftables.conf.
 # The names and addresses that `router unblock` starts with on a new router.
-router_ips_unblocked: []
+# These are on the phishing list of IPFire DBL and are in use at the sites
+# (the cloud of a vendor, links in mail, a shop's pages).
+router_unblocked: [salesforce-sites.com, awstrack.me, aliyun.com]
 router_k8s_port_forward: false # k8s-port-forward: WAN ports for the Kubernetes
 # Services that ask for them (tasks/port_forward.yml). It needs the settings
 # below and a token in the vault (k8s_port_forward_token).

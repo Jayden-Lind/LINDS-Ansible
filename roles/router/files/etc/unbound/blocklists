@@ -1,0 +1,7 @@
+# Managed by LINDS-Ansible: roles/router/files/etc/unbound/blocklists.
+# The lists that dns-blocklist-update fetches: file name (without .rpz), the
+# least number of names that a good download has, and the address. The file
+# must be in RPZ format. /etc/unbound/blocklist.conf loads each file.
+hagezi-normal    200000  https://raw.githubusercontent.com/hagezi/dns-blocklists/main/rpz/multi.txt
+ipfire-malware   100000  https://dbl.ipfire.org/lists/malware/rpz.zone
+ipfire-phishing  300000  https://dbl.ipfire.org/lists/phishing/rpz.zone

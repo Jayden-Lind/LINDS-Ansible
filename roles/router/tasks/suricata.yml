@@ -125,6 +125,14 @@
     mode: '0644'
   notify: daemon-reload
 
+# Changes to the text of some rules: see the file.
+- name: Rule changes (modify.conf, read by suricata-update)
+  ansible.builtin.template:
+    src: suricata-modify.conf.j2
+    dest: /etc/suricata/modify.conf
+    mode: '0644'
+  notify: suricata-update
+
 - name: Rule tuning (disable.conf, read by suricata-update)
   ansible.builtin.copy:
     src: etc/suricata/disable.conf

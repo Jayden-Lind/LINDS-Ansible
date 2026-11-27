@@ -15,28 +15,13 @@
     mode: '0644'
   notify: sysctl
 
-# The rule groups that block. suricata-update reads both files.
-- name: Rule groups that block (drop.conf, modify.conf)
+# The rule groups that block. suricata-update reads the file.
+- name: Rule groups that block (drop.conf)
   ansible.builtin.copy:
-    src: "etc/suricata/{{ item }}"
-    dest: "/etc/suricata/{{ item }}"
+    src: etc/suricata/drop.conf
+    dest: /etc/suricata/drop.conf
     mode: '0644'
-  loop: [drop.conf, modify.conf]
   notify: suricata-update
-
-# State of the router, like the DHCP leases: `router unblock` adds to it. The
-# role makes the file with the names that the lists have by mistake and that
-# are in use here, and does not change it after that.
-- name: Unblocked names and addresses (made once, then `router unblock` keeps it)
-  ansible.builtin.copy:
-    dest: /etc/suricata/unblock.list
-    mode: '0644'
-    force: false
-    content: |
-      # Names and addresses that Suricata does not block. `router unblock` keeps this file.
-      {% for name in router_ips_unblocked %}
-      {{ name }}  # from the role
-      {% endfor %}
 
 - name: Watchdog script
   ansible.builtin.copy:
