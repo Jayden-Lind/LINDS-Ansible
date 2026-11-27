@@ -267,6 +267,13 @@ Metrics: `router_dns_blocked_total`, `router_dns_blocklist_names`,
 To unblock a name: `router unblock NAME` (see "How to unblock" below). It
 works at once for DNS.
 
+**If an app stops working:** find its device on the dashboard and look at
+the names that it was refused when the fault occurred. An app can wait for a
+tracker before it does its work. Example, 2026-11-27: the Plex app on an
+Apple TV stopped playback after some seconds, because `kochava.com` and
+`analytics.plex.tv` were refused. `router unblock` of the two names on each
+router was the repair, and the two names are in `router_unblocked` now.
+
 To add a list: add a line to `blocklists` and an `rpz:` clause to
 `blocklist.conf`. The file must be in RPZ format. Before that, find what the
 list refuses of the names that the sites use (the Suricata dashboard has the
