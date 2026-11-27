@@ -251,6 +251,13 @@ Where things are:
 * Unbound uses about 240 MB with these lists (40 MB without) and starts in
   about 5 seconds.
 
+**The torrent hosts are exempt:** jd-torrent-01 and VLAN 51 at JD, VLAN 36
+at LINDS. Unbound refuses nothing for them and does not log their questions.
+The site's `unbound.conf` does this with tags: each client network has the
+tag `filter`, the torrent hosts have `nofilter`, and each zone in
+`blocklist.conf` is for `filter` only. To exempt one more host, add an
+`access-control-tag` line with `nofilter` for its address.
+
 To see what it blocks: Grafana, dashboard "DNS blocking"; on the router,
 `router blocked` and the line `Blocklist` of `router`. Each refused question
 is a line in the journal (`rpz: applied [ads] ...`), which goes to Loki.
