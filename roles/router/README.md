@@ -323,14 +323,15 @@ LANs or to LINDS.
 and the two IPv6 rules of the chain `suricata`). These hosts are not logged
 and not blocked. To add a host, add it to the set.
 
-**What it blocks:** the rule groups in `etc/suricata/drop.conf`.
-suricata-update makes them drop rules at each refresh. All other rules only
-report.
+**What it blocks:** the rule groups in `etc/suricata/drop.conf`
+(suricata-update makes them drop rules at each refresh) and the list of
+malware and phishing names (`/etc/suricata/blocklist.rules`). All other
+rules only report.
 
 | Group | What |
 |---|---|
 | `ET DROP`, `ET CINS`, `ET COMPROMISED` | Lists of hostile addresses. All traffic from such an address is dropped: its connections to a published port, and its answers to a LAN device. |
-| `IPFire DBL [Malware]`, `[Phishing]` | Lists of names. A TLS, QUIC or HTTP connection that names one is dropped, and a DNS question for one to a resolver outside the network. A DNS question to the router is Unbound's to refuse ("DNS blocklists"). |
+| `Threat list (malware, phishing)` | The list of names that Unbound refuses too (`hagezi-tif-medium`, "DNS blocklists"). A TLS, QUIC or HTTP connection that names one is dropped, and a DNS question for one to a resolver outside the network. This covers a device that does not ask the router for its names. A DNS question to the router is Unbound's to refuse. |
 | `PTS STALKERWARE` | The servers of phone-spying apps. |
 | `ET MALWARE`, `ET MOBILE_MALWARE`, `ET EXPLOIT_KIT`, `ET PHISHING`, `ET COINMINER` | Signatures of known malware traffic. |
 
@@ -936,8 +937,9 @@ rules).
   * At LINDS it suppresses the same families, plus two ET DYN_DNS rules, for
     VLAN 36 only (LINDS-Torrent-02, behind NordVPN).
   * At both sites it suppresses "executable from a host with no name" for
-    the Windows servers (Windows Update), and it limits the IPFire DBL rules
-    to one alert an hour for each device and rule.
+    the Windows servers (Windows Update). At LINDS it limits the rules of
+    the list of malware and phishing names to one alert an hour for each
+    device and rule.
   * A `threshold` line for one rule replaces the threshold in the rule. JD
     uses this for "Potential SSH Scan OUTBOUND": 30 connections in 120 s, not
     5, because the jump host fetches its git repositories over SSH.
@@ -955,13 +957,30 @@ rules).
   each site: scans and exploit attempts at the published services, reputation
   hits, remote-access tools. To see what a change would remove, count
   `{job="suricata", event_type="alert"}` by signature in Loki first.
-* **Rule sources** (`etc/suricata/update.yaml`): ET Open, the IPFire DBL
-  malware and phishing domain lists, and the Echap stalkerware indicators.
-  Most traffic is encrypted, so the additions match names (DNS, TLS and QUIC
-  server names), not content.
-  * IPFire DBL comes as Suricata datasets, one for each category.
-    `disable.conf` keeps only malware and phishing. Its rule names say
-    "Blocked": that is IPFire's text, and here the rule only alerts.
+* **Rule sources** (`etc/suricata/update.yaml`): ET Open and the Echap
+  stalkerware indicators. Most traffic is encrypted, so the additions match
+  names (DNS, TLS and QUIC server names), not content.
+* **The list of malware and phishing names** (`/etc/suricata/blocklist.rules`,
+  from `templates/suricata-blocklist.rules.j2`): HaGeZi Threat Intelligence
+  Feeds, the list that Unbound refuses. It is not a source of
+  suricata-update.
+  * `dns-blocklist-update` fetches the list for Unbound each day at about
+    04:40. `suricata-blocklist` writes its names as a Suricata dataset
+    (`/var/lib/suricata/blocklist/threats.lst`): before Suricata starts, and
+    before the daily rule reload at about 05:15.
+  * The rules look for the registered domain of a name
+    (`shop.example.com` gives `example.com`). About 97% of the list are
+    registered domains. The other names are single hosts below a shared
+    domain: Unbound refuses those, Suricata does not match them.
+  * On a router that blocks, the rules drop. On the other router they
+    report, and the rule names say "Blocked" there too.
+  * To see if a name is on the list that Suricata has now (the command
+    wants the name in base64, as in the dataset):
+    `suricatasc -c "dataset-lookup threats string $(printf example.com | base64)"`.
+  * The daily rule reload reads the dataset again. No restart is necessary.
+  * The IPFire DBL malware and phishing lists had this task until
+    2026-11-28. They had names that the sites use and all names of some
+    hosting platforms (see "DNS blocklists").
   * suricata-update does not add ET Open by itself when the file has a
     `sources` list. Keep ET Open in the list.
   * A source was rejected if its rules matched names that normal devices use

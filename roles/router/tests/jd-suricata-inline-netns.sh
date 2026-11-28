@@ -80,7 +80,7 @@ fwd_seen() { nft list chain inet router forward | awk '/test: forward-chain pack
 # ---------------------------------------------------------------- Suricata
 # The role's suricata.yaml, with the paths of the lab. The rules are a few
 # of the kinds that drop.conf makes drop rules on the router: a list of
-# addresses and the lists of names (the same rule text as IPFire DBL).
+# addresses and the lists of names (the rule text of /etc/suricata/blocklist.rules).
 sed -e "s|^default-log-dir: .*|default-log-dir: $LAB/log/|" \
     -e "s|filename: /var/run/suricata/suricata-command.socket|filename: $LAB/run/command.socket|" \
     -e "s|^default-rule-path: .*|default-rule-path: $LAB/rules|" \
@@ -93,9 +93,9 @@ b64() { printf '%s' "$1" | base64 -w0; }
 { b64 bad.example; echo; b64 evil.test; echo; } > "$LAB/rules/names.lst"
 cat > "$LAB/rules/suricata.rules" <<EOF
 drop ip [198.51.100.66,2001:db8:ffff::66] any -> any any (msg:"ET DROP lab: listed source"; sid:2400001; rev:1;)
-drop dns any any -> any any (msg:"IPFire DBL [Malware] Blocked DNS Query"; dns.query; domain; dataset:isset,labnames,type string,load $LAB/rules/names.lst; sid:12001201; rev:1;)
-drop http any any -> any any (msg:"IPFire DBL [Malware] Blocked HTTP Request"; http.host; domain; dataset:isset,labnames,type string,load $LAB/rules/names.lst; sid:12001202; rev:1;)
-drop tls any any -> any any (msg:"IPFire DBL [Malware] Blocked TLS Connection"; tls.sni; domain; dataset:isset,labnames,type string,load $LAB/rules/names.lst; sid:12001203; rev:1;)
+drop dns any any -> any any (msg:"Threat list (malware, phishing) Blocked DNS Query"; dns.query; domain; dataset:isset,labnames,type string,load $LAB/rules/names.lst; sid:12001201; rev:1;)
+drop http any any -> any any (msg:"Threat list (malware, phishing) Blocked HTTP Request"; http.host; domain; dataset:isset,labnames,type string,load $LAB/rules/names.lst; sid:12001202; rev:1;)
+drop tls any any -> any any (msg:"Threat list (malware, phishing) Blocked TLS Connection"; tls.sni; domain; dataset:isset,labnames,type string,load $LAB/rules/names.lst; sid:12001203; rev:1;)
 alert http any any -> any any (msg:"lab: a rule that only reports"; http.uri; content:"/report-me"; sid:9000001; rev:1;)
 EOF
 : > "$LAB/rules/unblock.rules"

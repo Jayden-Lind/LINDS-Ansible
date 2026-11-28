@@ -34,14 +34,11 @@ suppress gen_id 1, sig_id 2042936, track by_either, ip 10.0.36.0/24
 # servers their files that way.
 suppress gen_id 1, sig_id 2021076, track by_either, ip [10.3.1.200,10.3.1.201]
 #
-# IPFire DBL, malware and phishing lists (DNS, HTTP, TLS, QUIC): one alert an
-# hour for each device and rule. A device that asks for a listed name often
-# asks for it all day. The DNS and TLS logs have every name.
-threshold gen_id 1, sig_id 12001201, type limit, track by_src, count 1, seconds 3600
-threshold gen_id 1, sig_id 12001202, type limit, track by_src, count 1, seconds 3600
-threshold gen_id 1, sig_id 12001203, type limit, track by_src, count 1, seconds 3600
-threshold gen_id 1, sig_id 12001204, type limit, track by_src, count 1, seconds 3600
-threshold gen_id 1, sig_id 12001901, type limit, track by_src, count 1, seconds 3600
-threshold gen_id 1, sig_id 12001902, type limit, track by_src, count 1, seconds 3600
-threshold gen_id 1, sig_id 12001903, type limit, track by_src, count 1, seconds 3600
-threshold gen_id 1, sig_id 12001904, type limit, track by_src, count 1, seconds 3600
+# The list of malware and phishing names (/etc/suricata/blocklist.rules: DNS,
+# HTTP, TLS, QUIC): one alert an hour for each device and rule. A device
+# that asks for a listed name often asks for it all day. The DNS and TLS
+# logs have every name.
+threshold gen_id 1, sig_id 9200001, type limit, track by_src, count 1, seconds 3600
+threshold gen_id 1, sig_id 9200002, type limit, track by_src, count 1, seconds 3600
+threshold gen_id 1, sig_id 9200003, type limit, track by_src, count 1, seconds 3600
+threshold gen_id 1, sig_id 9200004, type limit, track by_src, count 1, seconds 3600

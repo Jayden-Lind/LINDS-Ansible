@@ -1,0 +1,31 @@
+# Managed by LINDS-Ansible: roles/router/templates/suricata-blocklist.rules.j2.
+# Malware and phishing names: HaGeZi Threat Intelligence Feeds, the same
+# list that Unbound refuses (/etc/unbound/blocklist.conf, the zone
+# hagezi-tif-medium). suricata-blocklist makes the dataset from Unbound's
+# file. A device that does not ask this router (its own DNS over HTTPS, a
+# fixed resolver) is covered here.
+#
+{% if router_ips | bool %}
+# This router's Suricata blocks: the rules drop. To let a name through:
+# `router unblock NAME`.
+{% else %}
+# This router's Suricata reads a copy of the traffic: the rules report. One
+# alert an hour for each device and rule (threshold.in).
+{% endif %}
+#
+# `domain` gives the registered domain of the name (shop.example.com ->
+# example.com), and the rule looks for that in the dataset. About 97% of the
+# list are registered domains. The other names are single hosts below a
+# domain that many sites share: for those, only Unbound refuses.
+#
+# The DNS rule is for a question to a resolver outside this network. A
+# question to this router gets "no such name" from Unbound at once. A drop
+# here would make the device wait for a timeout.
+#
+# suricata-update does not read this file: drop.conf, disable.conf and
+# modify.conf do not apply to it. suricata.yaml loads it.
+{% set action = 'drop' if router_ips | bool else 'alert' %}
+{{ action }} dns any any -> !$HOME_NET any (msg:"Threat list (malware, phishing) Blocked DNS Query"; dns.query; domain; dataset:isset,threats,type string,load /var/lib/suricata/blocklist/threats.lst; classtype:policy-violation; priority:1; sid:9200001; rev:1;)
+{{ action }} http any any -> any any (msg:"Threat list (malware, phishing) Blocked HTTP Request"; http.host; domain; dataset:isset,threats,type string,load /var/lib/suricata/blocklist/threats.lst; classtype:policy-violation; priority:1; sid:9200002; rev:1;)
+{{ action }} tls any any -> any any (msg:"Threat list (malware, phishing) Blocked TLS Connection"; tls.sni; domain; dataset:isset,threats,type string,load /var/lib/suricata/blocklist/threats.lst; classtype:policy-violation; priority:1; sid:9200003; rev:1;)
+{{ action }} quic any any -> any any (msg:"Threat list (malware, phishing) Blocked QUIC Connection"; quic.sni; domain; dataset:isset,threats,type string,load /var/lib/suricata/blocklist/threats.lst; classtype:policy-violation; priority:1; sid:9200004; rev:1;)

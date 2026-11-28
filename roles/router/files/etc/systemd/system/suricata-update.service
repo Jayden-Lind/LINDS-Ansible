@@ -8,6 +8,9 @@ After=network-online.target
 
 [Service]
 Type=oneshot
+# The dataset of /etc/suricata/blocklist.rules, from the list that
+# dns-blocklist-update fetched for Unbound. The reload below reads it.
+ExecStartPre=-/usr/local/sbin/suricata-blocklist
 # The site's alert suppressions (threshold.in, from the role) become
 # threshold.config here, matched against the new rules.
 ExecStart=/usr/bin/suricata-update --no-reload --threshold-in /etc/suricata/threshold.in --threshold-out /etc/suricata/threshold.config
