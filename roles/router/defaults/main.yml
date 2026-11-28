@@ -26,10 +26,11 @@ router_ips: false # Suricata blocks: it is in the path of the traffic, not on a
 # copy of it (tasks/ips.yml). It needs router_suricata, and the chains
 # suricata and suricata_dns in the site's nftables.conf.
 # The names and addresses that `router unblock` starts with on a new router.
-# The first three are on the phishing list of IPFire DBL and are in use at
-# the sites (the cloud of a vendor, links in mail, a shop's pages).
-# kochava.com (on the malware list; it is an advertising tracker) and
-# analytics.plex.tv (on the advertising list): the Plex app on an Apple TV
+# The first three are on the phishing list of IPFire DBL (Suricata uses it
+# on a router with router_ips) and are in use at the sites (the cloud of a
+# vendor, links in mail, a shop's pages). kochava.com (on the malware list of
+# IPFire DBL; it is an advertising tracker) and analytics.plex.tv (on the
+# advertising lists of the DNS blocklists): the Plex app on an Apple TV
 # asks for them when playback starts. With the names refused, it goes through
 # a row of fallback names and playback stops after some seconds (2026-11-27).
 router_unblocked: [salesforce-sites.com, awstrack.me, aliyun.com, kochava.com, analytics.plex.tv]

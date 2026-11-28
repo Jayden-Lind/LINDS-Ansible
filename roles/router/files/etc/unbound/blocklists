@@ -2,6 +2,7 @@
 # The lists that dns-blocklist-update fetches: file name (without .rpz), the
 # least number of names that a good download has, and the address. The file
 # must be in RPZ format. /etc/unbound/blocklist.conf loads each file.
-hagezi-normal    200000  https://raw.githubusercontent.com/hagezi/dns-blocklists/main/rpz/multi.txt
-ipfire-malware   100000  https://dbl.ipfire.org/lists/malware/rpz.zone
-ipfire-phishing  300000  https://dbl.ipfire.org/lists/phishing/rpz.zone
+# dns-blocklist-update removes the zone file of a list that is not here.
+hagezi-tif-medium  500000  https://raw.githubusercontent.com/hagezi/dns-blocklists/main/rpz/tif.medium.txt
+hagezi-normal      200000  https://raw.githubusercontent.com/hagezi/dns-blocklists/main/rpz/multi.txt
+oisd-big           250000  https://big.oisd.nl/rpz
