@@ -234,11 +234,22 @@ advertising, trackers, malware and phishing. It answers "no such name"
 each device that asks the router: the LANs, the cluster's DNS and the domain
 controllers. It does not cover a device that uses a different resolver.
 
-| List | What | Names (2026-11-27) |
+| List | What | Records (2026-11-28) |
 |---|---|---|
-| `hagezi-normal` (log name `ads`) | HaGeZi Multi Normal: advertising, trackers, telemetry | 369,000 |
-| `ipfire-malware` (`malware`) | IPFire DBL, malware | 324,000 |
-| `ipfire-phishing` (`phishing`) | IPFire DBL, phishing | 915,000 |
+| `hagezi-tif-medium` (log name `threats`) | HaGeZi Threat Intelligence Feeds, medium: malware, phishing, scams | 851,000 |
+| `hagezi-normal` (`ads`) | HaGeZi Multi Normal: advertising, trackers, telemetry | 364,000 |
+| `oisd-big` (`oisd`) | OISD Big: advertising and trackers that the list above does not have, some malware and phishing | 443,000 |
+
+A name has two records in a list (the name and its subdomains). For a name
+that is on more than one list, the first list of the table answers and gives
+the log name (the sequence of the zones in `blocklist.conf`).
+
+These lists replaced the first set on 2026-11-28. The first set had the
+IPFire DBL malware and phishing lists. They refused names that the sites
+use (a tracker that the Plex app waits for, links in mail, a file-sharing
+site) and all names of some hosting platforms. A comparison with three
+independent feeds of known bad names showed that the HaGeZi threat list
+refuses more of them.
 
 Where things are:
 
@@ -248,8 +259,9 @@ Where things are:
 * `/var/lib/unbound/rpz/`: the zone files. `dns-blocklist-update.timer`
   fetches them each day at about 04:40. A download that fails or is too
   small changes nothing.
-* Unbound uses about 240 MB with these lists (40 MB without) and starts in
-  about 5 seconds.
+* Unbound uses about 1 GB of memory with these lists (40 MB without). It
+  reads them when it starts: a restart of Unbound is about 15 seconds
+  without DNS. The daily update loads a changed list without a restart.
 
 **The torrent hosts are exempt:** jd-torrent-01 and VLAN 51 at JD, VLAN 36
 at LINDS. Unbound refuses nothing for them and does not log their questions.
@@ -278,11 +290,16 @@ To add a list: add a line to `blocklists` and an `rpz:` clause to
 `blocklist.conf`. The file must be in RPZ format. Before that, find what the
 list refuses of the names that the sites use (the Suricata dashboard has the
 DNS lookups of a day): a list that is too strict breaks sign-in pages and
-links in mail.
+links in mail. Memory: about 600 bytes for each record, and each list is
+loaded by itself, so a name on two lists costs two times.
+
+To remove a list: remove its line and its `rpz:` clause. The next
+`dns-blocklist-update` removes the zone file.
 
 **CAUTION:** The zone name of an `rpz:` clause must be the `$ORIGIN` of the
-list's file if the file has one (the IPFire lists do). With a different name
-Unbound loads the file and matches nothing.
+list's file if the file has one (the IPFire DBL lists do; the lists in use
+have none). With a different name Unbound loads the file and matches
+nothing.
 
 ## Suricata blocks
 

@@ -6,7 +6,8 @@
 #
 # A download that fails, or that has fewer names than the list's minimum,
 # changes nothing: Unbound keeps the list that it has. A list that was never
-# fetched gets an empty zone, so that Unbound starts.
+# fetched gets an empty zone, so that Unbound starts. The zone file of a list
+# that is not in /etc/unbound/blocklists is removed.
 #
 #   dns-blocklist-update          fetch all lists
 #   dns-blocklist-update --init   only make the files that are missing (no download)
@@ -25,7 +26,7 @@ while read -r name minimum url; do
     case "$name" in ''|'#'*) continue ;; esac
     file=$DIR/$name.rpz
     if [ ! -e "$file" ]; then
-        # The zone name of an IPFire list is in its file. An empty zone needs none.
+        # An empty zone needs no zone name ($ORIGIN) in its file.
         printf '%s\n' "$EMPTY" > "$file"
     fi
     if [ "${1:-}" != --init ]; then
@@ -54,6 +55,13 @@ while read -r name minimum url; do
     # For `router` and the metrics: the name, its size and when it last changed.
     echo "$name $(grep -c 'CNAME' "$file") $(stat -c %Y "$file")" >> "$STATE.new"
 done < "$LISTS"
+# A list that was removed from the table: its zone file goes. allow.rpz is
+# the zone of `router unblock` and stays.
+for file in "$DIR"/*.rpz; do
+    name=$(basename "$file" .rpz)
+    [ "$name" = allow ] && continue
+    grep -q "^$name " "$STATE.new" || rm -f "$file"
+done
 mv "$STATE.new" "$STATE"
 chmod 644 "$STATE"
 exit $failed
