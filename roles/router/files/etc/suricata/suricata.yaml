@@ -276,6 +276,9 @@ rule-files:
   # `router unblock` writes this file: pass rules for the names and addresses
   # that are not to be blocked. Empty on a router that does not block.
   - /etc/suricata/unblock.rules
+  # Malware and phishing names: the list that Unbound refuses too. The file
+  # says how; suricata-blocklist makes its dataset.
+  - /etc/suricata/blocklist.rules
 
 classification-file: /etc/suricata/classification.config
 reference-config-file: /etc/suricata/reference.config

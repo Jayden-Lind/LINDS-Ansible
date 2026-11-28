@@ -84,6 +84,27 @@
     mode: '0644'
     force: false
 
+# The list of malware and phishing names (README, "Suricata blocks").
+# suricata.yaml names the rule file, and the rules name the dataset: the two
+# must be there before Suricata starts. The script makes the dataset from
+# the list that Unbound has (dns.yml); without that list it is empty.
+- name: Script that makes Suricata's list of malware and phishing names
+  ansible.builtin.copy:
+    src: usr/local/sbin/suricata-blocklist
+    dest: /usr/local/sbin/suricata-blocklist
+    mode: '0755'
+
+- name: Suricata's list of malware and phishing names is there
+  ansible.builtin.command: /usr/local/sbin/suricata-blocklist
+  changed_when: false
+
+- name: Rules for the list of malware and phishing names
+  ansible.builtin.template:
+    src: suricata-blocklist.rules.j2
+    dest: /etc/suricata/blocklist.rules
+    mode: '0644'
+  notify: suricata-update
+
 - name: suricata.yaml
   ansible.builtin.copy:
     src: etc/suricata/suricata.yaml
@@ -122,6 +143,13 @@
   ansible.builtin.copy:
     src: etc/systemd/system/suricata.service.d/memory.conf
     dest: /etc/systemd/system/suricata.service.d/memory.conf
+    mode: '0644'
+  notify: daemon-reload
+
+- name: suricata.service makes the list of names before it starts
+  ansible.builtin.copy:
+    src: etc/systemd/system/suricata.service.d/blocklist.conf
+    dest: /etc/systemd/system/suricata.service.d/blocklist.conf
     mode: '0644'
   notify: daemon-reload
 

@@ -1,0 +1,66 @@
+#!/usr/bin/python3
+# Managed by LINDS-Ansible: roles/router/files/usr/local/sbin/suricata-blocklist.
+"""Make Suricata's list of malware and phishing names from the DNS blocklist.
+
+Unbound and Suricata use the same list (HaGeZi Threat Intelligence Feeds).
+dns-blocklist-update fetches it for Unbound each day as a zone file. This
+script writes the names of that file as a Suricata dataset: one name on a
+line, in base64. The rules in /etc/suricata/blocklist.rules read the dataset.
+
+suricata.service runs the script before Suricata starts, and
+suricata-update.service runs it before the daily reload of the rules.
+
+The zone file is not there, or it has no names (a new router before its
+first fetch): the dataset that is there stays. If there is none, an empty
+dataset is made, so that the rules load.
+"""
+import base64
+import os
+import sys
+
+SOURCE = "/var/lib/unbound/rpz/hagezi-tif-medium.rpz"
+DATASET = "/var/lib/suricata/blocklist/threats.lst"
+
+
+def names(path):
+    """The names of an RPZ zone file: the records `NAME CNAME .`, without the
+    `*.NAME` record that each name has for its subdomains."""
+    out = []
+    with open(path, encoding="ascii", errors="ignore") as f:
+        for line in f:
+            part = line.split()
+            if len(part) == 3 and part[1] == "CNAME" and part[2] == "." and not part[0].startswith("*."):
+                out.append(part[0].lower())
+    return out
+
+
+def main():
+    os.makedirs(os.path.dirname(DATASET), mode=0o755, exist_ok=True)
+    try:
+        found = names(SOURCE)
+    except OSError:
+        found = []
+    if not found:
+        if not os.path.exists(DATASET):
+            open(DATASET, "w").close()
+            os.chmod(DATASET, 0o644)
+        print(f"suricata-blocklist: no names in {SOURCE}. The dataset did not change.")
+        return 0
+    text = "".join(base64.b64encode(name.encode()).decode() + "\n" for name in found)
+    try:
+        with open(DATASET) as f:
+            if f.read() == text:
+                return 0
+    except OSError:
+        pass
+    tmp = DATASET + ".new"
+    with open(tmp, "w") as f:
+        f.write(text)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, DATASET)
+    print(f"suricata-blocklist: {len(found)} names")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
